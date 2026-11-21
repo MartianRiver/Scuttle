@@ -7,7 +7,7 @@ import org.bukkit.entity.Player;
 /**
  * A capability the model may ask for. The model supplies typed parameters and
  * nothing else — there is no tool that takes a command string, and there never
- * will be (SCUTTLE.md §6).
+ * will be.
  */
 public interface Tool {
 

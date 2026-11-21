@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Sliding window of the last few turns per player (SCUTTLE.md §9). This is the
+ * Sliding window of the last few turns per player. This is the
  * main cost lever after model choice, so it stays small and drops old entries
  * rather than summarising them.
  *

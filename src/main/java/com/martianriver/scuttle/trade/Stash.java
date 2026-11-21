@@ -23,7 +23,7 @@ import java.util.Map;
  * cobblestone makes cobblestone cheaper for everyone — which is the bit that
  * should end up being fun.
  *
- * <p>When Scuttle can mine (SCUTTLE.md Phase 3) it fills this itself.
+ * <p>When Scuttle can mine, it fills this itself.
  */
 public final class Stash {
 

@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * model asks for a search, Java does it and parks the answer, and the coordinate
  * only ever leaves here as the target of a compass. The model is never told a
  * number, so it cannot hand out one Java didn't find — which is what keeps this
- * on the right side of SCUTTLE.md §14's "no arbitrary coordinates, ever".
+ * on the right side of "no arbitrary coordinates, ever".
  *
  * <p>A lodestone compass doesn't need a lodestone: setting the target and then
  * turning tracking <em>off</em> stops the client invalidating it for having no

@@ -13,8 +13,8 @@ import org.bukkit.entity.Player;
  * How Scuttle appears in chat: sooty grey prefix, ember orange name, and a
  * metallic clank every time it speaks.
  *
- * <p>SCUTTLE.md §2 calls the sensory identity cheap and disproportionately
- * effective, which is why it lands in Milestone 1 rather than later.
+ * <p>The sensory identity is cheap and disproportionately effective, which
+ * is why it shipped early.
  */
 public final class Speech {
 
