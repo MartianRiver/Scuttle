@@ -1,0 +1,503 @@
+# ============================================================================
+#  Scuttle
+#  ---------------------------------------------------------------------------
+#  Everything below can be changed while the server is running.
+#  After editing, run this in-game or from console:   /scuttle reload
+#
+#  Lines starting with # are notes and are ignored by the server.
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+#  1. THE API KEY
+# ---------------------------------------------------------------------------
+# Scuttle talks to OpenRouter, which is what actually runs the AI.
+#
+# DON'T put the key in this file. Put it in the file called ".env" in the
+# plugin folder, on a line that looks like:
+#
+#     OPENROUTER_API_KEY=sk-or-v1-........
+#
+# Scuttle reads it from there (or from a system environment variable of the
+# same name). Leave the setting below empty unless you have a good reason.
+openrouter:
+  api-key: ""
+  # Which environment variable to read the key from.
+  api-key-env: "OPENROUTER_API_KEY"
+  timeout-seconds: 45
+  # How many times to retry a failed request before giving up and having
+  # Scuttle say something confused in chat.
+  max-retries: 2
+  # Scuttle's personality and its list of tools are the same words on every
+  # single question — most of what it sends. Caching means it pays full price
+  # for those once and about a tenth of it afterwards.
+  #
+  # The catch: the cache only lasts five minutes, and the call that fills it
+  # costs about a quarter more than normal. So it saves money when questions
+  # come in bunches (which is what actually happens) and costs a little when
+  # they're hours apart. Measured in-game: a question costs $0.0083 cold and
+  # $0.0040 once the cache is warm, on a bigger prompt.
+  #
+  # Only worth turning off if you switch to a model that doesn't support it.
+  prompt-caching: true
+
+
+# ---------------------------------------------------------------------------
+#  2. WHICH AI MODEL TO USE
+# ---------------------------------------------------------------------------
+# Different jobs get different models. Cheaper models for simple things,
+# smarter (pricier) models for hard things.
+#
+# Rough costs per million words-ish, as of August 2026:
+#   anthropic/claude-haiku-4.5   cheapest
+#   anthropic/claude-sonnet-5    middle    <- good default
+#   anthropic/claude-opus-5      priciest, smartest
+#
+# Changing these takes effect on /scuttle reload. No rebuilding needed.
+models:
+  # Ordinary conversation: questions, recipes, ideas.
+  chat: "anthropic/claude-sonnet-5"
+  # Long, careful writing — build guides and (later) written books.
+  authoring: "anthropic/claude-opus-5"
+  # Quick yes/no decisions. Cheap and fast.
+  classify: "anthropic/claude-haiku-4.5"
+
+  # If the model above is down or overloaded, OpenRouter tries these in order
+  # instead of failing. Leave at least one entry here.
+  fallbacks:
+    - "anthropic/claude-haiku-4.5"
+
+  # Scuttle is meant to be terse. This caps how long a reply can get, which
+  # enforces the personality as much as the prompt does.
+  max-reply-tokens: 400
+
+  # Modern AI models "think" before answering — they write out working nobody
+  # sees, then answer. It's for maths and puzzles. Scuttle looks a thing up in a
+  # book and says one sentence, so the thinking is pure waste: you pay for it,
+  # you wait for it, and it eats into max-reply-tokens above, which is what makes
+  # replies stop mid-sentence.
+  #
+  # Nearly every model has it ON unless told otherwise, so this is off by default.
+  # Measured across eleven models: turning it off cut the wait by 19% on
+  # Claude Sonnet and by 60-76% on the faster ones, and cost less.
+  #
+  # Only turn this on if you switch Scuttle to something that genuinely needs to
+  # reason — which, for a bucket that fetches gravel, it doesn't.
+  reasoning: false
+
+
+# ---------------------------------------------------------------------------
+#  3. MONEY  (read this one)
+# ---------------------------------------------------------------------------
+# Scuttle tracks roughly how much it has spent this month and goes quiet
+# when it hits the ceiling — in character, not with an error.
+#
+# Spending resets on the 1st of each month.
+budget:
+  monthly-ceiling-usd: 25.00
+  # Warn in the server console once spending passes this fraction of the
+  # ceiling (0.8 = 80%).
+  warn-at-fraction: 0.8
+  # Emergency off switch. Set to true and Scuttle stops talking entirely
+  # until you set it back to false. Takes effect on /scuttle reload.
+  kill-switch: false
+
+
+# ---------------------------------------------------------------------------
+#  4. STOPPING KIDS SPAMMING IT
+# ---------------------------------------------------------------------------
+# These are per-player, and they're checked BEFORE any money is spent.
+limits:
+  # Shortest gap between one player's messages, in seconds.
+  cooldown-seconds: 8
+  # Most messages one player can send in a rolling minute.
+  per-minute: 6
+  # Most messages one player can send in a day. Resets at midnight server time.
+  per-day: 120
+
+
+# ---------------------------------------------------------------------------
+#  5. HOW KIDS TALK TO SCUTTLE
+# ---------------------------------------------------------------------------
+trigger:
+  # Typing "/scuttle how do I make a piston" always works.
+  command-enabled: true
+  # Saying Scuttle's name in normal chat also works:
+  #   "scuttle, what's a piston door?"
+  name-mention-enabled: true
+  # Words that count as saying its name. Case doesn't matter.
+  names:
+    - "scuttle"
+  # Ignore very short messages so "scuttle" on its own doesn't fire a request.
+  min-message-length: 4
+
+  # After Scuttle answers you, your next message reaches it WITHOUT saying its
+  # name — for this many seconds. The clock resets every time it replies, so a
+  # real back-and-forth just keeps going. Having to say "scuttle" every single
+  # line makes it feel like a vending machine.
+  #
+  # It's per-person: one kid chatting to Scuttle doesn't make it answer
+  # everything the others say. A message starting with another player's name is
+  # ignored too, on the grounds that it's obviously not for Scuttle.
+  #
+  # Lower it to 20 if it's chiming in too often, or set it to 0 to go back to
+  # needing its name every time.
+  follow-on-seconds: 45
+
+  # Inside that window Scuttle would otherwise answer literally anything the
+  # player types, including things plainly aimed at another kid. This asks the
+  # cheap model (models.classify above) one yes/no question first: "was that
+  # meant for Scuttle?"
+  #
+  # It costs a fraction of a penny and about a second, and only ever runs when
+  # the name ISN'T said — saying "scuttle" always gets an answer immediately,
+  # with nothing in the way. If the check fails for any reason the message goes
+  # through, so a broken classifier makes Scuttle chattier, never mute.
+  #
+  # Set to false to answer everything in the window, as it did before.
+  follow-on-classify: true
+
+
+# ---------------------------------------------------------------------------
+#  6. HOW SCUTTLE LOOKS AND SOUNDS
+# ---------------------------------------------------------------------------
+# Colours are hex codes, the same kind used for paint on a computer.
+appearance:
+  # The little tag before its name, in sooty grey.
+  prefix: "[Scuttle]"
+  prefix-color: "#5A5A5A"
+  # Its name and speech, in ember orange.
+  name-color: "#D2691E"
+  text-color: "#C8C3BD"
+
+  # The noise it makes when it talks. Deliberately metallic and hollow,
+  # not the usual villager hum.
+  #
+  # Worth trying in-game and picking a favourite:
+  #   BLOCK_CHAIN_STEP        rattly, chain-like
+  #   ITEM_BUCKET_EMPTY       hollow metal slosh
+  #   BLOCK_LANTERN_PLACE     a small clank
+  #   BLOCK_ANVIL_LAND        heavy — good for arrivals, too loud for talking
+  speech-sound: "BLOCK_CHAIN_STEP"
+  speech-volume: 0.5
+  speech-pitch: 1.4
+
+
+# ---------------------------------------------------------------------------
+#  7. THE LORE FILE  (the highest-value thing here)
+# ---------------------------------------------------------------------------
+# A plain text file describing your server: where the bases are, who's who,
+# the house rules, the running jokes, what everyone's building.
+#
+# Scuttle reads it before every reply, so it can say things like
+# "ooh, you're near Maya's tower — good slime farm spot, actually."
+#
+# It's re-read on /scuttle reload. Edit it as much as you like; it's just text.
+lore:
+  file: "lore.txt"
+  # Don't send more than this many characters of lore, to keep costs sane.
+  max-characters: 6000
+
+
+# ---------------------------------------------------------------------------
+#  8. CONVERSATION MEMORY
+# ---------------------------------------------------------------------------
+history:
+  # How many past messages Scuttle remembers per player. Higher = better
+  # continuity but more expensive on every single reply.
+  window: 10
+  # Forget a player's conversation after this many minutes of silence.
+  expire-minutes: 30
+
+
+# ---------------------------------------------------------------------------
+#  9. TRADING
+# ---------------------------------------------------------------------------
+# Scuttle will swap items with players. It looks in their inventory, works out
+# what a fair swap is, and offers it — and nothing moves until the player
+# clicks yes. Scuttle cannot be talked into a bad deal: the maths happens in
+# the plugin, not in the conversation, so "please, just this once" gets the
+# same answer as everything else.
+#
+# What things are worth lives in values.yml, next to this file.
+#
+# NOTE: this `enabled` — and the ones under find: and claims: — decide which
+# tools exist, and that happens once at startup. /scuttle reload picks up every
+# other setting here, but turning a whole feature on or off needs a restart.
+trade:
+  enabled: true
+
+  # Scuttle's cut, both ways. At 0.15 it sells at 15% over and buys at 15%
+  # under. This is also what stops trading in circles being worth anything:
+  # buy a thing and sell it straight back and you're down 30%.
+  margin: 0.15
+
+  # Scuttle's own stash (stash.yml) changes the price. Something it already
+  # has is cheaper; something it has to go and fetch costs more. Selling to
+  # Scuttle tops the stash up, so a kid who dumps 3,000 cobblestone makes
+  # cobblestone cheap for everyone.
+  stocked-discount: 0.8
+  unstocked-markup: 1.4
+
+  # ---- THE GLUT ----
+  # The above two only change what Scuttle CHARGES. These change what it PAYS,
+  # and they are the only thing standing between the economy and a hopper.
+  #
+  # values.yml prices how much of a faff something is to get by hand, and a
+  # cactus farm does not find anything a faff. Left alone, gunpowder and slime
+  # balls pay exactly what a mined iron ingot pays, out of a machine you build
+  # once — which makes every farm an unlimited income and mining pointless.
+  #
+  # So the payout falls as Scuttle's own pile grows. The rule, in kid:
+  # FULL PRICE FOR ABOUT A BACKPACK OF ANYTHING, LESS AFTER THAT.
+  #
+  # glutted-at is roughly one full inventory (36 x 64). Below it Scuttle pays
+  # normally; above it the payout falls off in proportion, down to the floor.
+  # Set glutted-at to 0 to switch the whole thing off and go back to unlimited
+  # farm income.
+  glutted-at: 2304
+  glutted-floor: 0.1
+
+  # How much one player can SPEND in a day, in "credits" (the internal unit —
+  # a diamond is 320, a stack of cobblestone about 64). A brake on runaway
+  # buying, not the main protection; the yes/no buttons and the allowlist are.
+  #
+  # Spending only. Selling a haul doesn't count against it, because a kid who
+  # cashed in a morning's mining and then couldn't buy the thing they dug it up
+  # for would rightly think Scuttle was broken.
+  #
+  # Enforced in Java, in offer_sale and again when the button is pressed — not
+  # by telling the model about it. The model IS told what's left, so it can
+  # steer, but it can't spend past this however it's asked.
+  daily-allowance:
+    kid: 100000
+    parent: 1000000
+
+  # How long an offer stays on the table before it goes stale.
+  offer-seconds: 90
+
+  # ---- THE SHOP ----
+  # Buying and selling happens inside a WorldGuard region and nowhere else, so
+  # that the shop is a place you walk to rather than a menu you carry. Make the
+  # building, stand in a corner, and:
+  #
+  #     //wand         (then left-click one corner, right-click the opposite one)
+  #     /rg define scuttle-shop
+  #
+  # No flags are needed — Scuttle only asks whether you're standing inside it.
+  #
+  # Only the item-moving half is gated. Prices, "what could I afford", and
+  # everything Scuttle knows about ore and villages still work down a mine,
+  # because being told what the haul in your bag is worth is what sends you
+  # walking back to spend it.
+  #
+  # If WorldGuard isn't installed, or the region doesn't exist, Scuttle trades
+  # anywhere and says so in the console — it never goes silently strict.
+  # Anyone with scuttle.shop.anywhere ignores the gate; that permission is the
+  # hook for a rank, or for an adult who doesn't want the walk.
+  shop:
+    enabled: true
+    region: scuttle-shop
+
+  # ---- MONEY ----
+  # Three metals, cheapest first: a copper nugget, an iron ingot, a gold ingot.
+  # The kids mine, sell the haul, and spend the coins; there is no swapping
+  # goods for goods. Coal was a fourth coin until 2026-08-22 — dropped so every
+  # coin above the smallest is a proper ingot rather than one being a fuel item;
+  # it's back to being an ordinary sellable good, book price 8.
+  #
+  # A single metal can only ever be as fine as its own smallest piece, and the
+  # smallest coin is the floor under every price in the game — that's why
+  # copper alone isn't enough. Copper is the small change, gold is the big
+  # money, and every one of them is something you'd dig up anyway — so a chest
+  # of savings looks like treasure rather than a bank statement.
+  #
+  # THESE NUMBERS ARE NOT FREE CHOICES, and they are not guesses either — every
+  # one was checked against this server's own price list. A coin must be worth
+  # less than the thing nine of it crafts into, and more than Scuttle would pay
+  # for that thing, or the money can be minted out of nothing:
+  #
+  #   copper nugget  2   nine of them make a copper ingot (book 20, pays 17),
+  #                      so nine coins must sit between 17 and 20. Only 2 fits.
+  #   iron ingot    40   nine nuggets (book 5) below, a block (book 360) above.
+  #                      Safe from 38 to 45; 40 is its own book value.
+  #   gold ingot    90   same shape: nuggets below, block above. Safe at 90.
+  #
+  # COPPER INGOT CANNOT BE A COIN AT ANY PRICE. Its nugget-side window wants 23
+  # to 27 and its block-side window wants 17 to 20, and those don't overlap.
+  # That is why the copper coin is the nugget — it was worked out, not chosen.
+  #
+  # Every face must also be a whole number of the smallest coin, or change comes
+  # up short. The old gold ladder had an iron nugget of 4 against a gold nugget
+  # of 10 and quietly kept 2 credits of every other purchase.
+  #
+  # Scuttle re-derives all of this from values.yml on every boot and reload and
+  # complains in the console if something has broken it. Read those warnings —
+  # they have caught a real mistake already.
+  currency:
+    gold-ingot: 90
+    iron-ingot: 40
+    copper-nugget: 2
+
+
+# ---------------------------------------------------------------------------
+#  10. FINDING THINGS
+# ---------------------------------------------------------------------------
+# Scuttle can be asked where something is. Two quite different things happen
+# depending on what you ask for, and it's worth knowing which is which.
+#
+#   PLACES  - villages, mineshafts, ancient cities, caves, biomes. This uses
+#             exactly the same machinery as the /locate command, so it's cheap
+#             and it works from a long way off.
+#
+#   ORE     - diamonds, iron, ancient debris. There is no such command in
+#             Minecraft, so Scuttle has to read the actual blocks, and it can
+#             only read chunks the server already has in memory. In practice
+#             that's about as far as you can see. Standing in a field and
+#             asking where the diamonds are will find nothing, on purpose:
+#             the kids still have to go and explore, they're just spared the
+#             last boring stretch of tunnelling.
+#
+# Either way Scuttle never says coordinates. It describes the direction and
+# offers a compass that points at the thing.
+find:
+  enabled: true
+
+  # How far out to sniff for ore, in chunks (1 chunk = 16 blocks). Bigger costs
+  # more work per question. 8 is about 128 blocks and is plenty.
+  ore-chunk-radius: 8
+
+  # How far up and down from the player to look, in blocks. Kids asking about
+  # ore are nearly always already underground, so there's no point scanning the
+  # sky. 48 covers a generous slab either side of them.
+  ore-y-band: 48
+
+  # A hard stop, in thousandths of a second, so one question can never bog the
+  # server down. If it runs out it answers with whatever it found so far.
+  ore-budget-millis: 40
+
+  # How far to look for a place. These two are in DIFFERENT units, which is not
+  # a typo — it's what Minecraft itself uses, and one number for both would
+  # quietly be sixteen times wrong.
+  #
+  # Structures are counted in chunks (1 chunk = 16 blocks). 100 is what the
+  # game's own /locate command uses, so about 1600 blocks.
+  structure-radius-chunks: 100
+  # Biomes are counted in blocks.
+  biome-radius-blocks: 6400
+
+  # How long the offer of a compass stays up before Scuttle forgets about it.
+  hunch-seconds: 120
+
+
+# ---------------------------------------------------------------------------
+#  11. LAND CLAIMS
+# ---------------------------------------------------------------------------
+# Scuttle can fence off a piece of land as a WorldGuard region, so a kid never
+# has to learn //wand or /rg define — they say "can you protect my house" and
+# press a button. A claim is always a square centred on wherever the player
+# asking is standing; Scuttle never takes a coordinate from anyone, so the
+# worst a jailbroken model could do is fence off ground round a child who's
+# already there.
+#
+# Needs WorldGuard, same as trade.shop above. If it isn't installed, this
+# whole feature quietly does nothing and says so once in the console.
+claims:
+  enabled: true
+
+  # Every claim's WorldGuard region id starts with this. Only regions with
+  # this prefix are Scuttle's to list, resize or abandon — anything else in
+  # WorldGuard belongs to an adult and is never touched.
+  prefix: "claim-"
+
+  # Size, in blocks across (it's always a square). min/max are the hard
+  # limits; default is what a kid gets if they don't ask for a size. Keeping
+  # max well below the whole build stops one claim eating the map.
+  default-blocks: 32
+  min-blocks: 8
+  max-blocks: 96
+
+  # How many claims one player can hold at once. Parents get more headroom —
+  # they're not the ones who need a brake.
+  per-player: 3
+  per-player-parent: 20
+
+  # No claim may start within this many blocks of world spawn, so the shared
+  # ground round spawn can never be quietly fenced off by whoever asks first.
+  spawn-buffer: 48
+
+  # A claim runs bedrock to sky by default — easiest to explain to a kid
+  # ("the whole column is yours") and it stops someone tunnelling in
+  # underneath, which is the first thing a sibling tries. If full-height is
+  # false, height-band is how far up and down from the player it reaches
+  # instead.
+  full-height: true
+  height-band: 32
+
+  # How long a claim offer (new, resize, or give-up) stays on the table
+  # before it goes stale. Same idea as trade's offer-seconds.
+  offer-seconds: 90
+
+
+# ---------------------------------------------------------------------------
+#  12. GUARD DUTY  (the hit-escalation ladder)
+# ---------------------------------------------------------------------------
+# If a player hits Scuttle's body (the ScuttleMC account, see bot/), it responds
+# in three steps rather than just standing there or fighting back immediately —
+# see SCUTTLE.md §3 "Embodiment design" for the full reasoning. Per attacker,
+# and the count never resets except a server restart:
+#
+#   1st hit   Scuttle takes no damage. The attacker gets shoved a short,
+#             fixed distance away — a warning, and a clear "this isn't a
+#             normal player" signal.
+#   2nd hit   Same shove, but Scuttle hits back first (a small, fixed amount
+#             of damage) before pushing them away.
+#   3rd hit   The gloves come off. Scuttle stops intercepting entirely — a
+#             real fight, full damage both ways, and it can genuinely win or
+#             lose. A loss drops whatever a normal PvP death drops; there's no
+#             special item-confiscation code, it's just what already happens.
+#
+# This is the one deliberate exception to "no arbitrary teleports" and "no
+# punishment features" in SCUTTLE.md §14 — scoped to nothing but this.
+guard:
+  enabled: true
+  # The Minecraft username of Scuttle's body. Must match bot/'s account exactly.
+  bot-username: "ScuttleMC"
+  # How far the 1st/2nd-hit shove sends the attacker, in blocks.
+  shove-blocks: 8
+  # How much damage the 2nd-hit "fights back" deals, in half-hearts (2.0 = 1
+  # heart).
+  fight-back-damage: 2.0
+  # One flurry of hits is one incident, not one per swing — this is the gap
+  # (in seconds) before another hit from the same player counts as a new one
+  # and re-triggers the shove. Doesn't apply once it's a real 3rd-hit fight;
+  # that's continuous.
+  cooldown-seconds: 3
+  # A real fight (3rd hit) keeps going while the bot is told to fight back.
+  # If nobody's landed a hit in this many seconds, it's treated as over and
+  # Scuttle stops pursuing — this is what lets bot/ know when to stop.
+  fight-timeout-seconds: 20
+  # Anyone with scuttle.guard.exempt skips the whole ladder and always gets a
+  # real fight from the first hit — the hook for an adult sparring, or testing,
+  # without tripping the escalation. Mirrors trade.shop's scuttle.shop.anywhere.
+
+
+# ---------------------------------------------------------------------------
+#  13. PERSONA
+# ---------------------------------------------------------------------------
+persona:
+  # Roughly how old the kids are. Steers vocabulary and how much Scuttle
+  # explains. Options: "under-8", "8-11", "12-plus", "mixed"
+  reading-level: "8-11"
+
+
+# ---------------------------------------------------------------------------
+#  14. LOGGING
+# ---------------------------------------------------------------------------
+logging:
+  # How chatty the server console is about Scuttle.
+  # TRACE, DEBUG, INFO, WARN, ERROR — INFO is a sensible default.
+  level: "INFO"
+  # Write every exchange to plugins/Scuttle/audit/ so you can read back what
+  # Scuttle has been up to without SSH-ing anywhere.
+  audit-enabled: true

@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Maven
+target/
+
+# Local test server (bot/testworld): world data, jars, logs, generated config
+run/
+
+# Scratch
+chatlab/lore.txt
+__pycache__/
+bakeoff/*.json
+
+# Bot
+node_modules/
+dist/
+.auth-cache/
+
+# macOS / IDE
+.DS_Store
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project

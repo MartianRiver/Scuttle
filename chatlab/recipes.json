@@ -1,0 +1,44 @@
+{
+  "_note": "Stub book for the chat lab only. The plugin reads the server's own recipe registry; this handful exists so you can see how Scuttle behaves when the book answers, and how it behaves when it doesn't. Keys are lowercase.",
+
+  "chest": {
+    "item": "A container. Stacks to 64, made of wood, burns.",
+    "recipe": "Crafting table: 8 planks in a ring around an empty middle. Makes 1 chest."
+  },
+  "furnace": {
+    "item": "Smelts things. Stacks to 64.",
+    "recipe": "Crafting table: 8 cobblestone in a ring around an empty middle. Makes 1 furnace."
+  },
+  "crafting table": {
+    "item": "The 3x3 crafting grid. Stacks to 64, burns.",
+    "recipe": "Crafting table: 4 planks in a 2x2 square. Makes 1 crafting table."
+  },
+  "hopper": {
+    "item": "Moves items between containers. Stacks to 64.",
+    "recipe": "Crafting table: 5 iron ingots in a V, with a chest in the middle. Makes 1 hopper."
+  },
+  "piston": {
+    "item": "Pushes blocks when powered. Stacks to 64.",
+    "recipe": "Crafting table: 3 planks across the top, cobblestone down both sides and along the bottom, 1 iron ingot in the middle, 1 redstone dust below it. Makes 1 piston."
+  },
+  "sticky piston": {
+    "item": "A piston that pulls blocks back. Stacks to 64.",
+    "recipe": "Crafting table: 1 slimeball on top of 1 piston. Makes 1 sticky piston."
+  },
+  "observer": {
+    "item": "Sends a redstone pulse when the block in front of it changes. Stacks to 64.",
+    "recipe": "Crafting table: 6 cobblestone, 2 redstone dust and 1 nether quartz. Makes 1 observer."
+  },
+  "torch": {
+    "item": "Light source. Stacks to 64.",
+    "recipe": "Crafting table or inventory: 1 coal or charcoal above 1 stick. Makes 4 torches."
+  },
+  "ladder": {
+    "item": "Climbable. Stacks to 64, burns.",
+    "recipe": "Crafting table: 7 sticks in an H shape. Makes 3 ladders."
+  },
+  "bucket": {
+    "item": "Carries water, lava or milk. Stacks to 16.",
+    "recipe": "Crafting table: 3 iron ingots in a V. Makes 1 bucket."
+  }
+}

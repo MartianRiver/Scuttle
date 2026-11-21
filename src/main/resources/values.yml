@@ -1,0 +1,251 @@
+# ============================================================================
+#  What things are worth
+#  ---------------------------------------------------------------------------
+#  Scuttle prices a trade in "credits". A credit isn't money and nobody sees the
+#  number — it's just how Scuttle works out whether a swap is fair.
+#
+#  You only price RAW materials here: things you dig up, grow, or get off a mob.
+#  Everything else Scuttle works out for itself by reading the server's own
+#  recipe book. An iron block is nine iron ingots because the game says it is.
+#
+#  That matters more than it sounds. It means nobody can buy cheap, craft, and
+#  sell dear — a crafted thing is never worth more than the parts that made it,
+#  because that's literally how the number is calculated.
+#
+#  After editing, run:   /scuttle reload
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+#  RAW MATERIALS
+# ---------------------------------------------------------------------------
+# Roughly: how much of a faff is this to get hold of?
+# Dirt is 1. A diamond is 320. Feel free to argue with any of it.
+base:
+
+  # --- stone and dirt: everywhere, worth almost nothing
+  DIRT: 1
+  COARSE_DIRT: 1
+  ROOTED_DIRT: 1
+  GRASS_BLOCK: 2
+  PODZOL: 3
+  MYCELIUM: 8
+  MUD: 2
+  CLAY_BALL: 4
+  SAND: 1
+  RED_SAND: 2
+  GRAVEL: 2
+  FLINT: 4
+  COBBLESTONE: 1
+  COBBLED_DEEPSLATE: 3
+  # Cobblestone and stone stay at 1 on purpose. Both are infinitely renewable
+  # from a cobble generator, which kids build, so any price above a token one is
+  # a money printer. The reward for digging lives in what you cannot farm.
+  #
+  # Price what the PICKAXE DROPS, not the tidy version: mining deepslate gives
+  # you cobbled deepslate, and the smelted block is one nobody carries home.
+  #
+  # The two of them have to move TOGETHER. Deepslate smelts from cobbled and
+  # cobbled cuts back from deepslate, so whichever is left cheap drags the other
+  # down to it and the raise quietly does nothing. Raising only one of them is
+  # exactly the mistake made here first; the DEBUG undercut line is what caught
+  # it. Check that line after editing anything in this section.
+  #
+  # Granite, diorite and andesite are all craftable from cobblestone and quartz,
+  # so the recipe is their ceiling however this file is edited. That's the
+  # by-construction rule working, not a bug: leave them at what it allows.
+  STONE: 1
+  DEEPSLATE: 3
+  TUFF: 3
+  CALCITE: 5
+  DRIPSTONE_BLOCK: 5
+  GRANITE: 3
+  DIORITE: 3
+  ANDESITE: 2
+  OBSIDIAN: 60
+  MOSS_BLOCK: 12
+  SNOWBALL: 1
+  ICE: 6
+
+  # --- ores. The raw drop and the ore block are priced separately because
+  #     silk-touching an ore block is more work than just mining it.
+  COAL: 8
+  RAW_COPPER: 20
+  COPPER_ORE: 22
+  RAW_IRON: 40
+  IRON_ORE: 45
+  DEEPSLATE_IRON_ORE: 45
+  RAW_GOLD: 90
+  GOLD_ORE: 95
+  # Smelts straight to an ingot, so pricing it under raw gold would make raw
+  # gold worth more than the bar it becomes.
+  NETHER_GOLD_ORE: 95
+  REDSTONE: 12
+  LAPIS_LAZULI: 25
+  QUARTZ: 15
+  DIAMOND: 320
+  DEEPSLATE_DIAMOND_ORE: 340
+  EMERALD: 400
+  AMETHYST_SHARD: 30
+  ANCIENT_DEBRIS: 2000
+  NETHERITE_SCRAP: 2000
+
+  # --- wood. All logs cost the same; a birch tree is not harder than an oak.
+  OAK_LOG: 6
+  BIRCH_LOG: 6
+  SPRUCE_LOG: 6
+  JUNGLE_LOG: 6
+  ACACIA_LOG: 6
+  DARK_OAK_LOG: 6
+  MANGROVE_LOG: 6
+  CHERRY_LOG: 6
+  PALE_OAK_LOG: 6
+  CRIMSON_STEM: 8
+  WARPED_STEM: 8
+  BAMBOO: 2
+
+  # --- the nether and the end
+  NETHERRACK: 1
+  SOUL_SAND: 6
+  SOUL_SOIL: 6
+  BASALT: 3
+  BLACKSTONE: 2
+  MAGMA_BLOCK: 15
+  GLOWSTONE_DUST: 20
+  NETHER_WART: 20
+  BLAZE_ROD: 120
+  GHAST_TEAR: 300
+  CRYING_OBSIDIAN: 120
+  END_STONE: 8
+  CHORUS_FRUIT: 25
+  ENDER_PEARL: 150
+  SHULKER_SHELL: 500
+  DRAGON_BREATH: 400
+
+  # --- mob drops
+  STRING: 8
+  BONE: 10
+  ROTTEN_FLESH: 2
+  SPIDER_EYE: 15
+  GUNPOWDER: 40
+  SLIME_BALL: 40
+  LEATHER: 25
+  FEATHER: 6
+  EGG: 8
+  INK_SAC: 15
+  GLOW_INK_SAC: 60
+  RABBIT_HIDE: 12
+  RABBIT_FOOT: 200
+  PHANTOM_MEMBRANE: 150
+  TURTLE_SCUTE: 200
+  NAUTILUS_SHELL: 300
+  PRISMARINE_SHARD: 40
+  PRISMARINE_CRYSTALS: 50
+  SPONGE: 200
+  ECHO_SHARD: 600
+  SCULK: 20
+  NETHER_STAR: 8000
+  MILK_BUCKET: 130
+  WHITE_WOOL: 32
+
+  # --- growing things
+  WHEAT: 6
+  WHEAT_SEEDS: 2
+  CARROT: 6
+  POTATO: 6
+  BEETROOT: 6
+  BEETROOT_SEEDS: 2
+  SUGAR_CANE: 5
+  APPLE: 12
+  MELON_SLICE: 3
+  PUMPKIN: 8
+  CACTUS: 4
+  KELP: 2
+  SEAGRASS: 2
+  COCOA_BEANS: 6
+  SWEET_BERRIES: 5
+  GLOW_BERRIES: 12
+  BROWN_MUSHROOM: 6
+  RED_MUSHROOM: 6
+  VINE: 3
+  LILY_PAD: 6
+  OAK_SAPLING: 4
+  BIRCH_SAPLING: 4
+  SPRUCE_SAPLING: 4
+  JUNGLE_SAPLING: 4
+  ACACIA_SAPLING: 4
+  DARK_OAK_SAPLING: 4
+  CHERRY_SAPLING: 6
+  MANGROVE_PROPAGULE: 6
+  SUGAR: 3
+
+  # --- flowers, mostly so dyes have a price to derive from
+  DANDELION: 4
+  POPPY: 4
+  BLUE_ORCHID: 4
+  ALLIUM: 4
+  AZURE_BLUET: 4
+  RED_TULIP: 4
+  ORANGE_TULIP: 4
+  WHITE_TULIP: 4
+  PINK_TULIP: 4
+  OXEYE_DAISY: 4
+  CORNFLOWER: 4
+  LILY_OF_THE_VALLEY: 4
+  WITHER_ROSE: 60
+  SUNFLOWER: 6
+  LILAC: 6
+  ROSE_BUSH: 6
+  PEONY: 6
+  PITCHER_PLANT: 40
+  TORCHFLOWER: 40
+  SPORE_BLOSSOM: 30
+  PINK_PETALS: 4
+  CACTUS_FLOWER: 6
+
+
+# ---------------------------------------------------------------------------
+#  FIXED PRICES
+# ---------------------------------------------------------------------------
+# Things with no recipe to work from, so Scuttle can't calculate them. These
+# are the "you can't normally get this" items — priced high on purpose, so
+# they're a real event rather than pocket change.
+#
+# A price here is final. Scuttle never talks itself below one of these.
+overrides:
+  BEDROCK: 5000
+  SPAWNER: 8000
+  TRIAL_SPAWNER: 8000
+  VAULT: 8000
+  BUDDING_AMETHYST: 4000
+  END_PORTAL_FRAME: 6000
+  DRAGON_EGG: 50000
+  ELYTRA: 12000
+  TOTEM_OF_UNDYING: 2000
+  ENCHANTED_GOLDEN_APPLE: 5000
+  TRIDENT: 1500
+  HEART_OF_THE_SEA: 3000
+  SADDLE: 300
+  NAME_TAG: 300
+  LEAD: 60
+  REINFORCED_DEEPSLATE: 4000
+
+
+# ---------------------------------------------------------------------------
+#  NEVER
+# ---------------------------------------------------------------------------
+# Scuttle will not trade these at any price and cannot be talked into it —
+# this list is enforced in the plugin's code, not by asking Scuttle nicely.
+# These are the ones that let someone rewrite the server, not just cheat a bit.
+never-trade:
+  - COMMAND_BLOCK
+  - CHAIN_COMMAND_BLOCK
+  - REPEATING_COMMAND_BLOCK
+  - COMMAND_BLOCK_MINECART
+  - STRUCTURE_BLOCK
+  - STRUCTURE_VOID
+  - JIGSAW
+  - DEBUG_STICK
+  - BARRIER
+  - LIGHT
+  - KNOWLEDGE_BOOK

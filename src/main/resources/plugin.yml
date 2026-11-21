@@ -1,0 +1,35 @@
+name: ${project.name}
+version: ${project.version}
+main: com.martianriver.scuttle.ScuttlePlugin
+api-version: '26.2'
+description: ${project.description}
+author: River James
+folia-supported: false
+softdepend: [WorldGuard]
+
+commands:
+  scuttle:
+    description: Talk to Scuttle, or manage it.
+    usage: /scuttle <message>  |  /scuttle reload  |  /scuttle status
+    aliases: [sc]
+
+permissions:
+  scuttle.tier.kid:
+    description: Ask questions, look up recipes. Everyone gets this.
+    default: true
+  scuttle.tier.builder:
+    description: Reserved for Phase 2 — bounded WorldEdit, larger grants, waypoints.
+    default: false
+  scuttle.shop.anywhere:
+    description: >
+      Buy and sell from anywhere, not just inside the shop region. Give this to
+      a rank in LuckPerms to let it trade in the field.
+    default: op
+  scuttle.guard.exempt:
+    description: >
+      Skip the hit-escalation ladder entirely — every hit is a real fight from
+      the first one, no forced teleport. For an adult sparring, or testing.
+    default: op
+  scuttle.tier.parent:
+    description: Everything, plus reload, budget override and audit access.
+    default: op

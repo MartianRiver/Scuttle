@@ -1,0 +1,289 @@
+# ============================================================================
+#  Where things come from
+#  ---------------------------------------------------------------------------
+#  This answers "scuttle, where do I even look for netherite?" — the general
+#  question, not "where is the nearest one" (that's the compass).
+#
+#  Why this is a file you have to write by hand: the server can be asked for
+#  recipes and for the list of every block, but nothing in the API knows
+#  anything about world generation. There is no way to ask it which biome
+#  glow berries grow in or how deep diamonds sit. So it's written down, the
+#  same way values.yml is.
+#
+#  Only things you GATHER belong here. Anything you craft or smelt is already
+#  answered properly from the game's own recipe book, and writing it down twice
+#  is how the two end up disagreeing.
+#
+#  THE DEPTHS BELOW ARE DEFAULTS, NOT MEASUREMENTS. Ore distribution is
+#  version-specific and these were written from general knowledge of recent
+#  Minecraft, not checked against what this server actually generated. They are
+#  the right shape - iron everywhere, diamonds at the bottom, copper in the
+#  middle - but don't treat an exact y-level here as gospel. If a kid reports
+#  that a number is wrong, believe the kid and edit the line.
+#
+#  Fields, all optional:
+#    dimension:  overworld / nether / the end
+#    found:      the one-line answer
+#    depth:      y-levels, if it matters
+#    mobs:       what drops it
+#    loot:       which chests it turns up in
+#    needs:      the tool or trick required
+# ============================================================================
+
+
+# --- ores and the things you dig up -----------------------------------------
+
+diamond:
+  dimension: overworld
+  found: "in stone and deepslate, out of cave walls or by tunnelling"
+  depth: "y -64 up to 16, and much more of it the deeper you go"
+  loot: "mineshaft, stronghold and ancient city chests"
+  needs: "an iron pickaxe or better, or it drops nothing at all"
+
+emerald:
+  dimension: overworld
+  found: "only in mountains — windswept hills, jagged peaks, that sort of thing"
+  depth: "y -16 up to 320, best high up in the mountains themselves"
+  needs: "an iron pickaxe or better; trading with villagers is usually easier"
+
+raw_iron:
+  dimension: overworld
+  found: "absolutely everywhere, in caves and hillsides both"
+  depth: "y -64 to 256, with a big lump of it around y 16 and again up in mountains"
+  needs: "a stone pickaxe or better"
+
+raw_gold:
+  dimension: overworld
+  found: "deep down, and all over the surface in badlands"
+  depth: "y -64 to 32, best near -16"
+  needs: "an iron pickaxe or better"
+
+raw_copper:
+  dimension: overworld
+  found: "in big blobs, especially in dripstone caves"
+  depth: "y -16 to 112, best around 48"
+  needs: "a stone pickaxe or better"
+
+coal:
+  dimension: overworld
+  found: "near the surface and in any hillside"
+  depth: "y 0 to 256, and plenty of it exposed in mountains"
+  needs: "any pickaxe"
+
+redstone:
+  dimension: overworld
+  found: "right down at the bottom, near the bedrock"
+  depth: "y -64 to 16, more the deeper you go"
+  needs: "an iron pickaxe or better"
+
+lapis_lazuli:
+  dimension: overworld
+  found: "in smallish veins fairly deep"
+  depth: "y -64 to 64, best around 0"
+  needs: "a stone pickaxe or better"
+
+ancient_debris:
+  dimension: nether
+  found: "buried in the netherrack — it never touches air, so you can't just spot it"
+  depth: "y 8 to 119, best around 15. Beds and TNT are how people actually find it"
+  needs: "a diamond pickaxe. Nothing less will do it"
+
+quartz:
+  dimension: nether
+  found: "all over the netherrack, easy to spot"
+  needs: "any pickaxe"
+
+amethyst_shard:
+  dimension: overworld
+  found: "inside geodes — hollow balls of amethyst buried underground"
+  depth: "y -64 to 30"
+  needs: "let the crystals grow back before you take more"
+
+obsidian:
+  dimension: overworld
+  found: "where water meets a lava pool, usually near the bottom of the world"
+  needs: "a diamond pickaxe, and patience — it takes an age"
+
+clay:
+  dimension: overworld
+  found: "in the shallows of rivers and lakes, and all through lush caves"
+
+glowstone:
+  dimension: nether
+  found: "hanging off the ceiling in clumps"
+
+
+# --- things that come off mobs ----------------------------------------------
+
+ender_pearl:
+  dimension: overworld
+  mobs: "endermen — the tall black ones. Warped forests in the nether are thick with them"
+  loot: "stronghold and mineshaft chests"
+
+blaze_rod:
+  dimension: nether
+  mobs: "blazes, which only spawn in nether fortresses"
+
+ghast_tear:
+  dimension: nether
+  mobs: "ghasts — the big floating white ones that cry"
+
+slime_ball:
+  dimension: overworld
+  mobs: "slimes, in swamps at night or in slime chunks deep underground"
+  depth: "below y 40 for the deep ones"
+
+magma_cream:
+  dimension: nether
+  mobs: "magma cubes, mostly in the basalt deltas"
+
+gunpowder:
+  dimension: overworld
+  mobs: "creepers, and witches too"
+
+bone:
+  dimension: overworld
+  mobs: "skeletons, anywhere dark"
+
+string:
+  dimension: overworld
+  mobs: "spiders; also breaking cobwebs in a mineshaft"
+
+phantom_membrane:
+  dimension: overworld
+  mobs: "phantoms, which come for you if you haven't slept in three days"
+
+shulker_shell:
+  dimension: the end
+  mobs: "shulkers, in the end cities"
+
+wither_skeleton_skull:
+  dimension: nether
+  mobs: "wither skeletons in nether fortresses, and rarely"
+
+prismarine_shard:
+  dimension: overworld
+  mobs: "guardians, in ocean monuments"
+
+leather:
+  dimension: overworld
+  mobs: "cows, horses, llamas; fishing turns it up too"
+
+feather:
+  dimension: overworld
+  mobs: "chickens"
+
+ink_sac:
+  dimension: overworld
+  mobs: "squid, in any water deep enough"
+
+glow_ink_sac:
+  dimension: overworld
+  mobs: "glow squid, which only live down in the dark underground water"
+
+rabbit_foot:
+  dimension: overworld
+  mobs: "rabbits, and not often"
+
+honeycomb:
+  dimension: overworld
+  found: "bee nests in flowery places — birch forests and meadows"
+  needs: "shears, and calm the bees with a campfire underneath first"
+
+turtle_scute:
+  dimension: overworld
+  found: "baby turtles drop it when they grow up, on beaches"
+
+
+# --- growing things ---------------------------------------------------------
+
+nether_wart:
+  dimension: nether
+  found: "in the soul sand gardens inside nether fortresses"
+
+chorus_fruit:
+  dimension: the end
+  found: "on the tall purple plants out on the end islands"
+
+cocoa_beans:
+  dimension: overworld
+  found: "on jungle tree trunks"
+
+bamboo:
+  dimension: overworld
+  found: "jungles, and bamboo jungles especially"
+
+sugar_cane:
+  dimension: overworld
+  found: "along the edge of any river or lake"
+
+cactus:
+  dimension: overworld
+  found: "deserts and badlands"
+
+kelp:
+  dimension: overworld
+  found: "underwater, in most oceans"
+
+sweet_berries:
+  dimension: overworld
+  found: "in taigas, on the prickly bushes"
+
+glow_berries:
+  dimension: overworld
+  found: "hanging from the ceiling in lush caves"
+
+brown_mushroom:
+  dimension: overworld
+  found: "dark places — caves, swamps, and everywhere on a mushroom island"
+
+sea_pickle:
+  dimension: overworld
+  found: "on coral in warm oceans"
+
+torchflower_seeds:
+  dimension: overworld
+  found: "a sniffer digs them up. Sniffer eggs come from suspicious sand in warm ocean ruins"
+
+
+# --- things only found in chests --------------------------------------------
+
+elytra:
+  dimension: the end
+  loot: "the ship beside an end city. There is exactly one per ship and no other way to get them"
+
+totem_of_undying:
+  dimension: overworld
+  mobs: "evokers, which live in woodland mansions and turn up in raids"
+
+heart_of_the_sea:
+  dimension: overworld
+  loot: "buried treasure chests — follow the map from a shipwreck"
+
+nautilus_shell:
+  dimension: overworld
+  found: "fishing, or off drowned that are carrying one"
+
+trident:
+  dimension: overworld
+  mobs: "drowned, and only the ones already holding one"
+
+saddle:
+  dimension: overworld
+  loot: "dungeon, mineshaft, temple and village chests; fishing sometimes"
+
+name_tag:
+  dimension: overworld
+  loot: "dungeon and mineshaft chests, or trade a librarian for one"
+
+echo_shard:
+  dimension: overworld
+  loot: "ancient city chests, and nowhere else"
+
+enchanted_golden_apple:
+  dimension: overworld
+  loot: "dungeon, mineshaft, temple and ruined portal chests. Can't be crafted any more"
+
+heavy_core:
+  dimension: overworld
+  loot: "the ominous vaults in a trial chamber"

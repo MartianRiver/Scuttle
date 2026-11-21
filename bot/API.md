@@ -1,0 +1,73 @@
+# Body control API
+
+A small WebSocket API that lets one trusted outside process give the ScuttleMC body
+bounded orders and watch what happens. Generic on purpose: the bot doesn't know or care
+what is on the other end, only that it holds a valid token. Planned for the desk-robot
+adapter and, later, the mobile app.
+
+Off unless `API_PORT` and `API_TOKENS` are set. Binds `API_HOST` (default `127.0.0.1`);
+reach it from another machine through an SSH tunnel or Tailscale, never by opening the port.
+
+`API_TOKENS=label:token,label2:token2` — the label is only for logs. Tokens are never logged.
+
+## Wire format
+
+JSON text frames, max 4 KB. Unknown fields are rejected. One connection per consumer is
+expected, several are allowed.
+
+Client → bot:
+
+```
+{"type":"auth","token":"…","since":42,"epoch":"a1b2"}   first frame, within 5s; `since`/`epoch` optional
+{"type":"intent","id":"c1","intent":"come_to","player":"Sam"}
+{"type":"intent","id":"c2","intent":"follow","player":"Sam"}
+{"type":"intent","id":"c3","intent":"task","name":"get_wood"}
+{"type":"intent","id":"c4","intent":"stop"}
+{"type":"intent","id":"c5","intent":"status"}
+```
+
+`player` is a Minecraft username (`^[A-Za-z0-9_.]{1,17}$`, the dot being Floodgate's prefix).
+There is no coordinate, command or chat-text field anywhere, and there won't be one.
+
+Bot → client:
+
+```
+{"type":"hello","epoch":"a1b2","seq":57,"snapshot":{…}}  after a good auth
+{"type":"gap","oldest":40}                               `since` older than the buffer, or wrong epoch
+{"type":"accepted","id":"c1","taskId":"t8"}              intent taken, taskId on later events
+                                                         (for `stop`, the id of what was stopped, if any)
+{"type":"rejected","id":"c1","reason":"busy"}            busy | in_fight | not_in_game |
+                                                         unknown_player | bad_intent | rate_limited
+{"type":"status","id":"c5","snapshot":{…}}               reply to `status`
+{"type":"event","seq":58,"ts":1767225600000,"event":"…", …}
+```
+
+Snapshot: `{inGame, task, taskId, health, food}`. No position.
+
+## Events
+
+Every event has a monotonically increasing `seq`. After a reconnect send `auth` with the last
+`seq` and `epoch` you saw and everything after it is replayed (buffer of 500; older than that, or
+an `epoch` from before a bot restart, gets `gap` and no replay).
+
+| event | fields |
+|---|---|
+| `body_connected` / `body_disconnected` | `reason` on disconnect |
+| `task_started` | `taskId`, `kind` |
+| `task_finished` | `taskId` |
+| `task_failed` | `taskId`, `reason` |
+| `task_stopped` | `taskId` |
+| `chat` | `uuid`, `name`, `message` — every public chat line the bot sees, not only ones aimed at it |
+
+## Rules
+
+- `stop` is handled before anything else and works whatever the bot is doing. While a real fight
+  is on, the plugin's fight state re-asserts the chase within one poll (3s).
+- One action at a time. A second `come_to`/`follow` replaces the first (the first ends with
+  `task_stopped`); a `task` while anything runs, or any movement while a task runs, is `busy`.
+  `come_to`/`follow` need the player in the bot's own loaded view, else `unknown_player`.
+  While the plugin has the bot in a real fight,
+  everything except `stop` and `status` is `in_fight`.
+- The bot validates every intent against this list itself. Nothing upstream is trusted to have.
+- 10 intents per 10s per connection, then `rate_limited`.
+- Chat lines carry the full public chat. The consumer is responsible for what it forwards onward.
