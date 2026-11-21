@@ -12,7 +12,7 @@ import java.nio.file.Path;
  * The server lore file — a plain text file the human edits describing bases,
  * house rules, who's who, running jokes. Re-read on /scuttle reload.
  *
- * <p>SCUTTLE.md §8 calls this the highest-value-per-byte thing in the project,
+ * <p>It's the highest-value-per-byte thing in the project,
  * so it gets its own class rather than being a config string.
  */
 public final class Lore {

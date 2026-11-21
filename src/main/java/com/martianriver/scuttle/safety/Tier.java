@@ -3,7 +3,7 @@ package com.martianriver.scuttle.safety;
 import org.bukkit.entity.Player;
 
 /**
- * Permission tiers from SCUTTLE.md §6. Everyone is a kid unless granted more.
+ * Permission tiers. Everyone is a kid unless granted more.
  *
  * <p>Ops are treated as parent so the tiers work today on a server with no
  * permissions plugin. Once LuckPerms is installed the nodes take over with no

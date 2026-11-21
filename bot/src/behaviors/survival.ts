@@ -7,7 +7,7 @@ const log = logger("survival");
 const HUNGRY_BELOW = 15;
 const CHECK_INTERVAL_MS = 5000;
 
-// Reactive, not LLM-driven — see SCUTTLE.md §3 "Embodiment design": survival runs on plain
+// Reactive, not LLM-driven: survival runs on plain
 // code so it costs nothing and can't be talked out of eating by a jailbroken prompt.
 export function startSurvival(bot: Bot): void {
   setInterval(() => {

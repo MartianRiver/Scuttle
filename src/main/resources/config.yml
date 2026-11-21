@@ -443,8 +443,8 @@ claims:
 #  12. GUARD DUTY  (the hit-escalation ladder)
 # ---------------------------------------------------------------------------
 # If a player hits Scuttle's body (the ScuttleMC account, see bot/), it responds
-# in three steps rather than just standing there or fighting back immediately —
-# see SCUTTLE.md §3 "Embodiment design" for the full reasoning. Per attacker,
+# in three steps rather than just standing there or fighting back immediately.
+# Per attacker,
 # and the count never resets except a server restart:
 #
 #   1st hit   Scuttle takes no damage. The attacker gets shoved a short,
@@ -458,7 +458,7 @@ claims:
 #             special item-confiscation code, it's just what already happens.
 #
 # This is the one deliberate exception to "no arbitrary teleports" and "no
-# punishment features" in SCUTTLE.md §14 — scoped to nothing but this.
+# punishment features", scoped to nothing but this.
 guard:
   enabled: true
   # The Minecraft username of Scuttle's body. Must match bot/'s account exactly.

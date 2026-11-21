@@ -23,7 +23,7 @@ import java.util.concurrent.TimeoutException;
  * <p>This is the security boundary. Every call is checked against the
  * allowlist and the caller's tier before it runs, and anything touching the
  * world hops to the main thread here rather than in the tool itself — so the
- * async-call → runTask() pattern lives in exactly one place (SCUTTLE.md §5).
+ * async-call → runTask() pattern lives in exactly one place.
  */
 public final class ToolRegistry {
 

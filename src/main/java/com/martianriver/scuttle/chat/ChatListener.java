@@ -16,7 +16,7 @@ import java.util.Locale;
 
 /**
  * Watches ordinary chat for Scuttle's name, and keeps the last few lines so
- * Scuttle has some idea what the conversation is about (SCUTTLE.md §8).
+ * Scuttle has some idea what the conversation is about.
  *
  * <p>Paper's chat event fires off the main thread, so nothing here touches the
  * world — it hands straight back to the scheduler.

@@ -5,7 +5,7 @@ export function itemCount(bot: Bot, name: string): number {
   return bot.inventory.items().reduce((sum, item) => (item.name === name ? sum + item.count : sum), 0);
 }
 
-// Ground truth over model memory applies here too (SCUTTLE.md §6) — this asks the server's own
+// Ground truth over model memory applies here too: this asks the server's own
 // recipe registry rather than hardcoding a crafting tree, so it stays correct if recipes change.
 export async function craftItem(
   bot: Bot,
