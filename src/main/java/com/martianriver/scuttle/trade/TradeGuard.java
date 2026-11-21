@@ -4,7 +4,7 @@ import com.martianriver.scuttle.config.ScuttleConfig;
 import org.bukkit.Material;
 
 /**
- * What things cost. The trading half of the security boundary (SCUTTLE.md §6):
+ * What things cost. The trading half of the security boundary:
  * the model may <em>ask</em> for anything, and every number that decides what
  * happens is worked out here, in Java.
  *

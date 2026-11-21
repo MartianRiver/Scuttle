@@ -17,8 +17,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The hit-escalation ladder — see config.yml's {@code guard:} block and
- * SCUTTLE.md §3 "Embodiment design" for the design. This is almost the whole
+ * The hit-escalation ladder; the design is in config.yml's {@code guard:}
+ * block. This is almost the whole
  * feature: the plugin already sees a player hit the {@code ScuttleMC} entity
  * as an ordinary {@link EntityDamageByEntityEvent}, same as any PvP hit, so
  * there's nothing to route through bot/ for detection — only the 3rd-hit

@@ -18,7 +18,7 @@ import java.util.List;
  * One file per day of everything Scuttle was asked and said, plus what each
  * exchange cost.
  *
- * <p>Framing from SCUTTLE.md §11: this is for debugging, cost attribution and
+ * <p>This is for debugging, cost attribution and
  * tuning the persona — and because it will be funny to read back. It is not
  * surveillance of the kids, and it lives somewhere the human can open without
  * SSH-ing anywhere.

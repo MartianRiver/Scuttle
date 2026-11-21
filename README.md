@@ -1,0 +1,57 @@
+# Scuttle
+
+NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.
+
+Scuttle is a character for a Minecraft server: an old iron coal scuttle that sat beside a furnace long enough to wake up. It talks to players in chat, answers Minecraft questions, trades with them, and has a body that can walk around the world. I built it for a private family server, so the kids are who it's tuned for, and that shaped most of the decisions below.
+
+It's early. The chat plugin runs on my server and has been played with. The body is newer and rougher.
+
+## What's here
+
+- **The plugin** (`src/`): a Paper plugin that answers in chat through an LLM, using OpenRouter. It looks recipes up in the server's own registry, so it isn't going from memory. It can price things from the recipe graph and trade for coins, find ore and structures by scanning near the player, and hand out land claims through WorldGuard.
+- **The body** (`bot/`): a mineflayer bot that plays as its own player. It eats when it's hungry, gathers wood, and fights back if a player keeps hitting it. It also has a small WebSocket API so something outside can give it orders. See `bot/API.md`.
+- **The chat lab** (`chatlab/`): talk to Scuttle in a browser with no server, for tuning the voice.
+- **The bake-off** (`bakeoff/`): runs the real prompt against a list of models and scores safety, task and voice, so a model or prompt change gets numbers and not a hunch.
+
+## How it's kept safe
+
+The model never gets a `run_command`. It gets a short list of typed tools, and Java validates every call and does the actual work, so a model that's been talked into something still can't go past the allowlist. When it offers a trade, nothing moves until the player agrees, and both sides are checked again at that moment.
+
+There are per-player cooldowns and daily limits that are checked before any money is spent, a monthly spend ceiling, and a kill switch in `config.yml`. Replies are only generated for lines that are aimed at Scuttle. I wrote the reasoning for these into the comments in `config.yml`, which is also the manual for every setting.
+
+## The plugin
+
+You need Paper 26.2 and Java 25 or newer. WorldGuard is optional, but land claims and the shop area need it.
+
+```
+mvn clean package
+```
+
+Put `target/Scuttle-0.1.0.jar` in your server's `plugins/` folder, start it once, and create `plugins/Scuttle/.env` with an OpenRouter key:
+
+```
+OPENROUTER_API_KEY=sk-or-v1-...
+```
+
+Then `/scuttle reload`. In my own use a question costs about half a cent on Sonnet once the prompt cache is warm. Change `models.chat` if you want something cheaper, and run the bake-off first if you care about how it sounds.
+
+## The body
+
+The body needs its own Minecraft account, and it has to be a bought Java Edition one. It can't share yours, because a second login kicks the first. An offline-mode server, like a local test world, doesn't check accounts, so it doesn't cost anything to try.
+
+You need Node 22.5 or newer.
+
+```
+cd bot
+npm ci
+```
+
+There's a disposable local test server in `bot/testworld/` (`start.sh`, then `build_home.py`, then `bot.sh`). It runs Paper in offline mode on `127.0.0.1` only and builds a small home and some trees to practise on. I'd start there. The bot refuses offline mode against any other host.
+
+Minecraft 26.2 is newer than what the published mineflayer packages support, so `npm ci` applies a few patches to them through `scripts/patch-26.2.js`. They come from open pull requests upstream. Once those are released the script can go.
+
+What I'm working on now is making the body safe and testable before anything else: no digging or building where it shouldn't, one clean control path, and a test world I can break on purpose.
+
+## Licence
+
+Apache-2.0. See `LICENSE`. The plugin is built against the Paper API, which is GPL-3 with no stated exception for plugins. I think that's fine, plenty of plugins are licensed otherwise, but I'm not a lawyer.

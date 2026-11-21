@@ -7,7 +7,7 @@ import { logger } from "../lib/logger";
 
 const log = logger("task");
 
-// First rung of the crafting ladder (SCUTTLE.md §3): wood is the only thing Scuttle can gather
+// First rung of the crafting ladder: wood is the only thing Scuttle can gather
 // bare-handed, and a wooden pickaxe is the prerequisite for the next rung (stone). Everything
 // after this is reactive code, same as survival.ts/guard.ts — no LLM call, no cost.
 const LOG_TARGET = 16;

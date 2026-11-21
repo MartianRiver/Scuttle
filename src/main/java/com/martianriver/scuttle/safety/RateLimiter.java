@@ -12,7 +12,7 @@ import java.util.UUID;
 
 /**
  * Per-player cooldown, per-minute and per-day caps. Checked before the API call
- * so a spamming kid costs nothing — see SCUTTLE.md §10.
+ * so a spamming kid costs nothing.
  *
  * <p>State is memory-only and resets on restart. That's deliberate: the daily
  * cap exists to stop a spam loop within one session, not to be an audit record.

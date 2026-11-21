@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * What Scuttle's embodied body (the mineflayer process in {@code bot/}) is doing right
  * now. Pushed here over RCON via {@code /scuttle embodiment <json>} rather than a shared
  * file — the bot and the plugin run on different machines (a separate box vs. the game host),
- * so there's no filesystem to share. See {@code SCUTTLE.md} §3 "Embodiment design".
+ * so there's no filesystem to share.
  */
 public final class EmbodimentStatus {
 

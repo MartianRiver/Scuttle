@@ -15,7 +15,7 @@ import java.util.UUID;
  * Who may fence off what, and how big.
  *
  * <p>The security boundary for land, in the same sense as {@code TradeGuard} is
- * for money (SCUTTLE.md §6): the model may <em>ask</em> for a claim of any size
+ * for money: the model may <em>ask</em> for a claim of any size
  * anywhere, and every number that decides what actually happens is worked out
  * here. The model never supplies a coordinate — a claim is always centred on the
  * player who asked for it — so the worst a jailbroken model can do is request a

@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The invisible preamble from SCUTTLE.md §8 — where the player is standing and
+ * The invisible preamble: where the player is standing and
  * what's around them. This is what makes Scuttle sound like it lives here.
  *
  * <p>Every getter used below touches the world, so {@link #capture} must run on
