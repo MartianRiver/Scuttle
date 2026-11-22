@@ -21,15 +21,17 @@ export const isInHazard = (): boolean => active !== null;
 // the server tells us nothing about being on fire, so a burn is assumed for a while after lava or fire
 const BURN_MS = 9000;
 
-// hay and honey only cut a fall to a fifth, still worth steering for
-const SOFT = new Set(["cobweb", "ladder", "vine", "weeping_vines", "weeping_vines_plant", "twisting_vines", "twisting_vines_plant", "cave_vines", "cave_vines_plant", "scaffolding", "powder_snow", "slime_block", "hay_block", "honey_block"]);
+// minecraft.wiki Fall_damage (2026-11-23). Scaffolding is left out: it only saves a falling player who sneaks
+const RESET = new Set(["cobweb", "vine", "weeping_vines", "weeping_vines_plant", "twisting_vines", "twisting_vines_plant", "cave_vines", "cave_vines_plant"]);
+const fallKind = (name: string): Cell["fall"] =>
+  name === "slime_block" || name === "powder_snow" ? "soft" : name === "hay_block" || name === "honey_block" ? "cushion" : RESET.has(name) ? "reset" : undefined;
 
 export function cellAt(bot: Bot) {
   return (x: number, y: number, z: number): Cell => {
     const b = bot.blockAt(new Vec3(x, y, z));
     if (!b) return { solid: true, fluid: null, fire: false }; // unloaded counts as a wall
     const fluid = b.name === "lava" ? "lava" : b.name === "water" || b.name === "bubble_column" ? "water" : null;
-    return { solid: b.boundingBox === "block", fluid, fire: b.name === "fire" || b.name === "soul_fire", soft: SOFT.has(b.name) };
+    return { solid: b.boundingBox === "block", fluid, fire: b.name === "fire" || b.name === "soul_fire", fall: fallKind(b.name) };
   };
 }
 

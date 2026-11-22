@@ -3,6 +3,7 @@
 // there is nothing to fight with, and a fight branch gets built with its own scenario.
 
 export interface Mob {
+  id?: number;
   name: string;
   x: number;
   y: number;

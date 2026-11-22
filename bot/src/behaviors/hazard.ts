@@ -16,7 +16,9 @@ export interface Cell {
   solid: boolean;
   fluid: "water" | "lava" | null;
   fire: boolean;
-  soft?: boolean; // ends a fall without harm, or most of it: cobweb, ladder, vines, slime, hay, powder snow
+  // what landing in it does to a fall: soft ends it unharmed (slime, powder snow), cushion cuts it to a
+  // fifth (hay, honey), reset wipes what was fallen so far and the drop below still counts (vines, cobweb)
+  fall?: "soft" | "cushion" | "reset";
 }
 
 export type Grid = (x: number, y: number, z: number) => Cell;
@@ -87,16 +89,37 @@ export function findEscape(hazard: Hazard, g: Grid, from: Pos): Pos | null {
 // Falls: damage starts past this many blocks
 export const SAFE_DROP = 3;
 
-// What stops a fall from the cell at y down: how many empty cells lie in between, and whether the
-// first thing hit is water or a soft block. Soft is looked at before solid: ladders and slime are
-// full blocks to the planner.
-export function landing(g: Grid, x: number, y: number, z: number, max = 40): { depth: number; soft: boolean; lava: boolean } {
+export type Stop = "hard" | "soft" | "cushion" | "lava";
+
+export interface Landing {
+  depth: number; // empty cells between the cell at y and what stops the fall
+  stop: Stop;
+  reset: boolean; // a vine or cobweb on the way wiped the fall above it
+  fall: number; // blocks of it that count: all of depth, or only what lies below the last reset
+}
+
+// What stops a fall from the cell at y down. Soft and cushion are looked at before solid: slime and
+// hay are full blocks to the planner. A ladder's top counts as ground, so ladders are left as solid.
+export function landing(g: Grid, x: number, y: number, z: number, max = 40): Landing {
+  let resetAt = -1;
   for (let d = 0; d <= max; d++) {
     const c = g(x, y - 1 - d, z);
-    if (c.fluid === "water" || c.soft) return { depth: d, soft: true, lava: false };
-    if (c.solid || c.fluid === "lava") return { depth: d, soft: false, lava: c.fluid === "lava" };
+    const done = (stop: Stop): Landing => ({ depth: d, stop, reset: resetAt >= 0, fall: resetAt >= 0 ? d - resetAt - 1 : d });
+    if (c.fluid === "water" || c.fall === "soft") return done("soft");
+    if (c.fall === "cushion") return done("cushion");
+    if (c.fluid === "lava") return done("lava");
+    if (c.solid) return done("hard");
+    if (c.fall === "reset") resetAt = d;
   }
-  return { depth: max + 1, soft: false, lava: false };
+  return { depth: max + 1, stop: "hard", reset: resetAt >= 0, fall: max + 1 };
+}
+
+// whether a fall of `fall` blocks onto `stop` costs health
+export function hurts(stop: Stop, fall: number): boolean {
+  if (stop === "lava") return true;
+  if (stop === "soft") return false;
+  const damage = fall - SAFE_DROP;
+  return stop === "cushion" ? damage * 0.2 >= 1 : damage > 0;
 }
 
 // Whether walking straight from `from` to `to` keeps off any drop over SAFE_DROP and out of lava.
@@ -120,7 +143,7 @@ export function pathSafe(g: Grid, from: Pos, to: Pos): boolean {
       continue;
     }
     const land = landing(g, x, y, z);
-    if (land.lava || (!land.soft && land.depth > SAFE_DROP)) return false;
+    if (hurts(land.stop, land.fall)) return false;
     y -= land.depth;
   }
   return true;
@@ -147,16 +170,17 @@ export function driftBudget(height: number, vy: number): number {
   return reach;
 }
 
-// Where to steer in a fall that will hurt: the nearest column the body can still drift over whose
-// first stop is water or a soft block. Null when the landing below is harmless or nothing soft is
-// in reach. `fallen` is how far it has dropped already; the cell given is the one just above the stop.
+// Where to steer in a fall that will hurt: the nearest column the body can still drift over where
+// the landing would not. Null when the landing below is harmless or nothing better is in reach. `fallen` is how far it has dropped already; the cell given is the one just above the stop.
 export function findLanding(g: Grid, from: Pos, fallen: number, vy: number, radius = 5): Pos | null {
   const x0 = Math.floor(from.x);
   const y0 = Math.floor(from.y);
   const z0 = Math.floor(from.z);
   const above = from.y - y0; // the part of the feet cell still to fall through
+  // a vine or cobweb on the way wipes what was fallen before it
+  const total = (l: Landing) => (l.reset ? l.fall : fallen + above + l.depth);
   const here = landing(g, x0, y0, z0);
-  if (here.soft || fallen + above + here.depth <= SAFE_DROP) return null;
+  if (!hurts(here.stop, total(here))) return null;
   let best: Pos | null = null;
   let bestD = Infinity;
   for (let dx = -radius; dx <= radius; dx++) {
@@ -166,7 +190,7 @@ export function findLanding(g: Grid, from: Pos, fallen: number, vy: number, radi
       const d = Math.hypot(x + 0.5 - from.x, z + 0.5 - from.z);
       if (d >= bestD) continue;
       const land = landing(g, x, y0, z);
-      if (!land.soft) continue;
+      if (hurts(land.stop, total(land))) continue;
       // the body is 0.6 wide: its edge over the column's edge is enough, the centre leaves a margin
       if (d - 0.5 > driftBudget(above + land.depth, vy)) continue;
       best = { x, y: y0 - land.depth, z };

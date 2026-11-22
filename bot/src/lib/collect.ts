@@ -47,14 +47,20 @@ async function walk(bot: Bot, goal: goals.Goal, ms: number): Promise<void> {
   }
 }
 
-async function dig(bot: Bot, block: Block): Promise<void> {
+// a stop that lands while dig() is still turning to face the block finds no dig to abort, so the
+// dig watches for it itself
+async function dig(bot: Bot, block: Block, shouldStop: () => boolean): Promise<void> {
   const timer = setTimeout(() => {
     if (bot.targetDigBlock) bot.stopDigging();
   }, DIG_MS);
+  const watch = setInterval(() => {
+    if (shouldStop() && bot.targetDigBlock) bot.stopDigging();
+  }, 100);
   try {
     await bot.dig(block);
   } finally {
     clearTimeout(timer);
+    clearInterval(watch);
   }
 }
 
@@ -116,7 +122,7 @@ export async function collectLog(bot: Bot, target: Block, movements: Movements, 
   }
   if (shouldStop()) return false;
   try {
-    await dig(bot, again);
+    await dig(bot, again, shouldStop);
   } catch {
     return false;
   }
