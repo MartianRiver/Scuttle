@@ -29,10 +29,10 @@ export function isGuardFighting(): boolean {
   return currentTarget !== null;
 }
 
-export function startGuard(bot: Bot): void {
+export function startGuard(bot: Bot): () => void {
   if (!rconConfigured()) {
     log.warn("RCON not configured — guard duty combat stays off, nothing to poll fightstate from");
-    return;
+    return () => {};
   }
 
   bot.on("death", () => stopFighting(bot));
@@ -48,7 +48,11 @@ export function startGuard(bot: Bot): void {
   };
 
   runPoll();
-  setInterval(runPoll, POLL_INTERVAL_MS);
+  const timer = setInterval(runPoll, POLL_INTERVAL_MS);
+  return () => {
+    clearInterval(timer);
+    stopFighting(bot);
+  };
 }
 
 async function poll(bot: Bot): Promise<void> {
