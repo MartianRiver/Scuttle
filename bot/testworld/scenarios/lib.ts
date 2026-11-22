@@ -109,8 +109,18 @@ export class World {
   nearBlock = (player: string, p: Pos, dist: number) =>
     this.passes(`execute positioned ${xyz(p)} if entity @a[name=${player},distance=..${dist}]`);
 
-  async daytime(): Promise<number> {
-    return Number((await this.run("time query daytime")).match(/(\d+)/)?.[1] ?? NaN);
+  async health(player: string): Promise<number> {
+    return Number((await this.run(`data get entity ${player} Health`)).match(/(-?[\d.]+)f\s*$/)?.[1] ?? NaN);
+  }
+
+  // deaths come from a server-side scoreboard counter, so a respawn can't hide one
+  async trackDeaths(player: string): Promise<void> {
+    await this.run("scoreboard objectives add deaths deathCount");
+    await this.run(`scoreboard players set ${player} deaths 0`);
+  }
+
+  async deaths(player: string): Promise<number> {
+    return Number((await this.run(`scoreboard players get ${player} deaths`)).match(/has (\d+)/)?.[1] ?? 0);
   }
 }
 
@@ -179,11 +189,20 @@ export interface Ctx {
   bot: string;
   // record one assertion; the scenario fails if any is false
   check(ok: boolean, what: string): void;
+  // a line in server chat, for anyone watching
+  say(msg: string): Promise<unknown>;
 }
 
 export interface Scenario {
   name: string;
   timeoutMs?: number;
+  // set while the body fails this today: reported as KNOWN-FAIL and not counted; a pass is flagged
+  // so the scenario can move out of known-failing
+  knownFailing?: string;
+  // where a watcher is put (--watch)
+  view?: Pos;
+  // always runs after, pass or fail: put back whatever setup changed
+  cleanup?(c: Ctx): Promise<void>;
   setup?(c: Ctx): Promise<void>;
   act(c: Ctx): Promise<void>;
   verify(c: Ctx): Promise<void>;

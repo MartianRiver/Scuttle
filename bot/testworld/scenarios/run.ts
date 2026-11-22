@@ -1,6 +1,8 @@
 // Scenario runner: set up, act, verify, one pass/fail line per scenario, exit 1 if any failed.
 // Needs the test server (start.sh, build_home.py --member) and the bot (bot.sh) running.
-// Run from bot/: npx tsx testworld/scenarios/run.ts [name-filter] [--checks]
+// Run from bot/: npx tsx testworld/scenarios/run.ts [name-filter] [--checks] [--watch]
+//   --watch announces each scenario in chat, puts the player named by WATCHER (default MartianRiver)
+//   beside it and pauses a few seconds first. Creative mode recommended.
 //   --checks also runs the older check_*.ts scripts, each as one pass/fail line.
 // Scenarios assert world facts read from the server, never how the bot got there.
 import { execFile } from "node:child_process";
@@ -9,6 +11,7 @@ import path from "node:path";
 import { Body, Rcon, sleep, World, type Ctx, type Scenario } from "./lib";
 
 const BOT = "ScuttleTest";
+const WATCHER = process.env.WATCHER ?? "MartianRiver";
 const OLD_CHECKS = ["check_movement.ts", "check_craft.ts", "check_body.ts"];
 const out = (s: string) => process.stdout.write(s + "\n");
 
@@ -38,6 +41,7 @@ async function runOne(s: Scenario, ctx: Ctx, failures: string[]): Promise<void> 
   } finally {
     // leave the bot idle for whatever runs next
     await ctx.body.send({ intent: "stop" }).catch(() => {});
+    await s.cleanup?.(ctx).catch((e) => failures.push(`cleanup threw: ${(e as Error).message}`));
     await sleep(1500);
   }
 }
@@ -54,6 +58,7 @@ function runCheckScript(file: string): Promise<boolean> {
 (async () => {
   const args = process.argv.slice(2);
   const filter = args.find((a) => !a.startsWith("--"));
+  const watch = args.includes("--watch");
   const scenarios = (await load()).filter((s) => !filter || s.name.includes(filter));
 
   const rcon = new Rcon();
@@ -72,12 +77,25 @@ function runCheckScript(file: string): Promise<boolean> {
       check: (ok, what) => {
         if (!ok) failures.push(what);
       },
+      say: (msg) => world.run(`say ${msg}`),
     };
+    if (watch) {
+      await ctx.say(`next: ${s.name}`);
+      if (s.view) await world.run(`tp ${WATCHER} ${s.view.x} ${s.view.y} ${s.view.z}`);
+      await sleep(4000);
+    }
     const t0 = Date.now();
     await runOne(s, ctx, failures);
     const secs = ((Date.now() - t0) / 1000).toFixed(0);
-    out(failures.length ? `FAIL ${s.name} (${secs} s)\n${failures.map((f) => `     - ${f}`).join("\n")}` : `PASS ${s.name} (${secs} s)`);
-    if (failures.length) failed++;
+    const why = failures.map((f) => `     - ${f}`).join("\n");
+    let line: string;
+    if (s.knownFailing && failures.length) line = `KNOWN-FAIL ${s.name} (${secs} s): ${s.knownFailing}\n${why}`;
+    else if (s.knownFailing) line = `NOW-PASSES ${s.name} (${secs} s): move it out of known-failing`;
+    else if (failures.length) line = `FAIL ${s.name} (${secs} s)\n${why}`;
+    else line = `PASS ${s.name} (${secs} s)`;
+    out(line);
+    if (watch) await ctx.say(line.split("\n")[0]);
+    if (failures.length && !s.knownFailing) failed++;
   }
   rcon.close();
   body.close();
