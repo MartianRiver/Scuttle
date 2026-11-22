@@ -2,6 +2,7 @@ import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { home } from "../lib/home";
 import { itemCount, craftItem } from "../lib/inventory";
+import { collectLog } from "../lib/collect";
 import { gatherMovements, isNaturalLog, isPlainLogName, safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
@@ -45,7 +46,6 @@ function quietly(fn: () => unknown): void {
 export function requestStop(bot: Bot): void {
   if (!running) return;
   stopRequested = true;
-  quietly(() => bot.collectBlock.cancelTask());
   quietly(() => bot.targetDigBlock && bot.stopDigging());
   quietly(() => bot.currentWindow && bot.closeWindow(bot.currentWindow));
 }
@@ -131,7 +131,8 @@ function nearestNaturalLog(bot: Bot, skipped: Set<string>, zones: Zone[]) {
 
 async function gatherLogs(bot: Bot): Promise<void> {
   await setStatus({ task: "gathering wood" });
-  bot.pathfinder.setMovements(gatherMovements(bot));
+  const movements = gatherMovements(bot);
+  bot.pathfinder.setMovements(movements);
   try {
     const skipped = new Set<string>();
     const zones: Zone[] = [];
@@ -152,10 +153,9 @@ async function gatherLogs(bot: Bot): Promise<void> {
       };
       bot.on("diggingCompleted", markDug);
       bot.on("diggingAborted", markDug);
+      // every wait in collectLog is bounded; this only catches what slips through
       const giveUp = setTimeout(() => {
         log.warn("attempt timed out", { position: block.position });
-        bot.collectBlock.cancelTask().catch(() => {});
-        // a dig in flight is what cancelTask alone can leave hanging
         try {
           if (bot.targetDigBlock) bot.stopDigging();
         } catch {
@@ -163,13 +163,12 @@ async function gatherLogs(bot: Bot): Promise<void> {
         }
         bot.pathfinder.setGoal(null);
       }, ATTEMPT_MS);
-      // if collect() still has not settled shortly after being cancelled, move on without it
       let abandonTimer: ReturnType<typeof setTimeout> | undefined;
       const abandoned = new Promise<void>((_, reject) => {
-        abandonTimer = setTimeout(() => reject(new Error("attempt abandoned, collect did not settle")), ATTEMPT_MS + ABANDON_MS);
+        abandonTimer = setTimeout(() => reject(new Error("attempt abandoned, it did not settle")), ATTEMPT_MS + ABANDON_MS);
       });
       try {
-        await Promise.race([bot.collectBlock.collect(block), abandoned]);
+        await Promise.race([collectLog(bot, block, movements, () => stopRequested), abandoned]);
       } catch (err) {
         log.warn("collect failed", { message: (err as Error).message });
       } finally {
@@ -180,7 +179,8 @@ async function gatherLogs(bot: Bot): Promise<void> {
       }
       checkStop();
 
-      if (totalLogs(bot) > before) {
+      // a broken log is progress even when its drop lay out of reach; the loop ends on no_trees
+      if (totalLogs(bot) > before || bot.blockAt(block.position)?.name !== block.name) {
         stuck = 0;
         continue;
       }

@@ -94,10 +94,7 @@ const quiet: Scenario = {
       c.body.waitEvent("task_finished", from, 280_000),
       c.body.waitEvent("task_failed", from, 280_000),
     ]);
-    // collection stalls now and then (QUIRKS), which ends a run as `stuck`; that is not this scenario's
-    // question. Its question is whether the sealed zombie took the body, and that shows as `interrupted`.
-    c.check(ended !== null, "the task ended");
-    c.check(ended?.reason !== "interrupted", `the zombie underground did not interrupt the task (saw ${ended?.event} ${ended?.reason ?? ""})`);
+    c.check(ended?.event === "task_finished", `the zombie underground did not stop the task (saw ${ended?.event ?? "nothing"} ${ended?.reason ?? ""})`);
   },
   async verify(c) {
     c.check((await c.world.deaths(c.bot)) === 0, "the bot did not die");

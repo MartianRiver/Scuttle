@@ -58,8 +58,8 @@ bot.once("spawn", () => {
   spawned = true;
   log.info("spawned", { position: bot.entity.position, version: bot.version });
 
-  // collectblock would swap in default movements (dig and build on) on every collect and never put
-  // ours back, so it gets none of its own
+  // collectblock stays loaded for bot.tool; its collect() would swap in default movements (dig and
+  // build on) and never put ours back, so it gets none of its own
   bot.collectBlock.movements = undefined;
   bot.pathfinder.setMovements(safeMovements(bot));
 
