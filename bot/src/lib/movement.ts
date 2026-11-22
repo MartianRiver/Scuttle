@@ -24,6 +24,7 @@ export function isNaturalLog(bot: Bot, block: Block): boolean {
 export function safeMovements(bot: Bot): Movements {
   const m = new Movements(bot);
   m.canDig = false;
+  m.maxDropDown = 3; // a longer fall costs health
   m.allow1by1towers = false;
   m.scafoldingBlocks = []; // [sic] upstream spelling
   return m;

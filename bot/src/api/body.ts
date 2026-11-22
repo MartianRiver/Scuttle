@@ -2,6 +2,7 @@ import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { isFleeing, noteStop } from "../behaviors/defence";
 import { isGuardFighting } from "../behaviors/guard";
+import { isInHazard } from "../behaviors/survive";
 import { isTaskRunning, requestStop, startTask } from "../behaviors/task";
 import { setStatus } from "../lib/status";
 import type { BodyControl } from "./dispatch";
@@ -23,7 +24,7 @@ export function createBody(bot: Bot): BodyControl {
   return {
     inGame: () => connected && Boolean(bot.entity),
     fighting: isGuardFighting,
-    danger: isFleeing,
+    danger: () => isFleeing() || isInHazard(),
     busy: isTaskRunning,
     canSee: (player) => Boolean(bot.players[player]?.entity),
     vitals: () => ({ health: vitalOrNull(bot.health), food: vitalOrNull(bot.food) }),

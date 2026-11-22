@@ -5,6 +5,7 @@ import { pacing, reactionDelay } from "../lib/pacing";
 import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { isGuardFighting } from "./guard";
+import { isInHazard } from "./survive";
 import { calm, fleeTarget, step, threatening, type DangerState, type Mob } from "./danger";
 
 const log = logger("defence");
@@ -15,12 +16,14 @@ const log = logger("defence");
 let state: DangerState = calm();
 let lastGoalAt = 0;
 let lastTarget: { x: number; z: number } | null = null;
+let anchor: { x: number; z: number } | null = null; // where this run began; the leash is measured from it
 
 export const isFleeing = (): boolean => state.fleeing;
 
 // the API's stop cancels a flee in progress; danger comes back after a fresh reaction delay
 export function noteStop(): void {
   state = calm();
+  anchor = null;
 }
 
 const SCAN_BLOCKS = 40;
@@ -31,7 +34,7 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
   let movements: Movements | null = null;
 
   const tick = (): void => {
-    if (!bot.entity || bot.health <= 0 || isGuardFighting()) return;
+    if (!bot.entity || bot.health <= 0 || isGuardFighting() || isInHazard()) return;
     const self = { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z };
     const mobs: Mob[] = Object.values(bot.entities)
       .filter((e) => e.type === "hostile" && e.name && e.position.distanceTo(bot.entity.position) < SCAN_BLOCKS)
@@ -46,6 +49,7 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
       if (was) {
         bot.pathfinder.setGoal(null);
         lastTarget = null;
+        anchor = null;
         void setStatus({ task: "idle" });
         log.info("clear of danger");
       }
@@ -53,12 +57,13 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
     }
 
     if (!was) {
+      anchor = { x: self.x, z: self.z };
       log.warn("fleeing", { from: threats.map((t) => t.name), health: bot.health });
       interrupt();
       void setStatus({ task: "fleeing" });
     }
     movements ??= safeMovements(bot);
-    const target = fleeTarget(self, threats);
+    const target = fleeTarget(self, threats, anchor ?? undefined);
     const moved = lastTarget ? Math.hypot(target.x - lastTarget.x, target.z - lastTarget.z) : Infinity;
     if (!was || moved > REPLAN_MOVED || Date.now() - lastGoalAt > REPLAN_MS) {
       bot.pathfinder.setMovements(movements);
@@ -71,6 +76,7 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
   bot.on("death", () => {
     state = calm();
     lastTarget = null;
+    anchor = null;
   });
   const timer = setInterval(() => {
     try {
