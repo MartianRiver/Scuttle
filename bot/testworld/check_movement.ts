@@ -58,20 +58,21 @@ async function collectSwap() {
 }
 
 async function arena() {
-  at("fill ~-10 ~-1 ~-10 ~10 ~-1 ~10 minecraft:grass_block");
-  at("fill ~-10 ~ ~-10 ~10 ~14 ~10 minecraft:air");
+  // wider than the decoys reach, so a forest at the edge can not lend them natural leaves
+  at("fill ~-16 ~-1 ~-16 ~16 ~-1 ~16 minecraft:grass_block");
+  at("fill ~-16 ~ ~-16 ~16 ~16 ~16 minecraft:air");
   for (const [dx, dz] of [[6, 6], [-6, 6]]) {
     if (!/Placed/i.test(at(`place feature minecraft:oak ~${dx} ~ ~${dz}`))) fail(`no oak grew at ${dx},${dz}`);
   }
   at("fill ~6 ~ ~-6 ~6 ~3 ~-6 minecraft:stripped_oak_log");
   at("fill ~-6 ~ ~-6 ~-6 ~3 ~-6 minecraft:oak_log");
-  at("fill ~-1 ~3 ~7 ~1 ~5 ~9 minecraft:oak_leaves[persistent=true]");
-  at("fill ~0 ~ ~8 ~0 ~4 ~8 minecraft:oak_log");
+  at("fill ~-1 ~3 ~-9 ~1 ~5 ~-7 minecraft:oak_leaves[persistent=true]");
+  at("fill ~0 ~ ~-8 ~0 ~4 ~-8 minecraft:oak_log");
   await sleep(1500);
 
   const base = bot.entity.position.floored();
   const decoys = new Set(
-    [[6, -6, 4], [-6, -6, 4], [0, 8, 5]].flatMap(([dx, dz, h]) =>
+    [[6, -6, 4], [-6, -6, 4], [0, -8, 5]].flatMap(([dx, dz, h]) =>
       Array.from({ length: h }, (_, dy) => base.offset(dx, dy, dz).toString())
     )
   );
@@ -95,15 +96,28 @@ async function arena() {
   const gather = gatherMovements(bot);
   const stripped = bot.blockAt(base.offset(6, 0, -6))!;
   const bare = bot.blockAt(base.offset(-6, 0, -6))!;
-  const fake = bot.blockAt(base.offset(0, 0, 8))!;
+  const fake = bot.blockAt(base.offset(0, 0, -8))!;
   if (!isPlainLogName(bare.name) || canBreak(gather, stripped) || canBreak(gather, bare) || canBreak(gather, fake)) {
     fail("gather movements would break a decoy");
   }
   const trunk = [...Array(8).keys()].map((n) => bot.blockAt(base.offset(6, n, 6))).find((b) => b && isPlainLogName(b.name));
   if (!trunk || !canBreak(gather, trunk)) fail("gather movements would not break a grown log");
   if (canBreak(gather, bot.blockAt(base.offset(0, -1, 0))!)) fail("gather movements would break the ground");
-  say(`arena ok: ${grown} grown logs natural, 3 decoys refused, ground refused`);
-  at("fill ~-10 ~ ~-10 ~10 ~14 ~10 minecraft:air");
+  let natural = 0;
+  let placed = 0;
+  for (let dx = -10; dx <= 10; dx++)
+    for (let dy = 0; dy <= 14; dy++)
+      for (let dz = -10; dz <= 10; dz++) {
+        const leaf = bot.blockAt(base.offset(dx, dy, dz));
+        if (!leaf || !leaf.name.endsWith("_leaves")) continue;
+        const persistent = leaf.getProperties().persistent === true;
+        if (canBreak(gather, leaf) === persistent) fail(`leaf at ${leaf.position}: persistent ${persistent}, gather breaks it ${!persistent}`);
+        if (persistent) placed++;
+        else natural++;
+      }
+  if (natural < 10 || placed < 10) fail(`leaves checked: ${natural} natural, ${placed} placed`);
+  say(`arena ok: ${grown} grown logs natural, 3 decoys refused, ground refused, ${natural} natural leaves breakable, ${placed} placed leaves refused`);
+  at("fill ~-16 ~ ~-16 ~16 ~16 ~16 minecraft:air");
 }
 
 bot.once("spawn", async () => {

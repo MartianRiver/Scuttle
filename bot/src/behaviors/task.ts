@@ -16,8 +16,10 @@ const SEARCH_RADIUS = 64;
 const PLANKS_BUFFER = 12; // covers 2 sticks-crafts (2 planks each) + 2 tool heads (3 planks each) + slack
 const STICKS_NEEDED = 4; // 2 for the pickaxe, 2 for the axe
 const KEEP_LOGS = 4; // spare logs left in inventory (fuel, future crafting) instead of stashed
-const REVERT_CAP = 2; // digs the server undid before the task gives up as protected
+const ZONE_RADIUS = 12; // blocks around a reverted dig the gather step stays out of
+const ZONE_CAP = 3; // protected zones found before the task gives up as protected
 const STUCK_CAP = 3; // attempts in a row that gained nothing
+const ATTEMPT_MS = 40_000; // one log, walking included; a path that never resolves would otherwise hang the task
 
 let running = false;
 let stopRequested = false;
@@ -90,14 +92,19 @@ function hasTool(bot: Bot, name: string): boolean {
 
 const keyOf = (p: { x: number; y: number; z: number }) => `${p.x},${p.y},${p.z}`;
 
-function nearestNaturalLog(bot: Bot, skipped: Set<string>) {
+type Zone = { x: number; z: number };
+
+const inZone = (zones: Zone[], p: { x: number; z: number }) =>
+  zones.some((zn) => Math.hypot(zn.x - p.x, zn.z - p.z) <= ZONE_RADIUS);
+
+function nearestNaturalLog(bot: Bot, skipped: Set<string>, zones: Zone[]) {
   const ids = Object.values(bot.registry.blocksByName)
     .filter((b) => isPlainLogName(b.name))
     .map((b) => b.id);
   // a log cabin next to the bot can fill the nearest few, so look at plenty
   const positions = bot.findBlocks({ matching: ids, maxDistance: SEARCH_RADIUS, count: 256 });
   for (const pos of positions) {
-    if (skipped.has(keyOf(pos))) continue;
+    if (skipped.has(keyOf(pos)) || inZone(zones, pos)) continue;
     const block = bot.blockAt(pos);
     if (block && isNaturalLog(bot, block)) return block;
   }
@@ -109,11 +116,11 @@ async function gatherLogs(bot: Bot): Promise<void> {
   bot.pathfinder.setMovements(gatherMovements(bot));
   try {
     const skipped = new Set<string>();
-    let reverted = 0;
+    const zones: Zone[] = [];
     let stuck = 0;
     while (totalLogs(bot) < LOG_TARGET) {
       if (stopRequested) throw new Error("stopped");
-      const block = nearestNaturalLog(bot, skipped);
+      const block = nearestNaturalLog(bot, skipped, zones);
       if (!block) {
         throw new TaskFailure("no_trees", "no natural trees within range, needs to walk further than this task does yet");
       }
@@ -121,16 +128,23 @@ async function gatherLogs(bot: Bot): Promise<void> {
 
       const before = totalLogs(bot);
       let dug = false;
-      const markDug = () => {
-        dug = true;
+      // leaves get dug on the way too; only a dig of the target itself says anything about the region
+      const markDug = (b: { position: { equals(o: unknown): boolean } }) => {
+        if (b.position.equals(block.position)) dug = true;
       };
       bot.on("diggingCompleted", markDug);
       bot.on("diggingAborted", markDug);
+      const giveUp = setTimeout(() => {
+        log.warn("attempt timed out", { position: block.position });
+        bot.collectBlock.cancelTask().catch(() => {});
+        bot.pathfinder.setGoal(null);
+      }, ATTEMPT_MS);
       try {
         await bot.collectBlock.collect(block);
       } catch (err) {
         log.warn("collect failed", { message: (err as Error).message });
       } finally {
+        clearTimeout(giveUp);
         bot.removeListener("diggingCompleted", markDug);
         bot.removeListener("diggingAborted", markDug);
       }
@@ -141,8 +155,12 @@ async function gatherLogs(bot: Bot): Promise<void> {
       }
       skipped.add(keyOf(block.position));
       // a dig happened and the log is back: the server undid it
-      if (dug && bot.blockAt(block.position)?.name === block.name && ++reverted >= REVERT_CAP) {
-        throw new TaskFailure("protected", "the server keeps undoing my digs here");
+      if (dug && bot.blockAt(block.position)?.name === block.name) {
+        zones.push({ x: block.position.x, z: block.position.z });
+        log.warn("protected zone", { position: block.position, radius: ZONE_RADIUS, zones: zones.length });
+        if (zones.length >= ZONE_CAP) throw new TaskFailure("protected", "the server keeps undoing my digs, I can't tell where I'm allowed");
+        stuck = 0;
+        continue;
       }
       if (++stuck >= STUCK_CAP) throw new TaskFailure("stuck", "couldn't get any wood after several tries");
     }
