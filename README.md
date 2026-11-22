@@ -21,7 +21,7 @@ There are per-player cooldowns and daily limits that are checked before any mone
 
 ## The plugin
 
-You need Paper 26.2 and Java 25 or newer. WorldGuard is optional, but land claims and the shop area need it.
+You need Paper 26.3 and Java 25 or newer. WorldGuard is optional, but land claims and the shop area need it.
 
 ```
 mvn clean package

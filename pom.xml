@@ -21,12 +21,12 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!-- Paper 26.2 requires Java 25 at runtime. -->
+        <!-- Paper 26.3 requires Java 25 at runtime. -->
         <maven.compiler.release>25</maven.compiler.release>
         <!-- Paper moved to build-pinned API versions with the 26.x calendar releases.
              Bump this when the server jar is updated; check
              https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/maven-metadata.xml -->
-        <paper.version>26.2.build.112-stable</paper.version>
+        <paper.version>26.3.build.257-stable</paper.version>
     </properties>
 
     <repositories>
