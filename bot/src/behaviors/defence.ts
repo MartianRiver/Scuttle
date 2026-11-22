@@ -5,6 +5,7 @@ import { pacing, reactionDelay } from "../lib/pacing";
 import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { isGuardFighting } from "./guard";
+import { isFalling } from "./fall";
 import { isInHazard } from "./survive";
 import { calm, fleeTarget, step, threatening, type DangerState, type Mob } from "./danger";
 
@@ -34,7 +35,7 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
   let movements: Movements | null = null;
 
   const tick = (): void => {
-    if (!bot.entity || bot.health <= 0 || isGuardFighting() || isInHazard()) return;
+    if (!bot.entity || bot.health <= 0 || isGuardFighting() || isInHazard() || isFalling()) return;
     const self = { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z };
     const mobs: Mob[] = Object.values(bot.entities)
       .filter((e) => e.type === "hostile" && e.name && e.position.distanceTo(bot.entity.position) < SCAN_BLOCKS)
