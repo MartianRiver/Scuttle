@@ -48,7 +48,7 @@ npm ci
 
 There's a disposable local test server in `bot/testworld/` (`start.sh`, then `build_home.py`, then `bot.sh`). It runs Paper in offline mode on `127.0.0.1` only and builds a small home and some trees to practise on. I'd start there. The bot refuses offline mode against any other host.
 
-Minecraft 26.2 is newer than what the published mineflayer packages support, so `npm ci` applies a few patches to them through `scripts/patch-26.2.js`. They come from open pull requests upstream. Once those are released the script can go.
+The body speaks Minecraft 26.3, which no published mineflayer release supports yet. `package.json` pins mineflayer and three of its dependencies to commits from open pull requests upstream, and `npm ci` then runs `scripts/patch-26.3.js`, which downloads the matching 26.3 game data (pinned and hash-checked) and fails loudly if anything is missing. It needs to reach GitHub while it installs. Once those pull requests are released the pins and the script can go.
 
 What I'm working on now is making the body safe and testable before anything else: no digging or building where it shouldn't, one clean control path, and a test world I can break on purpose.
 
