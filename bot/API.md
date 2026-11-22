@@ -55,7 +55,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `body_connected` / `body_disconnected` | `reason` on disconnect |
 | `task_started` | `taskId`, `kind` |
 | `task_finished` | `taskId` |
-| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `stuck`, `interrupted` (hostile mobs, a hazard or a fall took the body), `disconnected`, `died`, or a short message |
+| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `stuck` (a walk made no progress: under a block in 8 s, even after two nudges; also ends a `come_to`, and a `get_wood` that got no wood), `interrupted` (hostile mobs, a hazard or a fall took the body), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `chat` | `uuid`, `name`, `message` — every public chat line the bot sees, not only ones aimed at it |
 
