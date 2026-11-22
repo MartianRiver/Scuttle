@@ -21,12 +21,15 @@ export const isInHazard = (): boolean => active !== null;
 // the server tells us nothing about being on fire, so a burn is assumed for a while after lava or fire
 const BURN_MS = 9000;
 
-function cellAt(bot: Bot) {
+// hay and honey only cut a fall to a fifth, still worth steering for
+const SOFT = new Set(["cobweb", "ladder", "vine", "weeping_vines", "weeping_vines_plant", "twisting_vines", "twisting_vines_plant", "cave_vines", "cave_vines_plant", "scaffolding", "powder_snow", "slime_block", "hay_block", "honey_block"]);
+
+export function cellAt(bot: Bot) {
   return (x: number, y: number, z: number): Cell => {
     const b = bot.blockAt(new Vec3(x, y, z));
     if (!b) return { solid: true, fluid: null, fire: false }; // unloaded counts as a wall
     const fluid = b.name === "lava" ? "lava" : b.name === "water" || b.name === "bubble_column" ? "water" : null;
-    return { solid: b.boundingBox === "block", fluid, fire: b.name === "fire" || b.name === "soul_fire" };
+    return { solid: b.boundingBox === "block", fluid, fire: b.name === "fire" || b.name === "soul_fire", soft: SOFT.has(b.name) };
   };
 }
 

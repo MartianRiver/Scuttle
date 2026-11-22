@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classify, findCell, findEscape, type Cell, type Grid } from "../src/behaviors/hazard";
+import { classify, driftBudget, findCell, findEscape, findLanding, pathSafe, type Cell, type Grid } from "../src/behaviors/hazard";
 
 const air: Cell = { solid: false, fluid: null, fire: false };
 const stone: Cell = { solid: true, fluid: null, fire: false };
 const lava: Cell = { solid: false, fluid: "lava", fire: false };
 const water: Cell = { solid: false, fluid: "water", fire: false };
+const fire: Cell = { solid: false, fluid: null, fire: true };
+const cobweb: Cell = { solid: false, fluid: null, fire: false, soft: true };
 const calm = { inLava: false, inFire: false, headInWater: false, feetInWater: false, oxygen: 20, burning: false };
 
 // stone floor at y = 0, anything else is what the test puts in
@@ -65,4 +67,82 @@ test("out of fire, water within reach wins over dry floor, else dry floor", () =
   assert.deepEqual(findEscape("fire", withPool, { x: 0, y: 1, z: 0 }), { x: 3, y: 1, z: 0 });
   const dry = findEscape("lava", world({}), { x: 0, y: 1, z: 0 });
   assert.ok(dry && dry.y === 1);
+});
+
+// a trench one wide and `deep` down at x = 1, the floor at y 0 everywhere else
+const trench = (deep: number, extra: Record<string, Cell> = {}): Grid => (x, y, z) => {
+  const k = `${x},${y},${z}`;
+  if (k in extra) return extra[k];
+  if (x === 1) return y <= -deep ? stone : air;
+  return y <= 0 ? stone : air;
+};
+
+test("a straight walk across a deep trench is not safe, across a shallow one it is", () => {
+  assert.equal(pathSafe(trench(8), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), false);
+  assert.equal(pathSafe(trench(3), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), true);
+  assert.equal(pathSafe(trench(8), { x: 0.5, y: 1, z: 0.5 }, { x: -3, y: 1, z: 0 }), true);
+});
+
+test("water or a cobweb at the bottom makes a deep drop safe, lava under a step does not", () => {
+  assert.equal(pathSafe(trench(8, { "1,-7,0": water }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), true);
+  assert.equal(pathSafe(trench(8, { "1,-7,0": cobweb }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), true);
+  assert.equal(pathSafe(world({ "1,0,0": lava }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), false);
+});
+
+test("steps up and down are followed, a wall ends the check", () => {
+  // one block up at x 2, then a drop of 3 back down at x 4: all walkable
+  const g = world({ "2,1,0": stone, "3,1,0": stone });
+  assert.equal(pathSafe(g, { x: 0.5, y: 1, z: 0.5 }, { x: 5, y: 1, z: 0 }), true);
+  const wall = trench(8, { "1,1,0": stone, "1,2,0": stone, "1,3,0": stone });
+  assert.equal(pathSafe(wall, { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), true);
+});
+
+test("out of fire, water across a deep trench loses to dry floor on the near side", () => {
+  // fire under the body, water across the trench at x 2, dry floor behind at x -1
+  const g = trench(8, { "0,1,0": fire, "2,1,0": water });
+  const out = findEscape("fire", g, { x: 0.5, y: 1, z: 0.5 });
+  assert.ok(out);
+  assert.ok(out.x <= 0, `stays on the near side, got ${JSON.stringify(out)}`);
+  // without the trench the water wins
+  assert.deepEqual(findEscape("fire", world({ "0,1,0": fire, "2,1,0": water }), { x: 0.5, y: 1, z: 0.5 }), { x: 2, y: 1, z: 0 });
+});
+
+test("out of lava a drop is better than staying when it is the only way", () => {
+  // a lava pool from x -3 to 0 walled at -4, the only floor beyond a deep trench at x 1
+  const g: Grid = (x, y, z) => {
+    if (x === 1) return y <= -8 ? stone : air;
+    if (x >= -3 && x <= 0 && y === 1) return lava;
+    if (x <= -4) return stone;
+    return y <= 0 ? stone : air;
+  };
+  assert.ok(findEscape("lava", g, { x: 0.5, y: 1, z: 0.5 }));
+});
+
+test("the drift budget grows with the height of the fall", () => {
+  assert.ok(driftBudget(10, 0) > 1.5 && driftBudget(10, 0) < 2.5);
+  assert.ok(driftBudget(20, 0) > 3 && driftBudget(20, 0) < 4);
+  assert.ok(driftBudget(20, -1) < driftBudget(20, 0), "already falling fast leaves less time");
+});
+
+// open air over a stone floor at y 0, the body falling at height `h`
+const sky = (extra: Record<string, Cell> = {}): Grid => (x, y, z) => extra[`${x},${y},${z}`] ?? (y <= 0 ? stone : air);
+
+test("a hurtful fall steers to water in reach, not to water out of reach", () => {
+  const pool = { "2,0,0": water };
+  assert.deepEqual(findLanding(sky(pool), { x: 0.5, y: 16, z: 0.5 }, 0, 0), { x: 2, y: 1, z: 0 });
+  assert.equal(findLanding(sky({ "5,0,0": water }), { x: 0.5, y: 6, z: 0.5 }, 0, -0.5), null);
+});
+
+test("a harmless fall or one already over water is left alone", () => {
+  assert.equal(findLanding(sky({ "1,0,0": water }), { x: 0.5, y: 3.5, z: 0.5 }, 0, 0), null);
+  assert.equal(findLanding(sky({ "0,0,0": water, "1,0,0": water }), { x: 0.5, y: 16, z: 0.5 }, 0, 0), null);
+  // what has already been fallen counts: 2 blocks to go after 5 fallen is a 7-block fall
+  const edge = { x: 0.99, y: 3, z: 0.5 };
+  assert.equal(findLanding(sky({ "1,0,0": water }), edge, 0, -0.8), null);
+  assert.deepEqual(findLanding(sky({ "1,0,0": water }), edge, 5, -0.8), { x: 1, y: 1, z: 0 });
+});
+
+test("the nearest soft landing wins, cobwebs count", () => {
+  const g = sky({ "1,0,0": cobweb, "3,0,0": water });
+  assert.deepEqual(findLanding(g, { x: 0.5, y: 16, z: 0.5 }, 0, 0), { x: 1, y: 1, z: 0 });
 });
