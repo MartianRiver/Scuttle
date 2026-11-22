@@ -5,6 +5,7 @@ import { config } from "./lib/config";
 import { logger } from "./lib/logger";
 import { setStatus } from "./lib/status";
 import { safeMovements } from "./lib/movement";
+import { startDefence } from "./behaviors/defence";
 import { startSurvival } from "./behaviors/survival";
 import { isGuardFighting, startGuard } from "./behaviors/guard";
 import { startBodyApi } from "./api";
@@ -62,7 +63,7 @@ bot.once("spawn", () => {
   bot.pathfinder.setMovements(safeMovements(bot));
 
   setStatus({ task: "idle", location: describeLocation(bot) });
-  stopTimers.push(startSurvival(bot), startGuard(bot));
+  stopTimers.push(startSurvival(bot), startGuard(bot), startDefence(bot, api.interrupt));
 
   bot.on("goal_reached", () => {
     if (!isGuardFighting()) setStatus({ task: "idle", location: describeLocation(bot) });

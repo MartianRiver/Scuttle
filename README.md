@@ -9,7 +9,7 @@ It's early. The chat plugin runs on my server and has been played with. The body
 ## What's here
 
 - **The plugin** (`src/`): a Paper plugin that answers in chat through an LLM, using OpenRouter. It looks recipes up in the server's own registry, so it isn't going from memory. It can price things from the recipe graph and trade for coins, find ore and structures by scanning near the player, and hand out land claims through WorldGuard.
-- **The body** (`bot/`): a mineflayer bot that plays as its own player. It eats when it's hungry, gathers wood from natural trees (never a player's build), and fights back if a player keeps hitting it. Players can say `come here`, `stop` or `get wood` in chat, and a small WebSocket API lets something outside give it the same orders. See `bot/API.md`.
+- **The body** (`bot/`): a mineflayer bot that plays as its own player. It eats when it's hungry, gathers wood from natural trees (never a player's build), runs from hostile mobs, and fights back if a player keeps hitting it. Players can say `come here`, `stop` or `get wood` in chat, and a small WebSocket API lets something outside give it the same orders. See `bot/API.md`.
 - **The chat lab** (`chatlab/`): talk to Scuttle in a browser with no server, for tuning the voice.
 - **The bake-off** (`bakeoff/`): runs the real prompt against a list of models and scores safety, task and voice, so a model or prompt change gets numbers and not a hunch.
 

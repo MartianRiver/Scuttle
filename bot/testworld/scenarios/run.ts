@@ -1,6 +1,6 @@
 // Scenario runner: set up, act, verify, one pass/fail line per scenario, exit 1 if any failed.
 // Needs the test server (start.sh, build_home.py --member) and the bot (bot.sh) running.
-// Run from bot/: npx tsx testworld/scenarios/run.ts [name-filter] [--checks] [--watch]
+// Run from bot/: npx tsx testworld/scenarios/run.ts [name-filter] [--checks] [--watch] [--verbose]
 //   --watch announces each scenario in chat, puts the player named by WATCHER (default MartianRiver)
 //   beside it and pauses a few seconds first. Creative mode recommended.
 //   --checks also runs the older check_*.ts scripts, each as one pass/fail line.
@@ -59,6 +59,7 @@ function runCheckScript(file: string): Promise<boolean> {
   const args = process.argv.slice(2);
   const filter = args.find((a) => !a.startsWith("--"));
   const watch = args.includes("--watch");
+  const verbose = args.includes("--verbose");
   const scenarios = (await load()).filter((s) => !filter || s.name.includes(filter));
 
   const rcon = new Rcon();
@@ -76,6 +77,7 @@ function runCheckScript(file: string): Promise<boolean> {
       bot: BOT,
       check: (ok, what) => {
         if (!ok) failures.push(what);
+        else if (verbose) out(`     ok: ${what}`);
       },
       say: (msg) => world.run(`say ${msg}`),
     };

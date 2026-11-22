@@ -13,6 +13,7 @@ function stubBody(over: Partial<BodyControl> = {}) {
   const body: BodyControl = {
     inGame: () => true,
     fighting: () => false,
+    danger: () => false,
     busy: () => false,
     canSee: (p) => p !== "Ghost",
     vitals: () => ({ health: 20, food: 18 }),
@@ -23,6 +24,7 @@ function stubBody(over: Partial<BodyControl> = {}) {
     follow: (p) => void calls.push(`follow:${p}`),
     runTask: () => new Promise((res, rej) => ((finishWalk = res), (failWalk = rej))),
     stop: () => void calls.push("stop"),
+    interrupt: () => void calls.push("interrupt"),
     ...over,
   };
   return { body, calls, finish: () => finishWalk(), fail: (e: Error) => failWalk(e) };
@@ -204,4 +206,23 @@ test("socket: unauthenticated intent is refused, resume replays, rate limit spar
     c.ws.close();
     wrongEpoch.ws.close();
   });
+});
+
+test("a reflex taking the body ends the action as interrupted, and new orders wait", () => {
+  const log = new EventLog();
+  let danger = false;
+  const s = stubBody({ danger: () => danger });
+  const d = createDispatcher(s.body, log);
+
+  d.handle({ intent: "task", name: "get_wood" });
+  d.interrupted();
+  const events = log.since(0).events;
+  assert.deepEqual(events.map((e) => e.event), ["task_started", "task_failed"]);
+  assert.equal((events[1] as { reason?: string }).reason, "interrupted");
+  assert.ok(s.calls.includes("interrupt"));
+  assert.ok(!s.calls.includes("stop"), "an interrupt is not the API's stop");
+
+  danger = true;
+  assert.deepEqual(d.handle({ intent: "come_to", player: "Sam" }), { kind: "rejected", reason: "in_danger" });
+  assert.equal(d.handle({ intent: "stop" }).kind, "accepted");
 });
