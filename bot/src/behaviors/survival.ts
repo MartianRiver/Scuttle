@@ -9,10 +9,11 @@ const CHECK_INTERVAL_MS = 5000;
 
 // Reactive, not LLM-driven: survival runs on plain
 // code so it costs nothing and can't be talked out of eating by a jailbroken prompt.
-export function startSurvival(bot: Bot): void {
-  setInterval(() => {
+export function startSurvival(bot: Bot): () => void {
+  const timer = setInterval(() => {
     tick(bot).catch((err) => log.error("survival tick failed", { message: (err as Error).message }));
   }, CHECK_INTERVAL_MS);
+  return () => clearInterval(timer);
 }
 
 async function tick(bot: Bot): Promise<void> {

@@ -8,6 +8,8 @@ import { startSurvival } from "./behaviors/survival";
 import { isGuardFighting, startGuard } from "./behaviors/guard";
 import { isTaskRunning, startTask } from "./behaviors/task";
 import { startBodyApi } from "./api";
+import { exitDelayMs, isDuplicateLogin } from "./lib/restart";
+import path from "node:path";
 
 const log = logger("bot");
 
@@ -28,19 +30,35 @@ const bot = mineflayer.createBot({
   },
 });
 
+const startedAt = Date.now();
+const stopTimers: Array<() => void> = [];
+let spawned = false;
+let leaving = false;
+
+// Everything that keeps Node alive is stopped, then the process exits for the supervisor to restart.
+// The wait before exiting is the restart backoff (see lib/restart.ts).
+function leave(reason: string, duplicate = false): void {
+  if (leaving) return;
+  leaving = true;
+  for (const stop of stopTimers) stop();
+  const wait = exitDelayMs(path.join(config.profilesFolder, "restart-state.json"), startedAt, duplicate);
+  log.warn("exiting", { reason, restartInMs: wait });
+  setTimeout(() => process.exit(1), wait);
+}
+
 bot.loadPlugin(pathfinder);
 bot.loadPlugin(collectBlockPlugin);
-startBodyApi(bot);
+stopTimers.push(startBodyApi(bot));
 
 bot.once("spawn", () => {
+  spawned = true;
   log.info("spawned", { position: bot.entity.position, version: bot.version });
 
   const defaultMove = new Movements(bot);
   bot.pathfinder.setMovements(defaultMove);
 
   setStatus({ task: "idle", location: describeLocation(bot) });
-  startSurvival(bot);
-  startGuard(bot);
+  stopTimers.push(startSurvival(bot), startGuard(bot));
 
   bot.on("goal_reached", () => {
     if (!isGuardFighting()) setStatus({ task: "idle", location: describeLocation(bot) });
@@ -87,12 +105,17 @@ bot.once("spawn", () => {
   });
 });
 
+let duplicateLogin = false;
 bot.on("kicked", (reason) => {
   log.warn("kicked", { reason });
+  duplicateLogin = isDuplicateLogin(reason);
 });
 bot.on("error", (err) => {
   log.error("connection error", { message: err.message });
+  // before spawn there is no session to wait out, and 'end' may never follow
+  if (!spawned) leave(`error: ${err.message}`);
 });
 bot.on("end", (reason) => {
   log.info("disconnected", { reason });
+  leave(String(reason), duplicateLogin);
 });
