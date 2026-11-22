@@ -1,4 +1,5 @@
 import type { Bot } from "mineflayer";
+import { watchDeath } from "../behaviors/death";
 import { config } from "../lib/config";
 import { logger } from "../lib/logger";
 import { createBody } from "./body";
@@ -25,7 +26,7 @@ export function startBodyApi(bot: Bot): BodyApi {
 
   bot.once("spawn", () => dispatcher.bodyConnected());
   bot.on("end", (reason) => dispatcher.bodyDisconnected(String(reason)));
-  bot.on("death", () => dispatcher.bodyDied());
+  watchDeath(bot, { ended: dispatcher.bodyDied, report: dispatcher.died });
   bot.on("chat", (name, message) => {
     if (name === bot.username) return;
     events.emit("chat", { uuid: bot.players[name]?.uuid ?? null, name, message });

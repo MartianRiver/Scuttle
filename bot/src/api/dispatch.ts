@@ -111,7 +111,14 @@ export function createDispatcher(body: BodyControl, log: EventLog) {
       endCurrent("task_failed", "disconnected");
       log.emit("body_disconnected", { reason });
     },
-    bodyDied: () => void endCurrent("task_failed", "died"),
+    // the death ends the action at once; the `died` event follows when its place and cause are known
+    bodyDied() {
+      body.interrupt();
+      endCurrent("task_failed", "died");
+    },
+    died(place: string, cause: string) {
+      log.emit("died", { place, cause });
+    },
     // a reflex took the body: whatever was running ends with a typed reason
     interrupted() {
       body.interrupt();

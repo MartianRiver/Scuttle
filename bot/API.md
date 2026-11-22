@@ -57,6 +57,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `task_finished` | `taskId` |
 | `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `stuck`, `interrupted` (hostile mobs, a hazard or a fall took the body), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
+| `died` | `place`, `cause`: the body died (idle or not; a running action first ends with `task_failed` `died`) and respawns by itself. `place` is words only, never coordinates: how far and which way from home, surface or underground, the dimension if not the overworld ("a short walk to the north-east of home, on the surface"). `cause` is `mob`, `fall`, `lava`, `fire`, `drowning` or `other`. Nothing is carried over: the task is over, the inventory is what the respawn left, and fetching drops is not automatic |
 | `chat` | `uuid`, `name`, `message` — every public chat line the bot sees, not only ones aimed at it |
 
 ## Rules
