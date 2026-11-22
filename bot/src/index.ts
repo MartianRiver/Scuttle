@@ -1,9 +1,10 @@
 import mineflayer from "mineflayer";
-import { pathfinder, Movements, goals } from "mineflayer-pathfinder";
+import { pathfinder, goals } from "mineflayer-pathfinder";
 import { plugin as collectBlockPlugin } from "mineflayer-collectblock";
 import { config } from "./lib/config";
 import { logger } from "./lib/logger";
 import { setStatus } from "./lib/status";
+import { safeMovements } from "./lib/movement";
 import { startSurvival } from "./behaviors/survival";
 import { isGuardFighting, startGuard } from "./behaviors/guard";
 import { isTaskRunning, startTask } from "./behaviors/task";
@@ -54,8 +55,10 @@ bot.once("spawn", () => {
   spawned = true;
   log.info("spawned", { position: bot.entity.position, version: bot.version });
 
-  const defaultMove = new Movements(bot);
-  bot.pathfinder.setMovements(defaultMove);
+  // collectblock would swap in default movements (dig and build on) on every collect and never put
+  // ours back, so it gets none of its own
+  bot.collectBlock.movements = undefined;
+  bot.pathfinder.setMovements(safeMovements(bot));
 
   setStatus({ task: "idle", location: describeLocation(bot) });
   stopTimers.push(startSurvival(bot), startGuard(bot));
