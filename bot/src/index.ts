@@ -1,5 +1,5 @@
 import mineflayer from "mineflayer";
-import { pathfinder, goals } from "mineflayer-pathfinder";
+import { pathfinder } from "mineflayer-pathfinder";
 import { plugin as collectBlockPlugin } from "mineflayer-collectblock";
 import { config } from "./lib/config";
 import { logger } from "./lib/logger";
@@ -7,8 +7,8 @@ import { setStatus } from "./lib/status";
 import { safeMovements } from "./lib/movement";
 import { startSurvival } from "./behaviors/survival";
 import { isGuardFighting, startGuard } from "./behaviors/guard";
-import { isTaskRunning, startTask } from "./behaviors/task";
 import { startBodyApi } from "./api";
+import { chatIntent } from "./api/chat";
 import { exitDelayMs, isDuplicateLogin } from "./lib/restart";
 import path from "node:path";
 
@@ -49,7 +49,8 @@ function leave(reason: string, duplicate = false): void {
 
 bot.loadPlugin(pathfinder);
 bot.loadPlugin(collectBlockPlugin);
-stopTimers.push(startBodyApi(bot));
+const api = startBodyApi(bot);
+stopTimers.push(api.close);
 
 bot.once("spawn", () => {
   spawned = true;
@@ -76,35 +77,11 @@ bot.once("spawn", () => {
     if (username === bot.username) return;
     log.debug("chat", { username, message });
 
-    if (message === "come here") {
-      const sender = bot.players[username]?.entity;
-      if (!sender) {
-        bot.chat("I can't see you");
-        return;
-      }
-      const { x, y, z } = sender.position;
-      setStatus({ task: `walking to ${username}` });
-      bot.pathfinder.setGoal(new goals.GoalNear(x, y, z, 1));
-    }
-
-    if (message === "stop") {
-      bot.pathfinder.setGoal(null);
-      setStatus({ task: "idle", location: describeLocation(bot) });
-    }
-
-    if (message === "get wood") {
-      if (isGuardFighting()) {
-        bot.chat("kind of busy right now");
-        return;
-      }
-      if (isTaskRunning()) {
-        bot.chat("already on it");
-        return;
-      }
-      startTask(bot, "get wood").catch((err) =>
-        log.error("get wood task threw", { message: (err as Error).message })
-      );
-    }
+    const intent = chatIntent(username, message);
+    if (!intent) return;
+    const outcome = api.dispatch(intent);
+    const reason = outcome.kind === "rejected" ? outcome.reason : undefined;
+    log.info("chat command", { username, intent: intent.intent, outcome: outcome.kind, reason });
   });
 });
 

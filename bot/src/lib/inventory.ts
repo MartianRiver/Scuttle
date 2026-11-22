@@ -11,7 +11,8 @@ export async function craftItem(
   bot: Bot,
   name: string,
   count: number,
-  craftingTable?: Block | null
+  craftingTable?: Block | null,
+  shouldStop?: () => boolean
 ): Promise<boolean> {
   const item = bot.registry.itemsByName[name];
   if (!item) throw new Error(`unknown item: ${name}`);
@@ -19,15 +20,23 @@ export async function craftItem(
   const recipes = bot.recipesFor(item.id, null, 1, craftingTable ?? null);
   if (recipes.length === 0) return false;
 
-  await pacedClicks(bot, async () => {
+  await pacedClicks(bot, shouldStop, async () => {
     if (craftingTable) {
-      await bot.craft(recipes[0], count, craftingTable);
+      try {
+        await bot.craft(recipes[0], count, craftingTable);
+      } finally {
+        // a stop leaves the table open with ingredients in its grid; closing hands them back
+        if (bot.currentWindow) bot.closeWindow(bot.currentWindow);
+      }
       return;
     }
     try {
       await bot.craft(recipes[0], count);
     } finally {
-      await settleGrid(bot);
+      // a failed settle must not hide the stop that caused it
+      await settleGrid(bot).catch((err) => {
+        if (!shouldStop?.()) throw err;
+      });
     }
   });
   return true;
@@ -39,9 +48,10 @@ export async function craftItem(
 // believes its cursor is empty and misplaces the next ingredient. On 26.3 that crafted a button
 // instead of sticks about one round in five. Waiting for the server's answer to each click keeps
 // every click current, so no stale resync is sent. Remove once upstream clicks this way itself.
-async function pacedClicks<T>(bot: Bot, run: () => Promise<T>): Promise<T> {
+async function pacedClicks<T>(bot: Bot, shouldStop: (() => boolean) | undefined, run: () => Promise<T>): Promise<T> {
   const original = bot.clickWindow;
   bot.clickWindow = async (slot, button, mode) => {
+    if (shouldStop?.()) throw new Error("stopped");
     const reply = inventoryReply(bot);
     await original.call(bot, slot, button, mode);
     await reply;
