@@ -68,6 +68,10 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   `come_to`/`follow` need the player in the bot's own loaded view, else `unknown_player`.
   While the plugin has the bot in a real fight,
   everything except `stop` and `status` is `in_fight`.
+- Public chat goes through the same path: `come here` becomes `come_to` (the speaker), `stop` becomes
+  `stop`, `get wood` becomes `task get_wood`, spelled exactly. Actions started that way are ordinary
+  tasks with ordinary events, and get the same `busy` / `in_fight` / `unknown_player` checks. This works with
+  the WebSocket server off; it is the only optional part.
 - The bot validates every intent against this list itself. Nothing upstream is trusted to have.
 - 10 intents per 10s per connection, then `rate_limited`.
 - Chat lines carry the full public chat. The consumer is responsible for what it forwards onward.

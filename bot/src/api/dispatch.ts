@@ -5,7 +5,7 @@ import type { Intent, TaskName } from "./protocol";
 export interface BodyControl {
   inGame(): boolean;
   fighting(): boolean;
-  busy(): boolean; // something started outside the API (chat command) is running
+  busy(): boolean; // a task is still winding down after the dispatcher let go of it (stop)
   canSee(player: string): boolean;
   vitals(): { health: number | null; food: number | null };
   comeTo(player: string): Promise<void>; // resolves on arrival, rejects if cancelled or unreachable
