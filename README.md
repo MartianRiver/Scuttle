@@ -9,7 +9,7 @@ It's early. The chat plugin runs on my server and has been played with. The body
 ## What's here
 
 - **The plugin** (`src/`): a Paper plugin that answers in chat through an LLM, using OpenRouter. It looks recipes up in the server's own registry, so it isn't going from memory. It can price things from the recipe graph and trade for coins, find ore and structures by scanning near the player, and hand out land claims through WorldGuard.
-- **The body** (`bot/`): a mineflayer bot that plays as its own player. It eats when it's hungry, gathers wood, and fights back if a player keeps hitting it. It also has a small WebSocket API so something outside can give it orders. See `bot/API.md`.
+- **The body** (`bot/`): a mineflayer bot that plays as its own player. It eats when it's hungry, gathers wood from natural trees (never a player's build), and fights back if a player keeps hitting it. Players can say `come here`, `stop` or `get wood` in chat, and a small WebSocket API lets something outside give it the same orders. See `bot/API.md`.
 - **The chat lab** (`chatlab/`): talk to Scuttle in a browser with no server, for tuning the voice.
 - **The bake-off** (`bakeoff/`): runs the real prompt against a list of models and scores safety, task and voice, so a model or prompt change gets numbers and not a hunch.
 
@@ -50,7 +50,9 @@ There's a disposable local test server in `bot/testworld/` (`start.sh`, then `bu
 
 The body speaks Minecraft 26.3, which no published mineflayer release supports yet. `package.json` pins mineflayer and three of its dependencies to commits from open pull requests upstream, and `npm ci` then runs `scripts/patch-26.3.js`, which downloads the matching 26.3 game data (pinned and hash-checked) and fails loudly if anything is missing. It needs to reach GitHub while it installs. Once those pull requests are released the pins and the script can go.
 
-What I'm working on now is making the body safe and testable before anything else: no digging or building where it shouldn't, one clean control path, and a test world I can break on purpose.
+The body has been through a round of making it safe: it doesn't dig or build while it walks, it only breaks natural logs and leaves for wood, chat and the API go through the same path, and `stop` reaches whatever it's doing. The test world has checks for each of those, because a bug here is someone's build.
+
+What I'm working on now is making it capable without making it reckless. The plan is three layers: reflexes in plain code that keep it alive, a small model that reacts to events the reflexes can't handle, and a bigger one that picks goals and plans, only when something happens and never on a timer. I'm not letting a model write its own code. When it hits something it has no skill for, it should say so and carry on with something else, and I build and test that skill. The aim is a player that helps, chats and builds, and gets better over time. Beating the game would be one milestone of that, not the point.
 
 ## Licence
 
