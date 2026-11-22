@@ -5,16 +5,18 @@ import type { Intent, TaskName } from "./protocol";
 export interface BodyControl {
   inGame(): boolean;
   fighting(): boolean;
+  danger(): boolean; // the defence reflex is running from hostile mobs
   busy(): boolean; // a task is still winding down after the dispatcher let go of it (stop)
   canSee(player: string): boolean;
   vitals(): { health: number | null; food: number | null };
   comeTo(player: string): Promise<void>; // resolves on arrival, rejects if cancelled or unreachable
   follow(player: string): void; // runs until stop or replaced
   runTask(name: TaskName): Promise<void>;
-  stop(): void;
+  stop(): void; // the API's stop
+  interrupt(): void; // the same cleanup, for the body's own reflexes taking over
 }
 
-export type Reject = "busy" | "in_fight" | "not_in_game" | "unknown_player";
+export type Reject = "busy" | "in_fight" | "in_danger" | "not_in_game" | "unknown_player";
 export type Outcome =
   | { kind: "accepted"; taskId?: string }
   | { kind: "rejected"; reason: Reject }
@@ -82,6 +84,7 @@ export function createDispatcher(body: BodyControl, log: EventLog) {
 
     if (!body.inGame()) return { kind: "rejected", reason: "not_in_game" };
     if (body.fighting()) return { kind: "rejected", reason: "in_fight" };
+    if (body.danger()) return { kind: "rejected", reason: "in_danger" };
 
     if (i.intent === "task") {
       if (current || body.busy()) return { kind: "rejected", reason: "busy" };
@@ -109,6 +112,11 @@ export function createDispatcher(body: BodyControl, log: EventLog) {
       log.emit("body_disconnected", { reason });
     },
     bodyDied: () => void endCurrent("task_failed", "died"),
+    // a reflex took the body: whatever was running ends with a typed reason
+    interrupted() {
+      body.interrupt();
+      endCurrent("task_failed", "interrupted");
+    },
   };
 }
 

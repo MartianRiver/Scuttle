@@ -12,6 +12,7 @@ const log = logger("api");
 
 export interface BodyApi {
   dispatch(intent: Intent): Outcome;
+  interrupt(): void;
   close(): void;
 }
 
@@ -32,12 +33,13 @@ export function startBodyApi(bot: Bot): BodyApi {
 
   if (!port || tokens.size === 0) {
     log.info("body API server off (API_PORT / API_TOKENS not set)");
-    return { dispatch: dispatcher.handle, close() {} };
+    return { dispatch: dispatcher.handle, interrupt: dispatcher.interrupted, close() {} };
   }
 
   const server = startApiServer({ host, port, tokens }, dispatcher, events);
   return {
     dispatch: dispatcher.handle,
+    interrupt: dispatcher.interrupted,
     close() {
       for (const client of server.clients) client.terminate();
       server.close();
