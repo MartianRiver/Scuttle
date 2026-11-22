@@ -15,7 +15,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/patch-26.3.js",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "scenarios": "tsx testworld/scenarios/run.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
