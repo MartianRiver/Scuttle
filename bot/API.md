@@ -55,7 +55,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `body_connected` / `body_disconnected` | `reason` on disconnect |
 | `task_started` | `taskId`, `kind` |
 | `task_finished` | `taskId` |
-| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `stuck`, `interrupted` (the body ran from hostile mobs), `disconnected`, `died`, or a short message |
+| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `stuck`, `interrupted` (hostile mobs, a hazard or a fall took the body), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `chat` | `uuid`, `name`, `message` — every public chat line the bot sees, not only ones aimed at it |
 
@@ -68,9 +68,10 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   `come_to`/`follow` need the player in the bot's own loaded view, else `unknown_player`.
   While the plugin has the bot in a real fight,
   everything except `stop` and `status` is `in_fight`.
-- While the body is running from hostile mobs it ends the current action as `task_failed` `interrupted`
-  and answers everything except `stop` and `status` with `in_danger`. `stop` wins, but the body runs
-  again after its reaction delay if the mobs are still there, so a stopped bot is not frozen for good.
+- While hostile mobs have the body (it fights them or runs, by its health and gear) it ends the current
+  action as `task_failed` `interrupted` and answers everything except `stop` and `status` with
+  `in_danger`. `stop` wins, but the body fights or runs again after its reaction delay if the mobs are
+  still there, so a stopped bot is not frozen for good.
 - Public chat goes through the same path: `come here` becomes `come_to` (the speaker), `stop` becomes
   `stop`, `get wood` becomes `task get_wood`, spelled exactly. Actions started that way are ordinary
   tasks with ordinary events, and get the same `busy` / `in_fight` / `unknown_player` checks. This works with

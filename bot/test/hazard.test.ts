@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classify, driftBudget, findCell, findEscape, findLanding, pathSafe, type Cell, type Grid } from "../src/behaviors/hazard";
+import { classify, driftBudget, findCell, findEscape, findLanding, hurts, pathSafe, type Cell, type Grid } from "../src/behaviors/hazard";
 
 const air: Cell = { solid: false, fluid: null, fire: false };
 const stone: Cell = { solid: true, fluid: null, fire: false };
 const lava: Cell = { solid: false, fluid: "lava", fire: false };
 const water: Cell = { solid: false, fluid: "water", fire: false };
 const fire: Cell = { solid: false, fluid: null, fire: true };
-const cobweb: Cell = { solid: false, fluid: null, fire: false, soft: true };
+const cobweb: Cell = { solid: false, fluid: null, fire: false, fall: "reset" };
+const vine: Cell = { solid: false, fluid: null, fire: false, fall: "reset" };
+const hay: Cell = { solid: true, fluid: null, fire: false, fall: "cushion" };
+const slime: Cell = { solid: true, fluid: null, fire: false, fall: "soft" };
 const calm = { inLava: false, inFire: false, headInWater: false, feetInWater: false, oxygen: 20, burning: false };
 
 // stone floor at y = 0, anything else is what the test puts in
@@ -83,9 +86,11 @@ test("a straight walk across a deep trench is not safe, across a shallow one it 
   assert.equal(pathSafe(trench(8), { x: 0.5, y: 1, z: 0.5 }, { x: -3, y: 1, z: 0 }), true);
 });
 
-test("water or a cobweb at the bottom makes a deep drop safe, lava under a step does not", () => {
+test("water or slime at the bottom makes a deep drop safe, a cobweb only near the bottom, lava under a step never", () => {
   assert.equal(pathSafe(trench(8, { "1,-7,0": water }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), true);
-  assert.equal(pathSafe(trench(8, { "1,-7,0": cobweb }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), true);
+  assert.equal(pathSafe(trench(8, { "1,-7,0": slime }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), true);
+  assert.equal(pathSafe(trench(8, { "1,-6,0": cobweb }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), true);
+  assert.equal(pathSafe(trench(8, { "1,0,0": cobweb }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), false);
   assert.equal(pathSafe(world({ "1,0,0": lava }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), false);
 });
 
@@ -142,7 +147,19 @@ test("a harmless fall or one already over water is left alone", () => {
   assert.deepEqual(findLanding(sky({ "1,0,0": water }), edge, 5, -0.8), { x: 1, y: 1, z: 0 });
 });
 
-test("the nearest soft landing wins, cobwebs count", () => {
-  const g = sky({ "1,0,0": cobweb, "3,0,0": water });
+test("the nearest harmless landing wins, slime counts", () => {
+  const g = sky({ "1,0,0": slime, "3,0,0": water });
   assert.deepEqual(findLanding(g, { x: 0.5, y: 16, z: 0.5 }, 0, 0), { x: 1, y: 1, z: 0 });
+});
+
+test("a vine high over a deep drop is no landing, one near the floor is", () => {
+  // stone floor at y 0, the body at 25: a vine at 20 leaves 19 blocks to fall below it
+  assert.equal(findLanding(sky({ "1,20,0": vine }), { x: 0.5, y: 25, z: 0.5 }, 0, 0), null);
+  assert.deepEqual(findLanding(sky({ "1,2,0": vine }), { x: 0.5, y: 25, z: 0.5 }, 0, 0), { x: 1, y: 1, z: 0 });
+});
+
+test("hay cuts a fall to a fifth: fine from 7 up, not from 20", () => {
+  assert.equal(hurts("cushion", 7), false);
+  assert.equal(hurts("cushion", 20), true);
+  assert.equal(pathSafe(trench(20, { "1,-20,0": hay }), { x: 0.5, y: 1, z: 0.5 }, { x: 3, y: 1, z: 0 }), false);
 });
