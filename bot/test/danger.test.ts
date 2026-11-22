@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { calm, fleeTarget, FLEE_DISTANCE, step, threatening, type Mob } from "../src/behaviors/danger";
+import { calm, fleeTarget, FLEE_DISTANCE, LEASH, step, threatening, type Mob } from "../src/behaviors/danger";
 
 const me = { x: 0, y: 0, z: 0 };
 const mob = (name: string, x: number, z = 0): Mob => ({ name, x, y: 0, z });
@@ -56,4 +56,34 @@ test("a threat that goes away resets the state, the next one waits again", () =>
   assert.deepEqual(r.state, calm());
   r = step(r.state, z, 400, () => 100);
   assert.equal(r.flee, false);
+});
+
+const from = (p: { x: number; z: number }, q: { x: number; z: number }) => Math.hypot(p.x - q.x, p.z - q.z);
+
+test("with a leash the target never leaves the circle, however long the threat chases", () => {
+  const anchor = { x: 0, z: 0 };
+  let self = { x: 0, y: 0, z: 0 };
+  const zombie = (x: number, z: number): Mob => ({ name: "zombie", x, y: 0, z });
+  for (let i = 0; i < 40; i++) {
+    const t = fleeTarget(self, [zombie(self.x - 3, self.z)], anchor);
+    assert.ok(from(t, anchor) <= LEASH + 1e-9, `step ${i}: ${from(t, anchor)}`);
+    // the body moves a few blocks toward the target each step
+    const d = from(t, self);
+    self = { x: self.x + ((t.x - self.x) / d) * 4, y: 0, z: self.z + ((t.z - self.z) / d) * 4 };
+  }
+  assert.ok(from(self, anchor) <= LEASH + 4);
+});
+
+test("at the edge it slides along it, away from the threat, instead of pressing outward", () => {
+  const anchor = { x: 0, z: 0 };
+  const edge = { x: LEASH, y: 0, z: 0 };
+  const t = fleeTarget(edge, [{ name: "zombie", x: LEASH - 4, y: 0, z: 0 }], anchor);
+  assert.ok(from(t, anchor) <= LEASH + 1e-9);
+  assert.ok(Math.abs(t.z) > 5, "moved sideways along the edge");
+});
+
+test("inside the leash, running straight away is unchanged", () => {
+  const anchor = { x: 0, z: 0 };
+  const t = fleeTarget(me, [mob("zombie", 5)], anchor);
+  assert.ok(t.x < 0 && Math.abs(from(t, me) - FLEE_DISTANCE) < 1e-9);
 });

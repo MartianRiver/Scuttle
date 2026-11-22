@@ -19,6 +19,7 @@ const KEEP_LOGS = 4; // spare logs left in inventory (fuel, future crafting) ins
 const ZONE_RADIUS = 12; // blocks around a reverted dig the gather step stays out of
 const ZONE_CAP = 3; // protected zones found before the task gives up as protected
 const STUCK_CAP = 3; // attempts in a row that gained nothing
+const ABANDON_MS = 5_000; // how long a cancelled attempt gets to wind down before the task moves on
 const ATTEMPT_MS = 40_000; // one log, walking included; a path that never resolves would otherwise hang the task
 
 let running = false;
@@ -154,14 +155,26 @@ async function gatherLogs(bot: Bot): Promise<void> {
       const giveUp = setTimeout(() => {
         log.warn("attempt timed out", { position: block.position });
         bot.collectBlock.cancelTask().catch(() => {});
+        // a dig in flight is what cancelTask alone can leave hanging
+        try {
+          if (bot.targetDigBlock) bot.stopDigging();
+        } catch {
+          // nothing to stop
+        }
         bot.pathfinder.setGoal(null);
       }, ATTEMPT_MS);
+      // if collect() still has not settled shortly after being cancelled, move on without it
+      let abandonTimer: ReturnType<typeof setTimeout> | undefined;
+      const abandoned = new Promise<void>((_, reject) => {
+        abandonTimer = setTimeout(() => reject(new Error("attempt abandoned, collect did not settle")), ATTEMPT_MS + ABANDON_MS);
+      });
       try {
-        await bot.collectBlock.collect(block);
+        await Promise.race([bot.collectBlock.collect(block), abandoned]);
       } catch (err) {
         log.warn("collect failed", { message: (err as Error).message });
       } finally {
         clearTimeout(giveUp);
+        clearTimeout(abandonTimer);
         bot.removeListener("diggingCompleted", markDug);
         bot.removeListener("diggingAborted", markDug);
       }

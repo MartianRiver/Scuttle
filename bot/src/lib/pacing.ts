@@ -4,7 +4,11 @@ export const pacing = {
   tickMs: 250, // how often the body looks around
   reactionMs: 350, // before answering a threat that just appeared
   reactionJitterMs: 150,
+  hazardTickMs: 100, // lava, fire and water are checked faster than mobs
+  instinctMs: 150, // before answering lava, fire or drowning: quick, still not instant
 };
+
+export const instinctDelay = (): number => pacing.instinctMs;
 
 export function reactionDelay(random: () => number = Math.random): number {
   return pacing.reactionMs + (random() * 2 - 1) * pacing.reactionJitterMs;

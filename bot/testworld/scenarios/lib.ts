@@ -67,7 +67,12 @@ const xyz = (p: Pos) => `${p.x} ${p.y} ${p.z}`;
 export class World {
   constructor(readonly rcon: Rcon) {}
 
-  run = (cmd: string) => this.rcon.command(cmd);
+  // a command the server refuses (a fill past the block limit, a typo) must fail the scenario, not pass silently
+  async run(cmd: string): Promise<string> {
+    const out = await this.rcon.command(cmd);
+    if (/Too many blocks|Unknown or incomplete|Unknown block|Expected |Invalid /.test(out)) throw new Error(`${cmd} -> ${out.split("\n")[0]}`);
+    return out;
+  }
 
   async passes(cmd: string): Promise<boolean> {
     return (await this.run(cmd)).includes("Test passed");

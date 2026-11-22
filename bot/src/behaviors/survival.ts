@@ -2,6 +2,7 @@ import type { Bot } from "mineflayer";
 import { logger } from "../lib/logger";
 import { setStatus } from "../lib/status";
 import { isFleeing } from "./defence";
+import { isInHazard } from "./survive";
 
 const log = logger("survival");
 
@@ -18,7 +19,7 @@ export function startSurvival(bot: Bot): () => void {
 }
 
 async function tick(bot: Bot): Promise<void> {
-  if (bot.food >= HUNGRY_BELOW || isFleeing()) return;
+  if (bot.food >= HUNGRY_BELOW || isFleeing() || isInHazard()) return;
 
   const food = bot.inventory.items().find((item) => bot.registry.foodsByName[item.name]);
   if (!food) return;
