@@ -2,6 +2,7 @@ import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { home } from "../lib/home";
 import { itemCount, craftItem } from "../lib/inventory";
+import { gatherMovements, isNaturalLog, isPlainLogName, safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
 
@@ -15,6 +16,8 @@ const SEARCH_RADIUS = 64;
 const PLANKS_BUFFER = 12; // covers 2 sticks-crafts (2 planks each) + 2 tool heads (3 planks each) + slack
 const STICKS_NEEDED = 4; // 2 for the pickaxe, 2 for the axe
 const KEEP_LOGS = 4; // spare logs left in inventory (fuel, future crafting) instead of stashed
+const REVERT_CAP = 2; // digs the server undid before the task gives up as protected
+const STUCK_CAP = 3; // attempts in a row that gained nothing
 
 let running = false;
 let stopRequested = false;
@@ -31,6 +34,13 @@ export function requestStop(bot: Bot): void {
 }
 
 export type TaskResult = { ok: true } | { ok: false; reason: string };
+
+// reasons the API reports as they are; anything else is the error's message
+class TaskFailure extends Error {
+  constructor(readonly code: "protected" | "no_trees" | "stuck", message: string) {
+    super(message);
+  }
+}
 
 export async function startTask(bot: Bot, name: string): Promise<TaskResult> {
   if (name !== "get wood") {
@@ -56,7 +66,7 @@ export async function startTask(bot: Bot, name: string): Promise<TaskResult> {
     if (stopRequested) return { ok: false, reason: "stopped" };
     log.error("get-wood task failed", { message: (err as Error).message });
     bot.chat(`I got stuck getting wood: ${(err as Error).message}`);
-    return { ok: false, reason: (err as Error).message };
+    return { ok: false, reason: err instanceof TaskFailure ? err.code : (err as Error).message };
   } finally {
     running = false;
     stopRequested = false;
@@ -65,11 +75,11 @@ export async function startTask(bot: Bot, name: string): Promise<TaskResult> {
 }
 
 function totalLogs(bot: Bot): number {
-  return bot.inventory.items().reduce((sum, item) => (item.name.endsWith("_log") ? sum + item.count : sum), 0);
+  return bot.inventory.items().reduce((sum, item) => (isPlainLogName(item.name) ? sum + item.count : sum), 0);
 }
 
 function pickLogVariant(bot: Bot): string | null {
-  const logs = bot.inventory.items().filter((item) => item.name.endsWith("_log"));
+  const logs = bot.inventory.items().filter((item) => isPlainLogName(item.name));
   logs.sort((a, b) => b.count - a.count);
   return logs[0]?.name ?? null;
 }
@@ -78,14 +88,66 @@ function hasTool(bot: Bot, name: string): boolean {
   return bot.inventory.items().some((item) => item.name === name);
 }
 
+const keyOf = (p: { x: number; y: number; z: number }) => `${p.x},${p.y},${p.z}`;
+
+function nearestNaturalLog(bot: Bot, skipped: Set<string>) {
+  const ids = Object.values(bot.registry.blocksByName)
+    .filter((b) => isPlainLogName(b.name))
+    .map((b) => b.id);
+  // a log cabin next to the bot can fill the nearest few, so look at plenty
+  const positions = bot.findBlocks({ matching: ids, maxDistance: SEARCH_RADIUS, count: 256 });
+  for (const pos of positions) {
+    if (skipped.has(keyOf(pos))) continue;
+    const block = bot.blockAt(pos);
+    if (block && isNaturalLog(bot, block)) return block;
+  }
+  return null;
+}
+
 async function gatherLogs(bot: Bot): Promise<void> {
   await setStatus({ task: "gathering wood" });
-  while (totalLogs(bot) < LOG_TARGET) {
-    if (stopRequested) throw new Error("stopped");
-    const block = bot.findBlock({ matching: (b) => b.name.endsWith("_log"), maxDistance: SEARCH_RADIUS });
-    if (!block) throw new Error("no trees within range — needs to walk further than this task does yet");
-    log.info("collecting log", { name: block.name, position: block.position });
-    await bot.collectBlock.collect(block);
+  bot.pathfinder.setMovements(gatherMovements(bot));
+  try {
+    const skipped = new Set<string>();
+    let reverted = 0;
+    let stuck = 0;
+    while (totalLogs(bot) < LOG_TARGET) {
+      if (stopRequested) throw new Error("stopped");
+      const block = nearestNaturalLog(bot, skipped);
+      if (!block) {
+        throw new TaskFailure("no_trees", "no natural trees within range, needs to walk further than this task does yet");
+      }
+      log.info("collecting log", { name: block.name, position: block.position });
+
+      const before = totalLogs(bot);
+      let dug = false;
+      const markDug = () => {
+        dug = true;
+      };
+      bot.on("diggingCompleted", markDug);
+      bot.on("diggingAborted", markDug);
+      try {
+        await bot.collectBlock.collect(block);
+      } catch (err) {
+        log.warn("collect failed", { message: (err as Error).message });
+      } finally {
+        bot.removeListener("diggingCompleted", markDug);
+        bot.removeListener("diggingAborted", markDug);
+      }
+
+      if (totalLogs(bot) > before) {
+        stuck = 0;
+        continue;
+      }
+      skipped.add(keyOf(block.position));
+      // a dig happened and the log is back: the server undid it
+      if (dug && bot.blockAt(block.position)?.name === block.name && ++reverted >= REVERT_CAP) {
+        throw new TaskFailure("protected", "the server keeps undoing my digs here");
+      }
+      if (++stuck >= STUCK_CAP) throw new TaskFailure("stuck", "couldn't get any wood after several tries");
+    }
+  } finally {
+    bot.pathfinder.setMovements(safeMovements(bot));
   }
 }
 

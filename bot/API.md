@@ -55,7 +55,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `body_connected` / `body_disconnected` | `reason` on disconnect |
 | `task_started` | `taskId`, `kind` |
 | `task_finished` | `taskId` |
-| `task_failed` | `taskId`, `reason` |
+| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `stuck`, `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `chat` | `uuid`, `name`, `message` — every public chat line the bot sees, not only ones aimed at it |
 
