@@ -8,4 +8,4 @@ cd "$run"
 [[ -f .rcon ]] || openssl rand -hex 16 > .rcon
 { cat "$here/server.properties"; echo "rcon.password=$(cat .rcon)"; } > server.properties
 echo "eula=true" > eula.txt
-exec caffeinate -i /opt/homebrew/opt/openjdk/bin/java -Xms1G -Xmx2G -jar paper-26.2-112.jar --nogui
+exec caffeinate -i /opt/homebrew/opt/openjdk/bin/java -Xms1G -Xmx2G -jar paper-26.3-257.jar --nogui

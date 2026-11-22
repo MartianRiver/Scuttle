@@ -14,12 +14,12 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node scripts/patch-26.2.js",
+    "postinstall": "node scripts/patch-26.3.js",
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "mineflayer": "^4.38.0",
+    "mineflayer": "https://codeload.github.com/PrismarineJS/mineflayer/tar.gz/ad4af12611fd55309bb387b2b416212bffb0eddf",
     "mineflayer-collectblock": "^1.6.0",
     "mineflayer-pathfinder": "^2.4.5",
     "rcon-client": "^4.2.5",
@@ -31,5 +31,11 @@
     "@types/ws": "^8.18.2",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4"
+  },
+  "overrides": {
+    "mineflayer": "$mineflayer",
+    "minecraft-protocol": "https://codeload.github.com/PrismarineJS/node-minecraft-protocol/tar.gz/3473413d32ee09af55aa77579000391be3bb9753",
+    "prismarine-chunk": "https://codeload.github.com/PrismarineJS/prismarine-chunk/tar.gz/a96fd7050163b5ae3cbce240deab453a03cd3bc2",
+    "prismarine-physics": "https://codeload.github.com/PrismarineJS/prismarine-physics/tar.gz/b928638645a56a110a51da1f2080c6455b27984a"
   }
 }

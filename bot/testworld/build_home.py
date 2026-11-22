@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Builds the bot's home area, a small grove and the protection regions in the running test world.
 # Coordinates mirror bot/src/lib/home.ts. Default is the visitor gate with the bot NOT a member of
-# __global__, as the family server is configured; pass --member to make it one.
+# __global__, as the family server is configured; --member adds a gathering region around the grove
+# with the bot as a member instead (members of __global__ itself don't unlock its deny flags here).
 import hashlib, sys, uuid
 from rcon import Rcon, RUN
 
@@ -51,10 +52,21 @@ run("gamerule advance_time false")
 
 # the console has no WorldEdit selection for rg define, so write the region file and reload it
 bot_uuid = offline_uuid(BOT)
-member = f"        members:\n            unique-ids:\n            - {bot_uuid}\n" if "--member" in sys.argv else "        members: {}\n"
+grove = f"""    scuttle-grove:
+        min: {{x: -18, y: 60, z: -8}}
+        max: {{x: 26, y: 100, z: 10}}
+        members:
+            unique-ids:
+            - {bot_uuid}
+        flags: {{}}
+        owners: {{}}
+        type: cuboid
+        priority: 1
+""" if "--member" in sys.argv else ""
 regions = f"""regions:
     __global__:
-{member}        flags: {{build: deny, use: deny}}
+        members: {{}}
+        flags: {{build: deny, use: deny}}
         owners: {{}}
         type: global
         priority: 0
@@ -68,7 +80,7 @@ regions = f"""regions:
             - {bot_uuid}
         type: cuboid
         priority: 0
-"""
+{grove}"""
 (RUN / "plugins/WorldGuard/worlds/world/regions.yml").write_text(regions)
 run("rg load -w world")
 run("rg info -w world scuttle-home")
