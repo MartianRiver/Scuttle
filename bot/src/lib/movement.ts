@@ -31,9 +31,9 @@ export function safeMovements(bot: Bot): Movements {
 }
 
 // For the wood gathering step only: it may break natural logs and the natural leaves around them,
-// nothing else. A canopy is a wall to the pathfinder otherwise. mineBlock in collectblock asks the
-// pathfinder's own safeToBreak before every dig, so this is also the gate for the dig itself. Made
-// per task, so the memo never outlives the trees it describes.
+// nothing else. A canopy is a wall to the pathfinder otherwise. collectLog asks safeToBreak before
+// every dig, so this is also the gate for the dig itself. Made per task, so the memo never outlives
+// the trees it describes.
 export function gatherMovements(bot: Bot): Movements {
   const m = safeMovements(bot);
   m.canDig = true;
