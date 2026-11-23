@@ -39,6 +39,14 @@ def table(res, label):
 
 if __name__ == "__main__":
     here = pathlib.Path(__file__).parent
+    if sys.argv[1:2] == ["--bodychat"]:
+        import bodychat_run
+        path = here / (sys.argv[2] if len(sys.argv) > 2 else bodychat_run.DEFAULT_OUT)
+        data = bodychat_run.rescore(path)
+        path.write_text(json.dumps(data, indent=1))
+        bodychat_run.print_table(data["results"])
+        bodychat_run.failures(data["results"])
+        sys.exit(0)
     for f, label in (("results.json", "reasoning ON (default)"),
                      ("results_noreason.json", "reasoning OFF")):
         res = rescore(here / f)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runs every scenario against every candidate model and scores the results.
 
-Usage: python3 run.py [--models a,b,c] [--out results.json]
+Usage: python3 run.py [--suite plugin|bodychat] [--models a,b,c] [--out results.json]
 """
 import argparse
 import concurrent.futures as cf
@@ -46,13 +46,21 @@ def api_key():
     return os.environ["OPENROUTER_API_KEY"]
 
 
-KEY = api_key()
+_KEY = None
+
+
+def key():
+    # resolved on first use, so --dry-run and the offline tests need no key
+    global _KEY
+    if _KEY is None:
+        _KEY = api_key()
+    return _KEY
 
 
 def post(body, timeout=90):
     req = urllib.request.Request(
         ENDPOINT, data=json.dumps(body).encode(),
-        headers={"Authorization": f"Bearer {KEY}",
+        headers={"Authorization": f"Bearer {key()}",
                  "Content-Type": "application/json",
                  "X-Title": "Scuttle bakeoff"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -209,9 +217,17 @@ def summarise(rec):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--models", default=",".join(CANDIDATES))
-    ap.add_argument("--out", default="results.json")
-    ap.add_argument("--jobs", type=int, default=6)
+    ap.add_argument("--suite", choices=("plugin", "bodychat"), default="plugin",
+                    help="plugin: the in-plugin chat prompt (default); bodychat: the body owns chat")
+    ap.add_argument("--models", default=None, help="comma-separated; default depends on suite")
+    ap.add_argument("--out", default=None, help="default results.json, or bodychat-results.json")
+    ap.add_argument("--jobs", type=int, default=None, help="default 6, or 3 for bodychat")
+    ap.add_argument("--max-spend", type=float, default=None,
+                    help="bodychat only: USD cap, default 2.0; stops starting calls at the cap")
+    ap.add_argument("--speech", choices=("tool", "text"), default=None,
+                    help="bodychat only: tool (default) speaks through a say tool; text: the "
+                         "reply text is the speech, empty = silent")
+    ap.add_argument("--dry-run", action="store_true", help="bodychat only: size the run, no calls")
     ap.add_argument("--reasoning", action="store_true",
                     help="leave model reasoning on; off by default, as the plugin ships")
     ap.add_argument("--no-pocket", action="store_true",
@@ -220,6 +236,16 @@ def main():
     ap.add_argument("--only", default="", help="comma-separated scenario ids")
     ap.add_argument("--repeat", type=int, default=1)
     args = ap.parse_args()
+    if args.suite == "bodychat":
+        import bodychat_run
+        if not args.dry_run:
+            key()  # fail now, not as 40 failed calls
+        return bodychat_run.main(args, post)
+    if args.max_spend is not None or args.dry_run or args.speech:
+        ap.error("--max-spend, --speech and --dry-run only exist for --suite bodychat")
+    args.models = args.models or ",".join(CANDIDATES)
+    args.out = args.out or "results.json"
+    args.jobs = args.jobs or 6
     OPTS["reasoning"] = args.reasoning
     OPTS["no_pocket"] = args.no_pocket
     OPTS["max_tokens"] = args.max_tokens
