@@ -14,6 +14,7 @@ const log = logger("api");
 export interface BodyApi {
   dispatch(intent: Intent): Outcome;
   interrupt(): void;
+  noFood(food: number): void;
   close(): void;
 }
 
@@ -23,6 +24,7 @@ export function startBodyApi(bot: Bot): BodyApi {
   const { host, port, tokens } = config.api;
   const events = new EventLog();
   const dispatcher = createDispatcher(createBody(bot), events);
+  const noFood = (food: number) => void events.emit("no_food", { food });
 
   bot.once("spawn", () => dispatcher.bodyConnected());
   bot.on("end", (reason) => dispatcher.bodyDisconnected(String(reason)));
@@ -34,13 +36,14 @@ export function startBodyApi(bot: Bot): BodyApi {
 
   if (!port || tokens.size === 0) {
     log.info("body API server off (API_PORT / API_TOKENS not set)");
-    return { dispatch: dispatcher.handle, interrupt: dispatcher.interrupted, close() {} };
+    return { dispatch: dispatcher.handle, interrupt: dispatcher.interrupted, noFood, close() {} };
   }
 
   const server = startApiServer({ host, port, tokens }, dispatcher, events);
   return {
     dispatch: dispatcher.handle,
     interrupt: dispatcher.interrupted,
+    noFood,
     close() {
       for (const client of server.clients) client.terminate();
       server.close();

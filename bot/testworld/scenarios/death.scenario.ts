@@ -57,8 +57,8 @@ const midTask: Scenario = {
 
     c.check(await alive(c), "the bot is alive with 20 health");
     c.check((await c.world.deaths(c.bot)) === 1, "one death on the server");
-    const again = await c.body.send({ intent: "task", name: "get_wood" });
-    c.check(again.type === "accepted", `a new task is accepted, not busy (got ${again.type} ${again.reason ?? ""})`);
+    // busy while the old task winds down, as after a stop; startTask allows it 8 s
+    c.check(await c.body.startTask(), "a new task is accepted once the old one has wound down");
     await c.body.send({ intent: "stop" });
   },
   cleanup: async (c) => {

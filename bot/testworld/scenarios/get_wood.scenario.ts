@@ -1,7 +1,7 @@
 // get_wood takes logs from natural trees and from nothing else. Four grown-looking trees are
 // rebuilt each run beside three decoys (a stripped tree, a bare trunk, a trunk under placed
 // leaves) inside the grove region; the checks are on blocks the server holds. (Was a one-off diff.)
-import { sleep, type Pos, type Scenario } from "./lib";
+import { sleep, type Ctx, type Pos, type Scenario } from "./lib";
 
 const NATURAL = [[12, 4], [17, -3], [20, 5], [-14, 3]] as const; // same trees build_home.py grows
 const STRIPPED: Pos = { x: 4, y: 68, z: 6 };
@@ -11,6 +11,16 @@ const tall = 5;
 
 const column = (p: Pos, h: number): [Pos, Pos] => [p, { ...p, y: p.y + h - 1 }];
 
+// earlier runs and demos leave grown trees about (a decoy beside one would turn natural), so clear and regrow
+export async function growNaturalTrees(c: Ctx): Promise<void> {
+  await c.world.run("fill -24 68 -10 24 95 12 air");
+  for (const [tx, tz] of NATURAL) {
+    await c.world.run(`fill ${tx - 2} 70 ${tz - 2} ${tx + 2} 71 ${tz + 2} oak_leaves`);
+    await c.world.run(`fill ${tx - 1} 72 ${tz - 1} ${tx + 1} 73 ${tz + 1} oak_leaves`);
+    await c.world.run(`fill ${tx} 68 ${tz} ${tx} 72 ${tz} oak_log`);
+  }
+}
+
 export const get_wood: Scenario = {
   name: "get_wood takes natural logs only",
   timeoutMs: 300_000,
@@ -19,13 +29,7 @@ export const get_wood: Scenario = {
     await sleep(1500);
     await c.world.run(`clear ${c.bot}`);
     await c.world.run(`tp ${c.bot} 0.5 68 -10`);
-    // earlier runs and demos leave grown trees about; a decoy beside one would turn natural
-    await c.world.run("fill -24 68 -10 24 95 12 air");
-    for (const [tx, tz] of NATURAL) {
-      await c.world.run(`fill ${tx - 2} 70 ${tz - 2} ${tx + 2} 71 ${tz + 2} oak_leaves`);
-      await c.world.run(`fill ${tx - 1} 72 ${tz - 1} ${tx + 1} 73 ${tz + 1} oak_leaves`);
-      await c.world.run(`fill ${tx} 68 ${tz} ${tx} 72 ${tz} oak_log`);
-    }
+    await growNaturalTrees(c);
     // the dig of any decoy would be allowed here, so a dug decoy shows
     await c.world.run(`fill ${STRIPPED.x} 68 ${STRIPPED.z} ${STRIPPED.x} 72 ${STRIPPED.z} stripped_oak_log`);
     await c.world.run(`fill ${BARE.x} 68 ${BARE.z} ${BARE.x} 72 ${BARE.z} oak_log`);

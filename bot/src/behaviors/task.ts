@@ -6,6 +6,8 @@ import { collectLog } from "../lib/collect";
 import { gatherMovements, isNaturalLog, isPlainLogName, safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
+import { planRestock, wantsRestock } from "./food";
+import { carriedItems, eatIfSafe, foodTable } from "./survival";
 import { walkTo } from "./unstuck";
 
 const log = logger("task");
@@ -55,6 +57,13 @@ function checkStop(): void {
   if (stopRequested) throw new Error("stopped");
 }
 
+// between steps, with nothing in hand and no window open: the one place a task lets the body eat
+async function pause(bot: Bot): Promise<void> {
+  checkStop();
+  await eatIfSafe(bot);
+  checkStop();
+}
+
 export type TaskResult = { ok: true } | { ok: false; reason: string };
 
 // reasons the API reports as they are; anything else is the error's message
@@ -78,9 +87,9 @@ export async function startTask(bot: Bot, name: string): Promise<TaskResult> {
   stopRequested = false;
   try {
     await gatherLogs(bot);
-    checkStop();
+    await pause(bot);
     await craftBasics(bot);
-    checkStop();
+    await pause(bot);
     await depositSurplus(bot);
     log.info("get-wood task finished");
     return { ok: true };
@@ -139,7 +148,7 @@ async function gatherLogs(bot: Bot): Promise<void> {
     const zones: Zone[] = [];
     let stuck = 0;
     while (totalLogs(bot) < LOG_TARGET) {
-      checkStop();
+      await pause(bot);
       const block = nearestNaturalLog(bot, skipped, zones);
       if (!block) {
         throw new TaskFailure("no_trees", "no natural trees within range, needs to walk further than this task does yet");
@@ -251,7 +260,9 @@ async function depositSurplus(bot: Bot): Promise<void> {
   const planksName = logName?.replace("_log", "_planks");
   const surplusPlanks = planksName ? itemCount(bot, planksName) : 0;
 
-  if (surplusLogs <= 0 && surplusPlanks <= 0) return;
+  const table = foodTable(bot);
+  const wantFood = wantsRestock(carriedItems(bot), table);
+  if (surplusLogs <= 0 && surplusPlanks <= 0 && !wantFood) return;
 
   checkStop();
   const chest = await bot.openChest(block);
@@ -263,6 +274,15 @@ async function depositSurplus(bot: Bot): Promise<void> {
     checkStop();
     if (planksName && surplusPlanks > 0) {
       await chest.deposit(bot.registry.itemsByName[planksName].id, null, surplusPlanks);
+    }
+    if (wantFood) {
+      // after the deposits, which free slots; the body never walks here for this, it only takes what is on offer
+      const inChest = chest.containerItems().map((i) => ({ name: i.name, count: i.count }));
+      for (const { name, count } of planRestock(carriedItems(bot), inChest, table)) {
+        checkStop();
+        log.info("taking food from the stash", { name, count });
+        await chest.withdraw(bot.registry.itemsByName[name].id, null, count);
+      }
     }
   } finally {
     chest.close();
