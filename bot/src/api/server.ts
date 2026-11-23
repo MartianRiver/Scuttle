@@ -86,6 +86,8 @@ function serve(ws: WebSocket, opts: ApiOptions, dispatcher: Dispatcher, events: 
     const out = dispatcher.handle(m);
     if (out.kind === "status") send({ type: "status", id: m.id, snapshot: out.snapshot });
     else if (out.kind === "observation") send({ type: "observation", id: m.id, observation: out.observation });
+    else if (out.kind === "recipe") send({ type: "recipe", id: m.id, recipe: out.recipe });
+    else if (out.kind === "stash") send({ type: "stash", id: m.id, stash: out.stash });
     else if (out.kind === "accepted") send({ type: "accepted", id: m.id, ...(out.taskId && { taskId: out.taskId }) });
     else send({ type: "rejected", id: m.id, reason: out.reason });
   });

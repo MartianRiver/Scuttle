@@ -246,7 +246,7 @@ test("skills: every task in TASKS has an entry and failure reasons, every action
     assert.ok(t.does.length > 20 && t.needs.length > 0, name);
     assert.ok(Object.keys(t.fails).length > 0 && Object.values(t.fails).every((s) => s.length > 0), name);
   }
-  assert.deepEqual(Object.keys(ACTIONS).sort(), ["come_to", "follow", "give", "go_to", "guard", "stop", "task"]);
+  assert.deepEqual(Object.keys(ACTIONS).sort(), ["collect", "come_to", "craft", "equip", "explore", "follow", "give", "go_to", "guard", "stop", "store", "take", "task"]);
   for (const [name, a] of Object.entries(ACTIONS)) {
     assert.ok(a.does.length > 0 && a.ends.length > 0, name);
     for (const r of a.rejects) assert.ok(REJECTS[r], `${name}: no hint for ${r}`);
@@ -264,7 +264,7 @@ test("through MCP: tools list, an audit line per call with the rationale and no 
   const mcp = new Client({ name: "t", version: "0" });
   try {
     await Promise.all([server.connect(a), mcp.connect(b)]);
-    assert.deepEqual((await mcp.listTools()).tools.map((t) => t.name).sort(), ["act", "events", "observe", "say", "skills", "status", "wait"]);
+    assert.deepEqual((await mcp.listTools()).tools.map((t) => t.name).sort(), ["act", "events", "observe", "recipe", "say", "skills", "stash", "status", "wait"]);
 
     const act: any = await mcp.callTool({ name: "act", arguments: { action: "follow", player: "Sam", rationale: "keep him company" } });
     assert.equal(JSON.parse(act.content[0].text).accepted, true);

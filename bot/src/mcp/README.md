@@ -1,7 +1,7 @@
 # MCP adapter
 
-Lets an LLM session play through the body API (`../../API.md`) with six tools: `status`, `act`,
-`wait`, `events`, `say`, `skills`. It adds nothing the API doesn't have: no coordinates, no commands.
+Lets an LLM session play through the body API (`../../API.md`) with these tools: `status`, `act`,
+`wait`, `events`, `observe`, `recipe`, `stash`, `say`, `skills`. It adds nothing the API doesn't have: no coordinates, no commands.
 `rationale` on `act` is logged by the adapter and never sent to the body.
 
 Run it from the mind's own directory, not the repo. In that directory's `.mcp.json`, with the
@@ -39,6 +39,7 @@ args, outcome. Outcomes hold event names and counts, never chat text or speaker 
 - `task_progress` lines are commentary: `wait` never wakes for them, `events` shows only the newest per task, and a
   `wait` that times out carries the last one as `progress`. `task_failed` and `task_finished` lines show `detail=` (words)
   and `got=` (items gained, `oak_log:4`).
+- `recipe` and `stash` are read-only answers like `observe`; `act` craft, collect, equip, store, take and explore are the hands (`skills` says what each ends with).
 - `act` task takes `near` (a block handle or a place) to aim a task at a tree, ore or chest seen in `observe`.
 - Adding an intent (observe, go_to): its entry in `ACTIONS` in `skills.ts` (and its task or argument names
   there), the argument in the `act` schema in `tools.ts`, a line in `TASK_SKILLS` if it is a task. The

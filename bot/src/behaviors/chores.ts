@@ -7,6 +7,7 @@ import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
 import type { MineCtx } from "./mine";
 import { noteStashed } from "./run-report";
+import { noteLook } from "./stash";
 import { walkTo } from "./unstuck";
 
 const log = logger("chores");
@@ -51,6 +52,7 @@ export async function stashItems(bot: Bot, ctx: MineCtx, status: string, amounts
         });
     }
   } finally {
+    noteLook(0, chest);
     chest.close();
   }
 }

@@ -1,4 +1,4 @@
-import { TASKS, type TaskName } from "../api/protocol";
+import { COMPASS_POINTS, EXPLORE_BANDS, TASKS, type TaskName } from "../api/protocol";
 
 // What the mind is told it can do, kept by hand next to the API. test/mcp-skills.test.ts fails when
 // a task in TASKS has no entry here. To add an action: one entry in ACTIONS, its argument names in
@@ -11,10 +11,12 @@ export interface ActArgs {
   task?: string;
   handle?: string;
   near?: string;
+  dir?: string;
+  far?: string;
 }
 
 // where each act argument goes on the wire
-const WIRE: Record<keyof ActArgs, string> = { player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near" };
+const WIRE: Record<keyof ActArgs, string> = { player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far" };
 
 export interface ActionDef {
   does: string;
@@ -25,6 +27,7 @@ export interface ActionDef {
 }
 
 const MOVE_REJECTS = ["busy", "in_fight", "in_danger", "not_in_game", "unknown_player"];
+const ACT_REJECTS = ["busy", "in_fight", "in_danger", "not_in_game"];
 
 export const ACTIONS: Record<string, ActionDef> = {
   come_to: {
@@ -69,6 +72,48 @@ export const ACTIONS: Record<string, ActionDef> = {
     rejects: ["busy", "in_fight", "in_danger", "not_in_game", "stale_handle"],
     ends: "task_finished (got= what it gained, counting what it stashed), or task_failed with a reason from that task's list, a detail= in words about why (e.g. three digs undone near the trees, a fair way south-west) and got= what it had gathered before. Anything running makes a task busy: stop first.",
   },
+  craft: {
+    does: "Craft an item from the recipes the server has: count is how many you want made (default 1, max 64; the body rounds up to whole batches). Made in the inventory when the recipe fits a 2x2 grid, otherwise at a crafting table: one in reach or within about 16 blocks, else the home table. It does not make ingredients for you: planks come from logs (craft oak_planks), sticks from planks (craft stick), a pickaxe from planks and sticks; chain them yourself. Use the recipe tool first to see what an item takes.",
+    required: ["item"],
+    optional: ["count"],
+    rejects: [...ACT_REJECTS, "unknown_item"],
+    ends: "task_finished with got= what it made; task_failed missing (missing= what it lacks, in total for the count), no_table (no table in reach and none at home), no_recipe (nothing crafts it: mined, found or smelted), craft_failed, stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
+  collect: {
+    does: "Dig the block a handle from observe points at, with the right tool from its inventory, and pick up the drops. A tree handle (the base log) takes that tree's logs within reach; a stone or ore handle takes that block, or up to count (default 1, max 16) of the same kind touching it. Natural blocks only (logs, stone, ores, dirt, sand, gravel), never under or beside what a player built, never where the server undid its digs. Aiming it: observe lists trees, ores and the nearest stone with handles.",
+    required: ["handle"],
+    optional: ["count"],
+    rejects: [...ACT_REJECTS, "stale_handle"],
+    ends: "task_finished with got= what it picked up; task_failed no_tool (detail says which pickaxe it needs), refused (not a natural block, a player's build too near, or a place where digs were undone; detail says which), protected (the server undid the dig), stale_handle (the block is gone), stuck (no way to reach it), interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
+  equip: {
+    does: "Put an item it carries on: armour goes to its slot, a shield to the off hand, anything else into the hand. One swap, taken at once.",
+    required: ["item"],
+    optional: [],
+    rejects: [...ACT_REJECTS, "none_held"],
+    ends: "Accepted with no taskId; the swap happens a moment later (observe held and armor show it). Rejected none_held if it carries none. Refused busy while a task or action runs, since those choose their own tools.",
+  },
+  store: {
+    does: "Walk to its own stash chests at home and put items in. With item (and optionally count) it stores that. With no item it stores everything except tools, weapons and armour it carries, food up to 16, and 4 cobblestone and 4 coal. Only its own stash, never anyone else's chest.",
+    required: [],
+    optional: ["item", "count"],
+    rejects: ACT_REJECTS,
+    ends: "task_finished with stored= what went in; task_failed none_held (nothing to spare), stash_full (no room), no_stash (not in the overworld, or no chest where expected), stuck, interrupted, died, disconnected. Like a task: busy while anything runs. The stash tool lists what the chests held when last seen.",
+  },
+  take: {
+    does: "Walk to its own stash chests and take an item out: up to count (default a stack, max 64). Opens the chests that may hold it.",
+    required: ["item"],
+    optional: ["count"],
+    rejects: [...ACT_REJECTS, "unknown_item"],
+    ends: "task_finished with got= what it took (it may be less than asked); task_failed none_stashed (none of it in its chests), inventory_full, no_stash, stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
+  explore: {
+    does: `Walk in a compass direction (${COMPASS_POINTS.join(", ")}) for a distance band far (${EXPLORE_BANDS.join(", ")}; default a short walk: near ends about 8 to 16 blocks away, a short walk 16 to 32, a fair way 32 to 48, far 48 to 128), from where it stands, never past 160 blocks from home. It goes round water and cliffs when it can. Use it when nothing useful is in view.`,
+    required: ["dir"],
+    optional: ["far"],
+    rejects: [...ACT_REJECTS, "too_far"],
+    ends: "task_finished with saw= kinds newly in view on the way, in words (trees, stone, iron ore, water, lava, doors, players; no handles: call observe next); task_failed blocked or stuck with detail= what is in the way (a cliff to the north, the sea to the east), interrupted, died, disconnected. Rejected too_far at once if the end point would be past the leash from home. Like a task: busy while anything runs.",
+  },
   stop: {
     does: "Stop whatever the body is doing, at once. Always accepted. Returns the taskId of what was stopped, if anything.",
     required: [],
@@ -83,6 +128,9 @@ export const REJECTS: Record<string, string> = {
   in_fight: "the body is in a fight; only stop and status are taken",
   in_danger: "hostile mobs are on the body; only stop, status and guard are taken",
   not_in_game: "the body is not connected to the game server",
+  unknown_item: "the game has no item by that name (lowercase_with_underscores, no namespace, like oak_planks)",
+  none_held: "it does not carry that item",
+  too_far: "the end point would be more than 160 blocks from home",
   stale_handle: "the body no longer has that handle (expired after 10 min unseen, from before a restart, the mob is gone, the block was mined); observe again for fresh ones",
   unknown_player: "that player is not in the body's loaded view (name wrong, offline or far away)",
   rate_limited: "too many requests (10 per 10 s) or more than one chat line per 2 s; slow down",
@@ -176,7 +224,12 @@ export function skillsTable() {
   return {
     tasks,
     actions,
-    other: { say: "say(text): one public chat line, up to 100 printable ASCII characters, one per 2 s.", reasons: REJECTS },
+    other: {
+      say: "say(text): one public chat line, up to 100 printable ASCII characters, one per 2 s.",
+      recipe: "recipe(item): what crafting an item takes, answered at once: makes, needs, whether it needs a table, what it holds of that (have) and what is missing for one craft. A named kind of planks or logs fits only what it holds; with none it says planks for any wood.",
+      stash: "stash(): what its own stash chests held when it last looked, counts per item, fresh (every chest looked at within 10 minutes), looked (just now, minutes ago, a while ago, never), unseen (chests it never opened). Answered from memory at once.",
+      reasons: REJECTS,
+    },
     not_possible: "Anything not listed. There are no coordinates, commands or free movement. If you need something that is not here, say so in your own notes as a skill request instead of retrying.",
   };
 }

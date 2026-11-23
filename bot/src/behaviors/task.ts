@@ -13,6 +13,7 @@ import { getIron } from "./iron";
 import { ProgressGate } from "./progress";
 import { noteRefused, refusedNow, reverted, undoneWords } from "./refused";
 import { beginRun, endRun, gotNow, noteStashed, type Counts } from "./run-report";
+import { noteLook } from "./stash";
 import { getStone } from "./stone";
 import { carriedItems, eatIfSafe, foodTable } from "./survival";
 import { walkTo } from "./unstuck";
@@ -71,14 +72,22 @@ async function pause(bot: Bot): Promise<void> {
   checkStop();
 }
 
-export type TaskResult = ({ ok: true } | ({ ok: false; reason: string } & FailInfo)) & { got?: Counts };
+// what an action hands back besides `got`: a `store` says what went in, an `explore` what it saw
+export interface ActionDone {
+  stored?: Counts;
+  saw?: string;
+}
+
+export type TaskResult = ({ ok: true } & ActionDone | ({ ok: false; reason: string } & FailInfo)) & { got?: Counts };
 
 export interface TaskOptions {
   aim?: Vec3; // the search is centred here instead of at home (or at the body, for wood)
   onProgress?(p: { step: string; got?: Counts }): void;
 }
 
-const mineCtx = (bot: Bot, aim?: Vec3) => ({ centre: aim, checkStop, pause: () => pause(bot), stopping: () => stopRequested });
+// what a long step needs from the runner: where to look, when to stop, when to eat
+export const actionCtx = (bot: Bot, aim?: Vec3) => ({ centre: aim, checkStop, pause: () => pause(bot), stopping: () => stopRequested });
+const mineCtx = actionCtx;
 
 const PIPELINES: Record<string, (bot: Bot, aim?: Vec3) => Promise<void>> = {
   "get wood": async (bot, aim) => {
@@ -98,6 +107,12 @@ export async function startTask(bot: Bot, name: string, opts: TaskOptions = {}):
     log.warn("unknown task", { name });
     return { ok: false, reason: "unknown task" };
   }
+  return runAction(bot, name, () => pipeline(bot, opts.aim), opts);
+}
+
+// One long step at a time, whatever it is: busy while it runs, stoppable, a progress line on each change of step,
+// and what the run gained at the end. `work` throws its reason as the message (a TaskError also carries words).
+export async function runAction(bot: Bot, name: string, work: () => Promise<ActionDone | void>, opts: TaskOptions = {}): Promise<TaskResult> {
   if (running) {
     log.warn("task refused, one already running", { name });
     return { ok: false, reason: "busy" };
@@ -114,15 +129,16 @@ export async function startTask(bot: Bot, name: string, opts: TaskOptions = {}):
       }, PROGRESS_POLL_MS)
     : null;
   try {
-    await pipeline(bot, opts.aim);
+    const done = await work();
     log.info("task finished", { name });
-    return { ok: true, got: gotNow(bot) };
+    return { ok: true, got: gotNow(bot), ...(done ?? {}) };
   } catch (err) {
     const got = gotNow(bot);
     if (stopRequested) return { ok: false, reason: "stopped", got };
     log.error("task failed", { name, message: (err as Error).message });
-    // get_stone and get_iron throw their reasons (no_stone, no_ore, no_pickaxe, no_fuel, smelt_failed, protected) as the message
-    return { ok: false, reason: (err as Error).message, detail: (err as FailInfo).detail, got };
+    // the rungs throw their reasons (no_stone, no_ore, no_pickaxe, no_fuel, smelt_failed, protected) as the message
+    const info = err as FailInfo;
+    return { ok: false, reason: (err as Error).message, detail: info.detail, missing: info.missing, got };
   } finally {
     if (ticker) clearInterval(ticker);
     endRun();
@@ -319,6 +335,7 @@ async function depositSurplus(bot: Bot): Promise<void> {
       }
     }
   } finally {
+    noteLook(0, chest);
     chest.close();
   }
 }

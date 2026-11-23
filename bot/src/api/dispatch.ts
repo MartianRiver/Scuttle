@@ -1,10 +1,31 @@
-import { endFields, type EventLog } from "./events";
+import { endFields, type EndInfo, type EventLog } from "./events";
 import type { Observation } from "../senses/compose";
-import type { Intent, TaskName } from "./protocol";
+import { ACTION_INTENTS, type ActionIntent, type Intent, type TaskName } from "./protocol";
 
 export type Got = Record<string, number>;
 export interface TaskDone {
   got?: Got;
+  stored?: Got; // a `store`: what went into the stash
+  saw?: string; // an `explore`: kinds newly in view, in words
+}
+
+// what a `recipe` answers: the first recipe that fits what it holds, else the simplest, in words
+export interface RecipeAnswer {
+  item: string;
+  craftable?: false; // known, but no crafting recipe makes it
+  makes?: number;
+  needs?: Got;
+  table?: boolean;
+  have?: Got;
+  missing?: Got;
+}
+
+// what a `stash` answers: what its own chests held when it last looked
+export interface StashAnswer {
+  items: Got;
+  fresh: boolean;
+  looked: string; // never, just now, minutes ago, a while ago
+  unseen?: number; // chests it has never opened
 }
 export type Report = (p: { step: string; got?: Got }) => void;
 
@@ -30,17 +51,37 @@ export interface BodyControl {
   // `near` is a block or place handle that moves the search centre; rejects "stale_handle" if it is gone by the start.
   // A failure's `detail` and `got` ride on the error; a finish may hand back `got`. `report` is for the progress lines.
   runTask(name: TaskName, near: string | undefined, report: Report): Promise<TaskDone | void>;
+  // craft, collect, store, take, explore: run like a task. Failures carry `detail`, `got`, `missing` on the error
+  runAction(a: ActionIntent, report: Report): Promise<TaskDone | void>;
+  knowsItem(item: string): boolean; // an item the game has
+  // null for an item the game does not have
+  recipe(item: string): RecipeAnswer | null;
+  stash(): StashAnswer;
+  equip(item: string): boolean; // false: it holds none. The swap itself happens by itself, a moment later
+  canExplore(dir: string, far: string | undefined): boolean; // false: the target is past the leash from home
   say(text: string): void; // one public chat line, already validated
   stop(): void; // the API's stop
   interrupt(): void; // the same cleanup, for the body's own reflexes taking over
 }
 
-export type Reject = "busy" | "in_fight" | "in_danger" | "not_in_game" | "unknown_player" | "rate_limited" | "stale_handle";
+export type Reject =
+  | "busy"
+  | "in_fight"
+  | "in_danger"
+  | "not_in_game"
+  | "unknown_player"
+  | "rate_limited"
+  | "stale_handle"
+  | "unknown_item"
+  | "none_held"
+  | "too_far";
 export type Outcome =
   | { kind: "accepted"; taskId?: string }
   | { kind: "rejected"; reason: Reject }
   | { kind: "status"; snapshot: Snapshot }
-  | { kind: "observation"; observation: Observation };
+  | { kind: "observation"; observation: Observation }
+  | { kind: "recipe"; recipe: RecipeAnswer }
+  | { kind: "stash"; stash: StashAnswer };
 
 export interface Snapshot {
   inGame: boolean;
@@ -60,6 +101,8 @@ interface Current {
 // Owns "one action at a time" and turns each action's life into events.
 export const SAY_GAP_MS = 2000;
 
+const isAction = (i: Intent): i is ActionIntent => (ACTION_INTENTS as readonly string[]).includes(i.intent);
+
 export function createDispatcher(body: BodyControl, log: EventLog, now: () => number = Date.now) {
   let current: Current | null = null;
   let counter = 0;
@@ -73,7 +116,7 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
   });
 
   // late results from a stopped or replaced action are dropped here
-  const settle = (c: Current, event: "task_finished" | "task_failed", reason?: string, info: { detail?: unknown; got?: unknown } = {}) => {
+  const settle = (c: Current, event: "task_finished" | "task_failed", reason?: string, info: EndInfo = {}) => {
     if (current?.taskId !== c.taskId) return;
     current = null;
     log.emit(event, { taskId: c.taskId, ...(reason && { reason }), ...endFields(info) });
@@ -84,8 +127,8 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     current = c;
     log.emit("task_started", { taskId: c.taskId, kind });
     run?.then(
-      (done) => settle(c, "task_finished", undefined, { got: done?.got }),
-      (err) => settle(c, "task_failed", (err as Error).message, err as { detail?: unknown; got?: unknown })
+      (done) => settle(c, "task_finished", undefined, done ?? {}),
+      (err) => settle(c, "task_failed", (err as Error).message, err as EndInfo)
     );
     return c.taskId;
   };
@@ -113,6 +156,17 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
       return { kind: "observation", observation: body.observe() };
     }
 
+    if (i.intent === "recipe") {
+      if (!body.inGame()) return { kind: "rejected", reason: "not_in_game" };
+      const recipe = body.recipe(i.item);
+      return recipe ? { kind: "recipe", recipe } : { kind: "rejected", reason: "unknown_item" };
+    }
+
+    if (i.intent === "stash") {
+      if (!body.inGame()) return { kind: "rejected", reason: "not_in_game" };
+      return { kind: "stash", stash: body.stash() };
+    }
+
     if (i.intent === "stop") {
       body.stop();
       return { kind: "accepted", taskId: endCurrent("task_stopped") };
@@ -137,6 +191,21 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
       if (current || body.busy()) return { kind: "rejected", reason: "busy" };
       if (i.near && !body.handleLabel(i.near)) return { kind: "rejected", reason: "stale_handle" };
       return { kind: "accepted", taskId: begin(i.intent + ":" + i.name, true, body.runTask(i.name, i.near, progress)) };
+    }
+
+    if (isAction(i)) {
+      if (current || body.busy()) return { kind: "rejected", reason: "busy" };
+      if ((i.intent === "craft" || i.intent === "take") && !body.knowsItem(i.item)) return { kind: "rejected", reason: "unknown_item" };
+      if (i.intent === "collect" && !body.handleLabel(i.handle)) return { kind: "rejected", reason: "stale_handle" };
+      if (i.intent === "explore" && !body.canExplore(i.dir, i.far)) return { kind: "rejected", reason: "too_far" };
+      const what = i.intent === "collect" ? i.handle : i.intent === "explore" ? i.dir : i.intent === "store" ? (i.item ?? "all") : i.item;
+      return { kind: "accepted", taskId: begin(`${i.intent}:${what}`, true, body.runAction(i, progress)) };
+    }
+
+    if (i.intent === "equip") {
+      // one swap, accepted at once like `say`; it is not a task, but it never lands in the middle of one
+      if (current?.isTask || body.busy()) return { kind: "rejected", reason: "busy" };
+      return body.equip(i.item) ? { kind: "accepted" } : { kind: "rejected", reason: "none_held" };
     }
 
     if (current?.isTask || body.busy()) return { kind: "rejected", reason: "busy" };

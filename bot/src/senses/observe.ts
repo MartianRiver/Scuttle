@@ -89,6 +89,11 @@ function gather(v: View): RawSense {
     else items.push({ name: it.name, count: it.count });
   }
 
+  // the stone it would take is also a block it can be pointed at, for `collect`
+  const stone = seenStone(v);
+  const blocks = [...seenBlocks(v), ...seenTrees(v)];
+  if (stone) blocks.push({ handle: v.handles.mint({ kind: "block", ...stone.at, name: "stone" }), what: "stone", ...stone.rel });
+
   return {
     health: typeof bot.health === "number" ? bot.health : null,
     food: typeof bot.food === "number" ? bot.food : null,
@@ -100,9 +105,9 @@ function gather(v: View): RawSense {
     items,
     tools,
     entities: seenEntities(v),
-    blocks: [...seenBlocks(v), ...seenTrees(v)],
+    blocks,
     standing: bodyStanding(bot),
-    stone: seenStone(v),
+    stone: stone?.rel,
     refused: nearestRefused(refusedNow(), feet).map((z) => ({ dx: z.x - feet.x, dz: z.z - feet.z, r: z.r })),
     places: overworld ? PLACES.map((name) => ({ name, ...v.rel(centre(placeSpot(name))) })) : null,
   };
@@ -180,8 +185,8 @@ function seenTrees({ bot, handles, opaque, feet, eye, rel }: View): RawBlock[] {
 }
 
 // the nearest natural stone get_stone would take (within its range of home, above its floor, not in a
-// refused place, safe by the dig rule) that is in view; no handle, since there are a lot of faces
-function seenStone({ bot, opaque, feet, eye, rel }: View): { dx: number; dy: number; dz: number } | undefined {
+// refused place, safe by the dig rule) that is in view; observe lists it once among the blocks, with a handle
+function seenStone({ bot, opaque, feet, eye, rel }: View): { rel: { dx: number; dy: number; dz: number }; at: Vec3 } | undefined {
   const id = bot.registry.blocksByName.stone?.id;
   if (id === undefined) return undefined;
   const nameAt = (p: { x: number; y: number; z: number }) => bot.blockAt(new Vec3(p.x, p.y, p.z), false)?.name ?? null;
@@ -190,7 +195,7 @@ function seenStone({ bot, opaque, feet, eye, rel }: View): { dx: number; dy: num
     if (pos.y <= STONE_MIN_Y || pos.distanceTo(home.craftingTable) > STONE_RANGE || reverted.covers(pos)) continue;
     if (!hasOpenFace(pos, opaque)) continue;
     if (++tested > 20) break;
-    if (blockVisible(eye, pos, opaque) && safeToDig(pos, nameAt)) return rel(centre(pos));
+    if (blockVisible(eye, pos, opaque) && safeToDig(pos, nameAt)) return { rel: rel(centre(pos)), at: pos };
   }
   return undefined;
 }
