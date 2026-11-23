@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isFalling, isLiquid, isMade, isNaturalStone, isStandHazard, safeToDig, standOk, type NameAt, type Pos } from "../src/behaviors/dig-safety";
+import { isFalling, isLiquid, isMade, madeBlocksNear, isNaturalStone, isStandHazard, safeToDig, standOk, type NameAt, type Pos } from "../src/behaviors/dig-safety";
 
 const T: Pos = { x: 10, y: 70, z: 10 };
 const key = (p: Pos) => `${p.x},${p.y},${p.z}`;
@@ -75,4 +75,88 @@ test("name helpers", () => {
   assert.ok(isFalling("sand") && !isFalling("sandstone"));
   assert.ok(!isMade("stone") && !isMade("bedrock") && !isMade("oak_log") && !isMade("dirt") && !isMade("coal_ore"));
   assert.ok(isStandHazard("water") && isStandHazard("fire") && isStandHazard("magma_block") && !isStandHazard("air"));
+});
+
+// a hollow 5x5 hut, 4 high, floor at y, built from planks and cobblestone
+function hut(cx: number, y: number, cz: number): Array<[Pos, string]> {
+  const out: Array<[Pos, string]> = [];
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      out.push([{ x: cx + dx, y, z: cz + dz }, "oak_planks"]);
+      out.push([{ x: cx + dx, y: y + 4, z: cz + dz }, "oak_planks"]);
+    }
+  }
+  return out;
+}
+
+test("a shaft under a house is refused, however deep, up to 12 blocks", () => {
+  const w = grid(hut(10, 82, 10)); // roof 12 over the target at 70
+  assert.equal(safeToDig(T, grid(hut(10, 78, 10))), false); // floor 8 over
+  assert.equal(safeToDig(T, w), false); // floor 12 over
+  assert.equal(safeToDig(T, grid(hut(10, 83, 10))), true); // floor 13 over
+});
+
+test("under a roof, a bridge or a hut's edge column counts; one block aside too, two does not", () => {
+  const roof = (dx: number) => grid([[at(dx, 9, 0), "oak_slab"]]);
+  assert.equal(safeToDig(T, roof(0)), false);
+  assert.equal(safeToDig(T, roof(1)), false);
+  assert.equal(safeToDig(T, roof(-1)), false);
+  assert.equal(safeToDig(T, roof(2)), true);
+});
+
+test("a hut off to the side doesn't stop a dig more than 3 away and 1 off the column", () => {
+  assert.equal(safeToDig(T, grid(hut(16, 70, 10))), true); // nearest wall at x 14
+  assert.equal(safeToDig(T, grid(hut(16, 74, 10))), true);
+  assert.equal(safeToDig(T, grid(hut(13, 70, 10))), false); // wall at x 11, inside the cube
+});
+
+test("mineshaft planks and rail next to a natural stone face stop the dig (accepted false positive)", () => {
+  const shaft: Array<[Pos, string]> = [[at(2, 0, 0), "oak_planks"], [at(2, -1, 0), "rail"], [at(2, 1, 0), "oak_fence"]];
+  assert.equal(safeToDig(T, grid(shaft)), false);
+  // the same face dug from further along the wall, 4 blocks off, is fine
+  assert.equal(safeToDig(at(0, 0, 4), grid(shaft)), true);
+});
+
+test("the wider made list", () => {
+  const made = [
+    "cobblestone_wall", "stone_brick_wall", "white_concrete", "oak_button", "stone_pressure_plate", "redstone_wire", "redstone_torch",
+    "redstone_lamp", "repeater", "comparator", "observer", "piston", "dispenser", "hopper", "lever", "iron_bars", "white_terracotta",
+    "tinted_glass", "red_stained_glass", "blue_stained_glass_pane", "lectern", "composter", "cauldron", "grindstone", "stonecutter",
+    "smithing_table", "loom", "cartography_table", "fletching_table", "enchanting_table", "brewing_stand", "beacon",
+    "stripped_oak_log", "stripped_birch_wood", "spruce_planks", "hay_block", "potted_oak_sapling", "red_banner", "white_wall_banner", "farmland",
+  ];
+  for (const name of made) assert.ok(isMade(name), name);
+  const natural = [
+    "oak_log", "oak_leaves", "dirt", "grass_block", "stone", "deepslate", "andesite", "coal_ore", "redstone_ore", "iron_ore", "diamond_ore",
+    "sand", "gravel", "white_concrete_powder", "terracotta", "smooth_basalt", "amethyst_block", "oak_sapling", "air", "bedrock",
+  ];
+  for (const name of natural) assert.ok(!isMade(name), name);
+});
+
+test("allowMade lifts the made-block and under-a-build rules and nothing else", () => {
+  const house = grid([[at(2, 0, 0), "oak_planks"], [at(0, 6, 0), "oak_slab"]]);
+  assert.equal(safeToDig(T, house), false);
+  assert.equal(safeToDig(T, house, undefined, { allowMade: true }), true);
+
+  // lava beside the player-approved block still refuses
+  const lava = grid([[at(1, 0, 0), "lava"], [at(2, 0, 0), "oak_planks"]]);
+  assert.equal(safeToDig(T, lava, undefined, { allowMade: true }), false);
+  // so do water, falling blocks over it, unloaded ground and a bad standing spot
+  assert.equal(safeToDig(T, grid([[at(0, 1, 0), "water"]]), undefined, { allowMade: true }), false);
+  assert.equal(safeToDig(T, grid([[at(0, 2, 0), "gravel"]]), undefined, { allowMade: true }), false);
+  assert.equal(safeToDig(T, grid([], [at(0, 0, 1)]), undefined, { allowMade: true }), false);
+  assert.equal(safeToDig(T, grid(), at(0, 1, 0), { allowMade: true }), false);
+});
+
+test("allowMade with a test approves only the blocks it names", () => {
+  const w = grid([[at(2, 0, 0), "oak_planks"], [at(-2, 0, 0), "chest"]]);
+  const onlyPlanks = (p: Pos) => p.x === T.x + 2;
+  assert.equal(safeToDig(T, w, undefined, { allowMade: onlyPlanks }), false); // the chest still counts
+  assert.equal(safeToDig(T, w, undefined, { allowMade: (p) => p.x === T.x + 2 || p.x === T.x - 2 }), true);
+});
+
+test("madeBlocksNear lists what makes safeToDig refuse: beside it and above in its column", () => {
+  const w = grid([[at(2, 1, 0), "chest"], [at(0, 9, 1), "oak_planks"], [at(5, 0, 0), "chest"]]);
+  assert.deepEqual(madeBlocksNear(T, w).map(key).sort(), [key(at(0, 9, 1)), key(at(2, 1, 0))].sort());
+  assert.equal(madeBlocksNear(T, grid()).length, 0);
 });
