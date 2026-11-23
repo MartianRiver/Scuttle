@@ -4,6 +4,7 @@ import { isFleeing, noteStop } from "../behaviors/defence";
 import { isGuardFighting } from "../behaviors/guard";
 import { isInHazard } from "../behaviors/survive";
 import { isTaskRunning, requestStop, startTask } from "../behaviors/task";
+import { StuckError, walkTo } from "../behaviors/unstuck";
 import { setStatus } from "../lib/status";
 import type { BodyControl } from "./dispatch";
 import type { TaskName } from "./protocol";
@@ -34,7 +35,13 @@ export function createBody(bot: Bot): BodyControl {
       if (!target) throw new Error("lost sight of them");
       const { x, y, z } = target.position;
       await setStatus({ task: `walking to ${player}` });
-      await bot.pathfinder.goto(new goals.GoalNear(x, y, z, 1));
+      try {
+        await walkTo(bot, new goals.GoalNear(x, y, z, 1));
+      } catch (err) {
+        // a reflex or a stop owns the status after any other failure
+        if (err instanceof StuckError) await setStatus({ task: "idle" });
+        throw err;
+      }
       await setStatus({ task: "idle" });
     },
 

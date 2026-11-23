@@ -6,6 +6,7 @@ import { collectLog } from "../lib/collect";
 import { gatherMovements, isNaturalLog, isPlainLogName, safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
+import { walkTo } from "./unstuck";
 
 const log = logger("task");
 
@@ -202,9 +203,7 @@ async function gatherLogs(bot: Bot): Promise<void> {
 
 async function craftBasics(bot: Bot): Promise<void> {
   await setStatus({ task: "crafting tools" });
-  await bot.pathfinder.goto(
-    new goals.GoalNear(home.craftingTable.x, home.craftingTable.y, home.craftingTable.z, 2)
-  );
+  await walkTo(bot, new goals.GoalNear(home.craftingTable.x, home.craftingTable.y, home.craftingTable.z, 2));
   checkStop();
   const table = bot.blockAt(home.craftingTable);
   if (!table) throw new Error("crafting table isn't where I expected it");
@@ -242,7 +241,7 @@ async function craftBasics(bot: Bot): Promise<void> {
 async function depositSurplus(bot: Bot): Promise<void> {
   await setStatus({ task: "stashing wood" });
   const chestPos = home.stashChests[0];
-  await bot.pathfinder.goto(new goals.GoalNear(chestPos.x, chestPos.y, chestPos.z, 2));
+  await walkTo(bot, new goals.GoalNear(chestPos.x, chestPos.y, chestPos.z, 2));
   checkStop();
   const block = bot.blockAt(chestPos);
   if (!block) throw new Error("stash chest isn't where I expected it");
