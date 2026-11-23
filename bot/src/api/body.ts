@@ -3,11 +3,14 @@ import { goals } from "mineflayer-pathfinder";
 import { isFleeing, noteStop } from "../behaviors/defence";
 import { beginEscort, endEscort } from "../behaviors/escort";
 import { giveItem } from "../behaviors/give";
+import { destination, goTo } from "../behaviors/goto";
 import { isGuardFighting } from "../behaviors/guard";
 import { isInHazard } from "../behaviors/survive";
 import { isTaskRunning, requestStop, startTask } from "../behaviors/task";
 import { StuckError, walkTo } from "../behaviors/unstuck";
 import { setStatus } from "../lib/status";
+import { HandleTable } from "../senses/handles";
+import { createObserver } from "../senses/observe";
 import type { BodyControl } from "./dispatch";
 import type { TaskName } from "./protocol";
 
@@ -21,6 +24,9 @@ export function createBody(bot: Bot): BodyControl {
   bot.on("end", () => {
     connected = false;
   });
+
+  const handles = new HandleTable();
+  const observe = createObserver(bot, handles);
 
   const vitalOrNull = (n: number | undefined) => (typeof n === "number" ? n : null);
 
@@ -57,6 +63,13 @@ export function createBody(bot: Bot): BodyControl {
     },
 
     guard: (player) => beginEscort(player),
+
+    goTo(handle) {
+      endEscort();
+      return goTo(bot, handles, handle);
+    },
+    handleLabel: (handle) => destination(bot, handles, handle)?.label ?? null,
+    observe,
 
     give(player, item, count) {
       endEscort();

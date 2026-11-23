@@ -129,7 +129,22 @@ export class World {
   }
 }
 
-export type Reply = { type: string; reason?: string; taskId?: string };
+export type Observation = {
+  health: number | null;
+  food: number | null;
+  armor?: number;
+  time?: string;
+  weather: string;
+  where: string;
+  held: string | null;
+  inv: Record<string, number>;
+  tools?: string[];
+  near: Array<{ h: string; what: string; k?: string; d: string; dir: string; hp?: string }>;
+  blocks: Array<{ h: string; what: string; d: string; dir: string }>;
+  places?: Record<string, string>;
+  more?: Record<string, number>;
+};
+export type Reply = { type: string; reason?: string; taskId?: string; snapshot?: { inGame: boolean }; observation?: Observation };
 export type BodyEvent = { event: string; taskId?: string; reason?: string; [k: string]: unknown };
 
 // The body API from the outside, as the real consumer sees it.
@@ -162,6 +177,23 @@ export class Body {
     this.ws.send(JSON.stringify({ type: "intent", id, ...intent }));
     for (let i = 0; i < 100 && !this.replies.has(id); i++) await sleep(20);
     return this.replies.get(id) ?? { type: "none" };
+  }
+
+  // a new socket after the bot process was restarted; waits for the API to be up again
+  async reconnect(): Promise<void> {
+    try {
+      this.ws.close();
+    } catch {
+      // already gone
+    }
+    for (let i = 0; ; i++) {
+      try {
+        return await this.connect();
+      } catch (e) {
+        if (i >= 60) throw e;
+        await sleep(1000);
+      }
+    }
   }
 
   mark = () => this.events.length;
