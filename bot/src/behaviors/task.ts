@@ -7,6 +7,7 @@ import { gatherMovements, isNaturalLog, isPlainLogName, safeMovements } from "..
 import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
 import { planRestock, wantsRestock } from "./food";
+import { getIron } from "./iron";
 import { getStone } from "./stone";
 import { carriedItems, eatIfSafe, foodTable } from "./survival";
 import { walkTo } from "./unstuck";
@@ -74,6 +75,8 @@ class TaskFailure extends Error {
   }
 }
 
+const mineCtx = (bot: Bot) => ({ checkStop, pause: () => pause(bot), stopping: () => stopRequested });
+
 const PIPELINES: Record<string, (bot: Bot) => Promise<void>> = {
   "get wood": async (bot) => {
     await gatherLogs(bot);
@@ -82,7 +85,8 @@ const PIPELINES: Record<string, (bot: Bot) => Promise<void>> = {
     await pause(bot);
     await depositSurplus(bot);
   },
-  "get stone": (bot) => getStone(bot, { checkStop, pause: () => pause(bot), stopping: () => stopRequested }),
+  "get stone": (bot) => getStone(bot, mineCtx(bot)),
+  "get iron": (bot) => getIron(bot, mineCtx(bot)),
 };
 
 export async function startTask(bot: Bot, name: string): Promise<TaskResult> {
@@ -105,7 +109,7 @@ export async function startTask(bot: Bot, name: string): Promise<TaskResult> {
   } catch (err) {
     if (stopRequested) return { ok: false, reason: "stopped" };
     log.error("task failed", { name, message: (err as Error).message });
-    // get_stone throws its reasons (no_stone, no_pickaxe, protected) as the message
+    // get_stone and get_iron throw their reasons (no_stone, no_ore, no_pickaxe, no_fuel, smelt_failed, protected) as the message
     return { ok: false, reason: err instanceof TaskFailure ? err.code : (err as Error).message };
   } finally {
     running = false;

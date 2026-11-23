@@ -11,7 +11,7 @@ import { setStatus } from "../lib/status";
 import type { BodyControl } from "./dispatch";
 import type { TaskName } from "./protocol";
 
-const TASK_PHRASE: Record<TaskName, string> = { get_wood: "get wood", get_stone: "get stone" };
+const TASK_PHRASE: Record<TaskName, string> = { get_wood: "get wood", get_stone: "get stone", get_iron: "get iron" };
 
 export function createBody(bot: Bot): BodyControl {
   let connected = false;

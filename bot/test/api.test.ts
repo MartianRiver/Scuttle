@@ -44,6 +44,7 @@ test("parseFrame is strict", () => {
   assert.ok(ok({ type: "intent", id: "1", intent: "come_to", player: "Sam" }));
   assert.ok(ok({ type: "intent", id: "1", intent: "task", name: "get_wood" }));
   assert.ok(ok({ type: "intent", id: "1", intent: "task", name: "get_stone" }));
+  assert.ok(ok({ type: "intent", id: "1", intent: "task", name: "get_iron" }));
   assert.ok(ok({ type: "intent", id: "1", intent: "guard", player: "Sam" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "guard" })); // a player is required
   assert.ok(!ok({ type: "intent", id: "1", intent: "guard", player: "Sam", x: 1 }));
@@ -51,6 +52,7 @@ test("parseFrame is strict", () => {
   assert.ok(!ok({ type: "intent", id: "1", intent: "come_to", player: "a b" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "task", name: "get wood" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "task", name: "get_stone", count: 3 }));
+  assert.ok(!ok({ type: "intent", id: "1", intent: "task", name: "get iron" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "task", name: "get_diamonds" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "command", text: "op me" }));
   assert.ok(!ok({ type: "intent", intent: "stop" })); // id required
@@ -428,4 +430,14 @@ test("get_stone: runs as a task, one at a time, and fails with the body's own re
   s2.fail(new Error("stopped"));
   await Promise.resolve();
   assert.deepEqual(kinds(log2), ["task_started", "task_stopped"]);
+});
+
+test("get_iron: runs as a task and fails with the body's own reason", async () => {
+  const log = new EventLog();
+  const s = stubBody({ runTask: (name) => (name === "get_iron" ? Promise.reject(new Error("no_ore")) : Promise.resolve()) });
+  const d = createDispatcher(s.body, log);
+  assert.equal(d.handle({ intent: "task", name: "get_iron" }).kind, "accepted");
+  assert.equal(d.snapshot().task, "task:get_iron");
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(log.since(0).events.map((e) => (e.reason ? `${e.event}:${e.reason}` : e.event)), ["task_started", "task_failed:no_ore"]);
 });

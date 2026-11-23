@@ -67,7 +67,7 @@ const INVENTORY_PACKETS = ["window_items", "set_slot", "set_cursor_item"];
 
 // resolves once inventory packets have arrived and then gone quiet for a tick, or after a cap
 // (a click that changes nothing gets no answer)
-function inventoryReply(bot: Bot, quietMs = 60, capMs = 750): Promise<void> {
+export function inventoryReply(bot: Bot, quietMs = 60, capMs = 750): Promise<void> {
   return new Promise((resolve) => {
     let quiet: NodeJS.Timeout | undefined;
     const done = () => {
