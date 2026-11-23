@@ -55,6 +55,14 @@ export function describePlace(at: Point, home: Point, dimension?: string): strin
   return `${where}, ${height(at.y)}`;
 }
 
+// the observation's `where`: no distance band, since `places.home` already gives one on the senses scale
+export function describeLevel(at: Point, home: Point, dimension?: string): string {
+  const elsewhere = dimensionName(dimension);
+  if (elsewhere) return elsewhere;
+  const level = height(at.y);
+  return Math.hypot(at.x - home.x, at.z - home.z) < AT_HOME ? `at home, ${level}` : level;
+}
+
 export type Cause = "mob" | "fall" | "lava" | "fire" | "drowning" | "other";
 
 // From the death message's translation key (death.attack.mob, death.fell.accident.generic, ...).

@@ -1,4 +1,5 @@
 import type { EventLog } from "./events";
+import type { Observation } from "../senses/compose";
 import type { Intent, TaskName } from "./protocol";
 
 // What the real bot (body.ts) or a test stub has to provide.
@@ -15,17 +16,23 @@ export interface BodyControl {
   guard(player: string): Promise<void>;
   // walks to the player and throws the item at their feet; rejects "none_held" when it has none to spare
   give(player: string, item: string, count?: number): Promise<void>;
+  // walks to what a handle points at; rejects "stale_handle" if it is gone by the time the walk starts or during it
+  goTo(handle: string): Promise<void>;
+  // the handle's words for the status text, or null when it is unknown, expired or points at nothing now
+  handleLabel(handle: string): string | null;
+  observe(): Observation; // what it can see, in words (senses/)
   runTask(name: TaskName): Promise<void>;
   say(text: string): void; // one public chat line, already validated
   stop(): void; // the API's stop
   interrupt(): void; // the same cleanup, for the body's own reflexes taking over
 }
 
-export type Reject = "busy" | "in_fight" | "in_danger" | "not_in_game" | "unknown_player" | "rate_limited";
+export type Reject = "busy" | "in_fight" | "in_danger" | "not_in_game" | "unknown_player" | "rate_limited" | "stale_handle";
 export type Outcome =
   | { kind: "accepted"; taskId?: string }
   | { kind: "rejected"; reason: Reject }
-  | { kind: "status"; snapshot: Snapshot };
+  | { kind: "status"; snapshot: Snapshot }
+  | { kind: "observation"; observation: Observation };
 
 export interface Snapshot {
   inGame: boolean;
@@ -86,6 +93,12 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
   function handle(i: Intent): Outcome {
     if (i.intent === "status") return { kind: "status", snapshot: snapshot() };
 
+    if (i.intent === "observe") {
+      // read-only, like status: allowed mid-fight and in danger
+      if (!body.inGame()) return { kind: "rejected", reason: "not_in_game" };
+      return { kind: "observation", observation: body.observe() };
+    }
+
     if (i.intent === "stop") {
       body.stop();
       return { kind: "accepted", taskId: endCurrent("task_stopped") };
@@ -112,6 +125,11 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     }
 
     if (current?.isTask || body.busy()) return { kind: "rejected", reason: "busy" };
+    if (i.intent === "go_to") {
+      if (!body.handleLabel(i.handle)) return { kind: "rejected", reason: "stale_handle" };
+      endCurrent("task_stopped"); // replaced by this one
+      return { kind: "accepted", taskId: begin(`go_to:${i.handle}`, false, body.goTo(i.handle)) };
+    }
     if (!body.canSee(i.player)) return { kind: "rejected", reason: "unknown_player" };
     endCurrent("task_stopped"); // replaced by this one
     if (i.intent === "follow") {

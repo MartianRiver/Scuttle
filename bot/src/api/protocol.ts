@@ -1,16 +1,19 @@
 // Everything a client may send. Strict on purpose: unknown fields are an error, and there is
 // no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
+import { HANDLE_SHAPE } from "../senses/handles";
 
 export const TASKS = ["get_wood", "get_stone", "get_iron"] as const;
 export type TaskName = (typeof TASKS)[number];
 
 export type Intent =
   | { intent: "come_to" | "follow" | "guard"; player: string }
+  | { intent: "go_to"; handle: string }
   | { intent: "give"; player: string; item: string; count?: number }
   | { intent: "task"; name: TaskName }
   | { intent: "say"; text: string }
   | { intent: "stop" }
-  | { intent: "status" };
+  | { intent: "status" }
+  | { intent: "observe" };
 
 export type ClientMsg =
   | { type: "auth"; token: string; since?: number; epoch?: string }
@@ -64,6 +67,10 @@ export function parseFrame(raw: string): Parsed {
       if (!onlyKeys(m, ["type", "id", "intent", "player"])) return bad;
       if (typeof m.player !== "string" || !PLAYER.test(m.player)) return bad;
       return { ok: true, msg: m as ClientMsg };
+    case "go_to":
+      if (!onlyKeys(m, ["type", "id", "intent", "handle"])) return bad;
+      if (typeof m.handle !== "string" || !HANDLE_SHAPE.test(m.handle)) return bad;
+      return { ok: true, msg: m as ClientMsg };
     case "give":
       if (!onlyKeys(m, ["type", "id", "intent", "player", "item", "count"])) return bad;
       if (typeof m.player !== "string" || !PLAYER.test(m.player)) return bad;
@@ -80,6 +87,7 @@ export function parseFrame(raw: string): Parsed {
       return { ok: true, msg: { ...(m as object), text: m.text.trim() } as ClientMsg };
     case "stop":
     case "status":
+    case "observe":
       if (!onlyKeys(m, ["type", "id", "intent"])) return bad;
       return { ok: true, msg: m as ClientMsg };
     default:

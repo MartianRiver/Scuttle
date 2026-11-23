@@ -30,6 +30,12 @@ function stubBody(over: Partial<BodyControl> = {}) {
       calls.push(`give:${p}:${item}:${n ?? "all"}`);
       return new Promise((res, rej) => ((finishWalk = res), (failWalk = rej)));
     },
+    goTo: (h) => {
+      calls.push(`go_to:${h}`);
+      return new Promise((res, rej) => ((finishWalk = res), (failWalk = rej)));
+    },
+    handleLabel: (h) => (h === "e1ab" || h === "home" ? "the cow" : null),
+    observe: () => ({ health: 20, food: 18, weather: "clear", where: "at home, on the surface", held: null, inv: {}, near: [], blocks: [] }),
     runTask: () => new Promise((res, rej) => ((finishWalk = res), (failWalk = rej))),
     say: (t) => void calls.push(`say:${t}`),
     stop: () => void calls.push("stop"),
@@ -440,4 +446,93 @@ test("get_iron: runs as a task and fails with the body's own reason", async () =
   assert.equal(d.snapshot().task, "task:get_iron");
   await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(log.since(0).events.map((e) => (e.reason ? `${e.event}:${e.reason}` : e.event)), ["task_started", "task_failed:no_ore"]);
+});
+
+test("observe and go_to: parse strictly, no coordinate or free text gets through", () => {
+  const ok = (o: object) => parseFrame(JSON.stringify({ type: "intent", id: "1", ...o })).ok;
+  assert.ok(ok({ intent: "observe" }));
+  assert.ok(!ok({ intent: "observe", range: 10 }));
+  for (const handle of ["e4kq", "b17zz", "home", "table", "stash", "furnace", "bed"]) assert.ok(ok({ intent: "go_to", handle }), handle);
+  for (const handle of ["", "e4", "4kq", "e4KQ", "e4kqq", "x4kq", "home ", "house", "12 64 -30", "e4kq;op", "../home", "e4k\u0301q", "b-1kq"]) {
+    assert.ok(!ok({ intent: "go_to", handle }), `rejects ${JSON.stringify(handle)}`);
+  }
+  assert.ok(!ok({ intent: "go_to" }));
+  assert.ok(!ok({ intent: "go_to", handle: "home", x: 1 }));
+  assert.ok(!ok({ intent: "go_to", handle: 7 }));
+  assert.ok(!ok({ intent: "go_to", player: "Sam" }));
+});
+
+test("observe: allowed mid-fight and in danger, refused offline; never touches the running action", () => {
+  const log = new EventLog();
+  let fighting = true;
+  let danger = true;
+  let inGame = true;
+  const s = stubBody({ fighting: () => fighting, danger: () => danger, inGame: () => inGame });
+  const d = createDispatcher(s.body, log);
+  const out = d.handle({ intent: "observe" });
+  assert.equal(out.kind, "observation");
+  fighting = danger = false;
+  d.handle({ intent: "task", name: "get_wood" });
+  assert.equal(d.handle({ intent: "observe" }).kind, "observation");
+  assert.equal(d.snapshot().task, "task:get_wood");
+  inGame = false;
+  assert.deepEqual(d.handle({ intent: "observe" }), { kind: "rejected", reason: "not_in_game" });
+});
+
+test("go_to: a movement action; stale handle is a rejection, a vanished target ends task_failed", async () => {
+  const kinds = (log: EventLog) => log.since(0).events.map((e) => (e.reason ? `${e.event}:${e.reason}` : e.event));
+  let log = new EventLog();
+  let s = stubBody();
+  let d = createDispatcher(s.body, log);
+
+  assert.deepEqual(d.handle({ intent: "go_to", handle: "e9zz" }), { kind: "rejected", reason: "stale_handle" });
+  assert.deepEqual(log.since(0).events, []);
+  const a = d.handle({ intent: "go_to", handle: "e1ab" });
+  assert.equal(a.kind, "accepted");
+  assert.equal(d.snapshot().task, "go_to:e1ab");
+  assert.deepEqual(s.calls, ["go_to:e1ab"]);
+  d.handle({ intent: "go_to", handle: "home" }); // replaces the walk
+  assert.deepEqual(kinds(log), ["task_started", "task_stopped", "task_started"]);
+  s.finish();
+  await Promise.resolve();
+  assert.equal(kinds(log).at(-1), "task_finished");
+
+  log = new EventLog();
+  s = stubBody();
+  d = createDispatcher(s.body, log);
+  d.handle({ intent: "go_to", handle: "e1ab" });
+  s.fail(new Error("stale_handle"));
+  await Promise.resolve();
+  assert.equal(kinds(log).at(-1), "task_failed:stale_handle");
+
+  // busy while a task runs, refused in a fight or in danger, replaces a come_to
+  log = new EventLog();
+  let fighting = false;
+  let danger = false;
+  s = stubBody({ fighting: () => fighting, danger: () => danger });
+  d = createDispatcher(s.body, log);
+  d.handle({ intent: "task", name: "get_wood" });
+  assert.deepEqual(d.handle({ intent: "go_to", handle: "home" }), { kind: "rejected", reason: "busy" });
+  d.handle({ intent: "stop" });
+  fighting = true;
+  assert.deepEqual(d.handle({ intent: "go_to", handle: "home" }), { kind: "rejected", reason: "in_fight" });
+  fighting = false;
+  danger = true;
+  assert.deepEqual(d.handle({ intent: "go_to", handle: "home" }), { kind: "rejected", reason: "in_danger" });
+});
+
+test("socket: observe answers with an observation frame", async () => {
+  await withServer(async (url) => {
+    const c = client(url);
+    await c.open;
+    c.send({ type: "auth", token: TOKEN });
+    await c.next((m) => m.type === "hello");
+    c.send({ type: "intent", id: "o1", intent: "observe" });
+    const m = await c.next((x) => x.type === "observation");
+    assert.equal(m.id, "o1");
+    assert.equal(m.observation.where, "at home, on the surface");
+    c.send({ type: "intent", id: "g1", intent: "go_to", handle: "e9zz" });
+    assert.deepEqual(await c.next((x) => x.id === "g1"), { type: "rejected", id: "g1", reason: "stale_handle" });
+    c.ws.close();
+  });
 });
