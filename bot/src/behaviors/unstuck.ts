@@ -3,9 +3,10 @@ import type { goals } from "mineflayer-pathfinder";
 import { logger } from "../lib/logger";
 import { getStatus } from "../lib/status";
 import { bodyStanding } from "../senses/standing";
-import { findBank } from "./bank";
+import { wayOut } from "./bank";
 import { isFalling } from "./fall";
 import { isFleeing } from "./defence";
+import { lastFooting } from "./footing";
 import { inWater, swimTo } from "./swim";
 import { cellAt, isInHazard } from "./survive";
 import { judge, MAX_NUDGES, SAMPLE_MS, stuckWords, trim, type Sample, type StuckKind } from "./stuck";
@@ -131,7 +132,7 @@ export async function walkTo(bot: Bot, goal: goals.Goal): Promise<void> {
   // out of the water by hand; the first time the walk resumes after it, the second time it ends stuck
   const swimOut = async (): Promise<void> => {
     if (!owned()) throw new Error("interrupted");
-    const route = findBank(cellAt(bot), bot.entity.position);
+    const route = wayOut(cellAt(bot), bot.entity.position, lastFooting());
     log.info("swimming to a bank", { found: route !== null, rescues: rescues + 1 });
     if (!route) throw stuckError(bot, "no_bank");
     const out = await swimTo(bot, route, owned);

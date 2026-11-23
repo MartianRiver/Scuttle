@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  aimPoint, arrived, blockedWords, budgetMs, EDGE, kindsIn, legTo, LEASH, mergeKinds, noKinds, sawWords, tooFar,
+  aimPoint, arrived, blockedWords, budgetMs, EDGE, firstHazard, kindsIn, legTo, LEASH, lineCells, mergeKinds, noKinds, sawWords, tooFar,
+  wetWords, type Column,
 } from "../src/behaviors/explore-plan";
 
 const near = (a: number, b: number, eps = 1e-6) => Math.abs(a - b) < eps;
@@ -41,7 +42,7 @@ test("the time it gets grows with the band and is capped", () => {
 
 test("what stopped a walk, in words with no number", () => {
   assert.equal(blockedWords("north", ["open", "wall", "wall"]), "a cliff to the north");
-  assert.equal(blockedWords("east", ["water", "water", "water", "water"]), "the sea to the east");
+  assert.equal(blockedWords("east", ["water", "water", "water", "water"]), "water to the east");
   assert.equal(blockedWords("east", ["open", "water", "open"]), "water to the east");
   assert.equal(blockedWords("south-west", ["lava"]), "lava to the south-west");
   assert.equal(blockedWords("west", ["drop"]), "a drop to the west");
@@ -62,4 +63,36 @@ test("the kinds in a look, and only the new ones are told", () => {
   assert.equal(sawWords(home, home), "");
   assert.equal(sawWords(noKinds(), noKinds()), "");
   assert.ok(!/\d/.test(sawWords(noKinds(), kindsIn({ blocks: [{ what: "iron_ore" }], near: [] }))));
+});
+
+const cols = (spec: string): Column[] =>
+  [...spec].map((c) => (c === "." ? "dry" : c === "~" ? "deep" : c === "-" ? "shallow" : c === "L" ? "lava" : "unknown"));
+
+test("a line of columns says the sea, a lake, a river or lava, with no number", () => {
+  assert.equal(wetWords("east", cols("....")), null);
+  assert.equal(wetWords("east", cols("..-.-.")), null); // wading is not a hazard
+  assert.equal(wetWords("east", cols("..~~~~~~~~~~~~~~~~~~~~~~~~~~~~.")), "the sea to the east");
+  assert.equal(wetWords("east", cols("..~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")), "the sea to the east"); // no far shore in view
+  assert.equal(wetWords("north", cols("....~~~~~~~..")), "a lake to the north");
+  assert.equal(wetWords("south", cols("..~~~..")), "a river to the south");
+  assert.equal(wetWords("west", cols("...L..")), "lava to the west");
+  assert.equal(wetWords("west", cols("..~~L..")), "a river to the west");
+  for (const spec of ["~~~", "..~~~~~~..", "L"]) assert.ok(!/\d/.test(wetWords("north-east", cols(spec)) ?? ""));
+});
+
+test("the first deep column or lava along a line", () => {
+  assert.deepEqual(firstHazard(cols("..-~")), { at: 3, kind: "deep" });
+  assert.deepEqual(firstHazard(cols("L~")), { at: 0, kind: "lava" });
+  assert.equal(firstHazard(cols("..-.")), null);
+  assert.equal(firstHazard([]), null);
+});
+
+test("the cells a leg passes over, and a few past its end", () => {
+  const east = lineCells({ x: 0.5, z: 0.5 }, { x: 14.5, z: 0.5 }, 4);
+  assert.equal(east.length, 18);
+  assert.deepEqual(east[0], { x: 1, z: 0 });
+  assert.deepEqual(east[17], { x: 18, z: 0 });
+  assert.deepEqual(lineCells({ x: 3, z: 3 }, { x: 3, z: 3 }, 4), []);
+  const diag = lineCells({ x: 0.5, z: 0.5 }, { x: 10.5, z: 10.5 }, 0);
+  assert.ok(diag.every((c, i, a) => i === 0 || c.x !== a[i - 1].x || c.z !== a[i - 1].z));
 });
