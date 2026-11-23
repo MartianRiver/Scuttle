@@ -10,10 +10,11 @@ export interface ActArgs {
   count?: number;
   task?: string;
   handle?: string;
+  near?: string;
 }
 
 // where each act argument goes on the wire
-const WIRE: Record<keyof ActArgs, string> = { player: "player", item: "item", count: "count", task: "name", handle: "handle" };
+const WIRE: Record<keyof ActArgs, string> = { player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near" };
 
 export interface ActionDef {
   does: string;
@@ -62,11 +63,11 @@ export const ACTIONS: Record<string, ActionDef> = {
     ends: "task_finished once everything is thrown (the player still has to pick it up); task_failed none_held, stuck, interrupted, died, disconnected. Replaces a running come_to, follow, guard, give or go_to.",
   },
   task: {
-    does: "Start one of the named tasks (see tasks). It runs on its own for a while: mines, crafts, smelts, stashes at home.",
+    does: "Start one of the named tasks (see tasks). It runs on its own for a while: mines, crafts, smelts, stashes at home. near (optional) is a handle of a block from observe (a tree) or a place (home, table, stash, furnace, bed): the search then centres there, with the same radius; crafting, stashing and smelting still happen at home, and the body still never digs under or beside what players built. Refused places are not valid targets (they have no handle). While it runs it sends task_progress lines (step, got).",
     required: ["task"],
-    optional: [],
-    rejects: ["busy", "in_fight", "in_danger", "not_in_game"],
-    ends: "task_finished, or task_failed with a reason from that task's list. Anything running makes a task busy: stop first.",
+    optional: ["near"],
+    rejects: ["busy", "in_fight", "in_danger", "not_in_game", "stale_handle"],
+    ends: "task_finished (got= what it gained, counting what it stashed), or task_failed with a reason from that task's list, a detail= in words about why (e.g. three digs undone near the trees, a fair way south-west) and got= what it had gathered before. Anything running makes a task busy: stop first.",
   },
   stop: {
     does: "Stop whatever the body is doing, at once. Always accepted. Returns the taskId of what was stopped, if anything.",
@@ -85,14 +86,14 @@ export const REJECTS: Record<string, string> = {
   stale_handle: "the body no longer has that handle (expired after 10 min unseen, from before a restart, the mob is gone, the block was mined); observe again for fresh ones",
   unknown_player: "that player is not in the body's loaded view (name wrong, offline or far away)",
   rate_limited: "too many requests (10 per 10 s) or more than one chat line per 2 s; slow down",
-  bad_intent: "the body refused the request as malformed (player: 1 to 17 of letters digits _ . ; item: lowercase_with_underscores)",
+  bad_intent: "the body refused the request as malformed (player: 1 to 17 of letters digits _ . ; item: lowercase_with_underscores; handle: from observe or a place name; near: a block handle or a place name, not a mob)",
   bad_args: "wrong or missing arguments for that action",
   api_offline: "the adapter has no connection to the body API; it keeps retrying",
   no_reply: "the request went out but no answer came; check status before repeating it",
 };
 
 const COMMON_FAILS = {
-  stuck: "a walk made no progress, even after nudges",
+  stuck: "a walk made no progress, even after nudges (detail says what it was doing, and whether it was in water)",
   interrupted: "hostile mobs, a hazard or a fall took the body",
   died: "the body died",
   disconnected: "the body lost its connection to the game",
@@ -108,7 +109,11 @@ export const TASK_SKILLS: Record<TaskName, TaskDef> = {
   get_wood: {
     does: "Chops trees near home, crafts a wooden pickaxe and axe at the home crafting table, stashes the surplus logs in the home chest.",
     needs: "nothing",
-    fails: { no_trees: "no trees it may cut", protected: "the server undid the digs (a protected area)", ...COMMON_FAILS },
+    fails: {
+      no_trees: "no trees it may cut in range (detail says if every tree left is in a place where its digs were undone)",
+      protected: "the server undid the digs (a protected area); the places are remembered for 30 minutes and shown in observe refused, so aim near a tree elsewhere or somewhere else",
+      ...COMMON_FAILS,
+    },
   },
   get_stone: {
     does: "Mines natural stone near home (not under or beside anything a player built) until it holds 16 more cobblestone, makes a stone pickaxe and sword if it has none, keeps 4 cobblestone and stashes the rest.",

@@ -12,6 +12,8 @@ import { logger } from "../lib/logger";
 import { isLiquid, isStandHazard, madeBlocksNear, safeToDig, standOk, type NameAt, type Pos } from "./dig-safety";
 import { NoDigMap, noteMade } from "./no-dig";
 import { isCandidate, type Cell } from "./ore-plan";
+import { noteRefused, refusedNow, reverted, undoneWords } from "./refused";
+import { TaskError } from "./fail";
 import { StuckError, walkTo } from "./unstuck";
 
 const log = logger("mine");
@@ -21,16 +23,15 @@ const log = logger("mine");
 // tunnel. Every wait is bounded and every attempt ends in progress, a skip, a protected zone or a
 // stuck count.
 const SEARCH_COUNT = 64;
-const ZONE_RADIUS = 12; // around a dig the server undid
 const ZONE_CAP = 3; // undone digs in one run before it gives up as protected
 const PATH_CHECK_MS = 500; // longest it plans a route to a target before choosing it
-const FORGET_REVERTED_MS = 30 * 60_000;
-const STUCK_CAP = 3; // attempts in a row that gained nothing
+const STUCK_CAP = 3; // attempts in a row that gained nothing (the detail says "three")
 const ATTEMPT_MS = 45_000; // one block, walking included
 const ABANDON_MS = 5_000;
 const REFRESH_CAP = 8; // searches of the world in one run
 
 export interface MineCtx {
+  centre?: Vec3; // where the search is centred when the order was aimed; the home table otherwise
   checkStop(): void; // throws when a stop was asked for
   pause(): Promise<void>; // between steps: stop check, a meal if one is due
   stopping(): boolean;
@@ -40,10 +41,11 @@ export interface MineSpec {
   names: readonly string[]; // the blocks dug
   drop: string; // the item that counts
   target: number; // how many more of it than when it started
-  range: number; // from the home table
+  range: number; // from the centre
   minY: number; // nothing at or below this
   looking: string; // status texts
   mining: string;
+  what: string; // for a failure's words: "natural stone", "ore"
   xray?: boolean; // test world only: buried blocks are candidates too
 }
 
@@ -63,7 +65,7 @@ const cellAtOf =
   };
 
 // For stone: andesite, diorite and granite drop themselves, not cobblestone, so only `stone` is on its list.
-function findTargets(bot: Bot, spec: MineSpec): Vec3[] {
+function findTargets(bot: Bot, spec: MineSpec, centre: Vec3): Vec3[] {
   const cellAt = cellAtOf(bot);
   const ids = spec.names.map((n) => bot.registry.blocksByName[n]?.id).filter((id): id is number => id !== undefined);
   const wanted = (b: Block) => {
@@ -71,7 +73,7 @@ function findTargets(bot: Bot, spec: MineSpec): Vec3[] {
     // buried blocks can fill the whole list and none of them could be reached
     return !spec.xray || findStand(bot, b.position) !== null;
   };
-  return bot.findBlocks({ matching: ids, useExtraInfo: wanted, point: home.craftingTable, maxDistance: spec.range, count: SEARCH_COUNT });
+  return bot.findBlocks({ matching: ids, useExtraInfo: wanted, point: centre, maxDistance: spec.range, count: SEARCH_COUNT });
 }
 
 function standable(bot: Bot, feet: Vec3): boolean {
@@ -97,10 +99,9 @@ function findStand(bot: Bot, target: Vec3): Vec3 | null {
   return best;
 }
 
-// Where the server undid a dig is remembered for the bot's life (a later task starts out knowing it); the
+// Where the server undid a dig is remembered for the bot's life (refused.ts, shared with get_wood); the
 // builds it runs into are only remembered for one run, since a build can be torn down and nothing here
 // would notice.
-const reverted = new NoDigMap();
 
 const isTarget = (spec: MineSpec, name: string | null | undefined) => name != null && spec.names.includes(name);
 
@@ -110,14 +111,14 @@ interface Pick {
 }
 
 // nearest first from where the body is now; whatever fails a check is dropped from the list
-function pickTarget(bot: Bot, spec: MineSpec, list: Vec3[], skipped: Set<string>, builds: NoDigMap): Pick | null {
+function pickTarget(bot: Bot, spec: MineSpec, centre: Vec3, list: Vec3[], skipped: Set<string>, builds: NoDigMap): Pick | null {
   const me = bot.entity.position;
   list.sort((a, b) => a.distanceTo(me) - b.distanceTo(me));
   const nameAt = nameAtOf(bot);
   while (list.length) {
     const pos = list.shift() as Vec3;
     if (skipped.has(keyOf(pos)) || reverted.covers(pos) || builds.covers(pos)) continue;
-    if (pos.distanceTo(home.craftingTable) > spec.range || pos.y <= spec.minY) continue;
+    if (pos.distanceTo(centre) > spec.range || pos.y <= spec.minY) continue;
     if (!isTarget(spec, nameAt(pos))) continue;
     if (!safeToDig(pos, nameAt)) {
       noteMade(builds, madeBlocksNear(pos, nameAt)); // a refusal because of a build teaches the map where it is
@@ -168,7 +169,8 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
   const skipped = new Set<string>();
   let reverts = 0;
   const builds = new NoDigMap();
-  reverted.forget(FORGET_REVERTED_MS);
+  refusedNow(); // forgets what has faded
+  const centre = ctx.centre ?? home.craftingTable;
   let list: Vec3[] = [];
   let fresh = false; // the list came from a search with nothing mined since
   let searches = 0;
@@ -177,10 +179,10 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
 
   while (have() - start < spec.target) {
     await ctx.pause();
-    const pick = pickTarget(bot, spec, list, skipped, builds);
+    const pick = pickTarget(bot, spec, centre, list, skipped, builds);
     if (!pick) {
       if (fresh || searches >= REFRESH_CAP) break;
-      list = findTargets(bot, spec);
+      list = findTargets(bot, spec, centre);
       searches++;
       fresh = true;
       continue;
@@ -237,14 +239,14 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
     skipped.add(keyOf(pick.pos));
     // a dig happened and the block is back: the server undid it
     if (dug) {
-      reverted.add({ x: pick.pos.x, z: pick.pos.z, r: ZONE_RADIUS, reason: "reverted" });
+      noteRefused(pick.pos.x, pick.pos.z);
       reverts++;
-      log.warn("protected zone", { position: pick.pos, radius: ZONE_RADIUS, reverts });
-      if (reverts >= ZONE_CAP) throw new Error("protected");
+      log.warn("protected zone", { position: pick.pos, reverts });
+      if (reverts >= ZONE_CAP) throw new TaskError("protected", undoneWords(reverts, spec.what, bot.entity.position, refusedNow()));
       stuck = 0;
       continue;
     }
-    if (++stuck >= STUCK_CAP) throw new Error("stuck");
+    if (++stuck >= STUCK_CAP) throw new TaskError("stuck", `three tries in a row got no ${spec.what}`);
   }
 
   const gained = have() - start;

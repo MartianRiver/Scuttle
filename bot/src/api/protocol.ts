@@ -1,6 +1,6 @@
 // Everything a client may send. Strict on purpose: unknown fields are an error, and there is
 // no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
-import { HANDLE_SHAPE } from "../senses/handles";
+import { HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
 
 export const TASKS = ["get_wood", "get_stone", "get_iron"] as const;
 export type TaskName = (typeof TASKS)[number];
@@ -9,7 +9,7 @@ export type Intent =
   | { intent: "come_to" | "follow" | "guard"; player: string }
   | { intent: "go_to"; handle: string }
   | { intent: "give"; player: string; item: string; count?: number }
-  | { intent: "task"; name: TaskName }
+  | { intent: "task"; name: TaskName; near?: string }
   | { intent: "say"; text: string }
   | { intent: "stop" }
   | { intent: "status" }
@@ -78,8 +78,9 @@ export function parseFrame(raw: string): Parsed {
       if (m.count !== undefined && !(Number.isInteger(m.count) && (m.count as number) >= 1 && (m.count as number) <= 64)) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "task":
-      if (!onlyKeys(m, ["type", "id", "intent", "name"])) return bad;
+      if (!onlyKeys(m, ["type", "id", "intent", "name", "near"])) return bad;
       if (!(TASKS as readonly unknown[]).includes(m.name)) return bad;
+      if (m.near !== undefined && (typeof m.near !== "string" || !NEAR_SHAPE.test(m.near))) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "say":
       if (!onlyKeys(m, ["type", "id", "intent", "text"])) return bad;

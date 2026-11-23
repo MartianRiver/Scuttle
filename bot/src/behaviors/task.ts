@@ -1,13 +1,18 @@
 import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
+import type { Vec3 } from "vec3";
 import { home } from "../lib/home";
 import { itemCount, craftItem } from "../lib/inventory";
 import { collectLog } from "../lib/collect";
 import { gatherMovements, isNaturalLog, isPlainLogName, safeMovements } from "../lib/movement";
-import { setStatus } from "../lib/status";
+import { getStatus, setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
+import { TaskError, type FailInfo } from "./fail";
 import { planRestock, wantsRestock } from "./food";
 import { getIron } from "./iron";
+import { ProgressGate } from "./progress";
+import { noteRefused, refusedNow, reverted, undoneWords } from "./refused";
+import { beginRun, endRun, gotNow, noteStashed, type Counts } from "./run-report";
 import { getStone } from "./stone";
 import { carriedItems, eatIfSafe, foodTable } from "./survival";
 import { walkTo } from "./unstuck";
@@ -22,10 +27,10 @@ const SEARCH_RADIUS = 64;
 const PLANKS_BUFFER = 12; // covers 2 sticks-crafts (2 planks each) + 2 tool heads (3 planks each) + slack
 const STICKS_NEEDED = 4; // 2 for the pickaxe, 2 for the axe
 const KEEP_LOGS = 4; // spare logs left in inventory (fuel, future crafting) instead of stashed
-const ZONE_RADIUS = 12; // blocks around a reverted dig the gather step stays out of
-const ZONE_CAP = 3; // protected zones found before the task gives up as protected
-const STUCK_CAP = 3; // attempts in a row that gained nothing
+const ZONE_CAP = 3; // undone digs in one run before the task gives up as protected
+const STUCK_CAP = 3; // attempts in a row that gained nothing (the detail says "three")
 const ABANDON_MS = 5_000; // how long a cancelled attempt gets to wind down before the task moves on
+const PROGRESS_POLL_MS = 1_000;
 const ATTEMPT_MS = 40_000; // one log, walking included; a path that never resolves would otherwise hang the task
 
 let running = false;
@@ -66,30 +71,28 @@ async function pause(bot: Bot): Promise<void> {
   checkStop();
 }
 
-export type TaskResult = { ok: true } | { ok: false; reason: string };
+export type TaskResult = ({ ok: true } | ({ ok: false; reason: string } & FailInfo)) & { got?: Counts };
 
-// reasons the API reports as they are; anything else is the error's message
-class TaskFailure extends Error {
-  constructor(readonly code: "protected" | "no_trees" | "stuck", message: string) {
-    super(message);
-  }
+export interface TaskOptions {
+  aim?: Vec3; // the search is centred here instead of at home (or at the body, for wood)
+  onProgress?(p: { step: string; got?: Counts }): void;
 }
 
-const mineCtx = (bot: Bot) => ({ checkStop, pause: () => pause(bot), stopping: () => stopRequested });
+const mineCtx = (bot: Bot, aim?: Vec3) => ({ centre: aim, checkStop, pause: () => pause(bot), stopping: () => stopRequested });
 
-const PIPELINES: Record<string, (bot: Bot) => Promise<void>> = {
-  "get wood": async (bot) => {
-    await gatherLogs(bot);
+const PIPELINES: Record<string, (bot: Bot, aim?: Vec3) => Promise<void>> = {
+  "get wood": async (bot, aim) => {
+    await gatherLogs(bot, aim);
     await pause(bot);
     await craftBasics(bot);
     await pause(bot);
     await depositSurplus(bot);
   },
-  "get stone": (bot) => getStone(bot, mineCtx(bot)),
-  "get iron": (bot) => getIron(bot, mineCtx(bot)),
+  "get stone": (bot, aim) => getStone(bot, mineCtx(bot, aim)),
+  "get iron": (bot, aim) => getIron(bot, mineCtx(bot, aim)),
 };
 
-export async function startTask(bot: Bot, name: string): Promise<TaskResult> {
+export async function startTask(bot: Bot, name: string, opts: TaskOptions = {}): Promise<TaskResult> {
   const pipeline = PIPELINES[name];
   if (!pipeline) {
     log.warn("unknown task", { name });
@@ -102,16 +105,27 @@ export async function startTask(bot: Bot, name: string): Promise<TaskResult> {
 
   running = true;
   stopRequested = false;
+  beginRun(bot);
+  const gate = new ProgressGate();
+  const ticker = opts.onProgress
+    ? setInterval(() => {
+        const step = getStatus().task;
+        if (step !== "idle" && gate.offer(step, Date.now())) opts.onProgress?.({ step, got: gotNow(bot) });
+      }, PROGRESS_POLL_MS)
+    : null;
   try {
-    await pipeline(bot);
+    await pipeline(bot, opts.aim);
     log.info("task finished", { name });
-    return { ok: true };
+    return { ok: true, got: gotNow(bot) };
   } catch (err) {
-    if (stopRequested) return { ok: false, reason: "stopped" };
+    const got = gotNow(bot);
+    if (stopRequested) return { ok: false, reason: "stopped", got };
     log.error("task failed", { name, message: (err as Error).message });
     // get_stone and get_iron throw their reasons (no_stone, no_ore, no_pickaxe, no_fuel, smelt_failed, protected) as the message
-    return { ok: false, reason: err instanceof TaskFailure ? err.code : (err as Error).message };
+    return { ok: false, reason: (err as Error).message, detail: (err as FailInfo).detail, got };
   } finally {
+    if (ticker) clearInterval(ticker);
+    endRun();
     running = false;
     stopRequested = false;
     await setStatus({ task: "idle" });
@@ -134,38 +148,41 @@ function hasTool(bot: Bot, name: string): boolean {
 
 const keyOf = (p: { x: number; y: number; z: number }) => `${p.x},${p.y},${p.z}`;
 
-type Zone = { x: number; z: number };
-
-const inZone = (zones: Zone[], p: { x: number; z: number }) =>
-  zones.some((zn) => Math.hypot(zn.x - p.x, zn.z - p.z) <= ZONE_RADIUS);
-
-function nearestNaturalLog(bot: Bot, skipped: Set<string>, zones: Zone[]) {
+// the nearest natural log to `centre` that is not skipped, and not in a place the server refused
+function nearestNaturalLog(bot: Bot, skipped: Set<string>, centre: Vec3): { block: ReturnType<Bot["blockAt"]>; refused: number } {
   const ids = Object.values(bot.registry.blocksByName)
     .filter((b) => isPlainLogName(b.name))
     .map((b) => b.id);
   // a log cabin next to the bot can fill the nearest few, so look at plenty
-  const positions = bot.findBlocks({ matching: ids, maxDistance: SEARCH_RADIUS, count: 256 });
+  const positions = bot.findBlocks({ matching: ids, point: centre, maxDistance: SEARCH_RADIUS, count: 256 });
+  let refused = 0;
   for (const pos of positions) {
-    if (skipped.has(keyOf(pos)) || inZone(zones, pos)) continue;
+    if (skipped.has(keyOf(pos))) continue;
+    if (reverted.covers(pos)) {
+      refused++;
+      continue;
+    }
     const block = bot.blockAt(pos);
-    if (block && isNaturalLog(bot, block)) return block;
+    if (block && isNaturalLog(bot, block)) return { block, refused };
   }
-  return null;
+  return { block: null, refused };
 }
 
-async function gatherLogs(bot: Bot): Promise<void> {
+async function gatherLogs(bot: Bot, aim?: Vec3): Promise<void> {
   await setStatus({ task: "gathering wood" });
   const movements = gatherMovements(bot);
   bot.pathfinder.setMovements(movements);
   try {
     const skipped = new Set<string>();
-    const zones: Zone[] = [];
+    let reverts = 0; // undone digs in this run; the places themselves are remembered for the bot's life (refused.ts)
     let stuck = 0;
     while (totalLogs(bot) < LOG_TARGET) {
       await pause(bot);
-      const block = nearestNaturalLog(bot, skipped, zones);
+      const { block, refused } = nearestNaturalLog(bot, skipped, aim ?? bot.entity.position);
       if (!block) {
-        throw new TaskFailure("no_trees", "no natural trees within range, needs to walk further than this task does yet");
+        // trees left only where digs were undone: nothing else is cuttable, which is `protected` to anyone watching
+        if (reverts > 0) throw new TaskError("protected", undoneWords(reverts, "trees", bot.entity.position, refusedNow()));
+        throw new TaskError("no_trees", refused > 0 ? "every tree in range is where its digs were undone" : "no natural trees it may cut in range");
       }
       log.info("collecting log", { name: block.name, position: block.position });
 
@@ -211,13 +228,14 @@ async function gatherLogs(bot: Bot): Promise<void> {
       skipped.add(keyOf(block.position));
       // a dig happened and the log is back: the server undid it
       if (dug && bot.blockAt(block.position)?.name === block.name) {
-        zones.push({ x: block.position.x, z: block.position.z });
-        log.warn("protected zone", { position: block.position, radius: ZONE_RADIUS, zones: zones.length });
-        if (zones.length >= ZONE_CAP) throw new TaskFailure("protected", "the server keeps undoing my digs, I can't tell where I'm allowed");
+        noteRefused(block.position.x, block.position.z);
+        reverts++;
+        log.warn("protected zone", { position: block.position, reverts });
+        if (reverts >= ZONE_CAP) throw new TaskError("protected", undoneWords(reverts, "trees", bot.entity.position, refusedNow()));
         stuck = 0;
         continue;
       }
-      if (++stuck >= STUCK_CAP) throw new TaskFailure("stuck", "couldn't get any wood after several tries");
+      if (++stuck >= STUCK_CAP) throw new TaskError("stuck", "three tries in a row got no wood");
     }
   } finally {
     bot.pathfinder.setMovements(safeMovements(bot));
@@ -284,10 +302,12 @@ async function depositSurplus(bot: Bot): Promise<void> {
     checkStop();
     if (logName && surplusLogs > 0) {
       await chest.deposit(bot.registry.itemsByName[logName].id, null, surplusLogs);
+      noteStashed(logName, surplusLogs);
     }
     checkStop();
     if (planksName && surplusPlanks > 0) {
       await chest.deposit(bot.registry.itemsByName[planksName].id, null, surplusPlanks);
+      noteStashed(planksName, surplusPlanks);
     }
     if (wantFood) {
       // after the deposits, which free slots; the body never walks here for this, it only takes what is on offer

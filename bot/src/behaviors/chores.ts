@@ -6,6 +6,7 @@ import { isPlainLogName } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
 import type { MineCtx } from "./mine";
+import { noteStashed } from "./run-report";
 import { walkTo } from "./unstuck";
 
 const log = logger("chores");
@@ -42,9 +43,12 @@ export async function stashItems(bot: Bot, ctx: MineCtx, status: string, amounts
   try {
     for (const { item, count } of todo) {
       ctx.checkStop();
-      await chest.deposit(bot.registry.itemsByName[item].id, null, count).catch((err: Error) => {
-        if (!ctx.stopping()) log.warn("couldn't stash", { item, message: err.message });
-      });
+      await chest
+        .deposit(bot.registry.itemsByName[item].id, null, count)
+        .then(() => noteStashed(item, count))
+        .catch((err: Error) => {
+          if (!ctx.stopping()) log.warn("couldn't stash", { item, message: err.message });
+        });
     }
   } finally {
     chest.close();

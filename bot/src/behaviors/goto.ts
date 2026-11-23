@@ -47,7 +47,9 @@ export async function goTo(bot: Bot, handles: HandleTable, handle: string): Prom
       const p = dest.at();
       if (!p) throw new Error("stale_handle");
       if (dest.moves && p.distanceTo(bot.entity.position) <= ENTITY_ARRIVED) break;
-      if (leg > (dest.moves ? REWALKS : 0) || Date.now() > deadline) throw new StuckError();
+      if (leg > (dest.moves ? REWALKS : 0) || Date.now() > deadline) {
+        throw new StuckError(dest.moves && leg > REWALKS ? "the target kept moving away" : "ran out of time on the way");
+      }
       await walkTo(bot, new goals.GoalNear(p.x, p.y, p.z, dest.near));
       if (!dest.moves) break;
     }

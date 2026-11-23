@@ -7,7 +7,9 @@ import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
 import { ensureSticks, stashItems } from "./chores";
 import { mineBlocks, type MineCtx, type MineSpec } from "./mine";
-import { canMineStone, COBBLE_TARGET, stashAmount, toolPlan } from "./stone-plan";
+import { TaskError } from "./fail";
+import { nothingToDig, refusedNow } from "./refused";
+import { canMineStone, COBBLE_TARGET, STONE_MIN_Y, STONE_RANGE, stashAmount, toolPlan } from "./stone-plan";
 import { walkTo } from "./unstuck";
 
 const log = logger("stone");
@@ -18,10 +20,11 @@ const SPEC: MineSpec = {
   names: ["stone"],
   drop: "cobblestone",
   target: COBBLE_TARGET,
-  range: 40, // from the home table
-  minY: 30, // nothing at or below this
+  range: STONE_RANGE, // from the home table, or from where the order was aimed
+  minY: STONE_MIN_Y,
   looking: "looking for stone",
   mining: "mining stone",
+  what: "stone",
 };
 
 export type StoneCtx = MineCtx;
@@ -67,9 +70,9 @@ async function stashCobble(bot: Bot, ctx: StoneCtx, reserved: number): Promise<v
 
 // Throws the reason as the message: no_pickaxe, no_stone, protected, stuck; anything else is an error's own text.
 export async function getStone(bot: Bot, ctx: StoneCtx): Promise<void> {
-  if (!canMineStone((name) => itemCount(bot, name))) throw new Error("no_pickaxe");
+  if (!canMineStone((name) => itemCount(bot, name))) throw new TaskError("no_pickaxe");
   try {
-    if ((await mineBlocks(bot, ctx, SPEC)) <= 0) throw new Error("no_stone");
+    if ((await mineBlocks(bot, ctx, SPEC)) <= 0) throw new TaskError("no_stone", nothingToDig("natural stone", refusedNow().length > 0));
   } finally {
     // digging was never switched on for the pathfinder; this puts the movements back to the default regardless
     bot.pathfinder.setMovements(safeMovements(bot));

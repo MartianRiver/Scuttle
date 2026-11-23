@@ -1,7 +1,8 @@
 // Pieces the scenario runner and the scenarios share: an RCON client, world facts read through it,
 // and a client for the body API. Facts come from the server, never from the bot's own view.
+import { spawn } from "node:child_process";
 import net from "node:net";
-import { readFileSync } from "node:fs";
+import { openSync, readFileSync } from "node:fs";
 import path from "node:path";
 import WebSocket from "ws";
 
@@ -136,12 +137,15 @@ export type Observation = {
   time?: string;
   weather: string;
   where: string;
+  in?: string;
   held: string | null;
   inv: Record<string, number>;
   tools?: string[];
   near: Array<{ h: string; what: string; k?: string; d: string; dir: string; hp?: string }>;
   blocks: Array<{ h: string; what: string; d: string; dir: string }>;
+  stone?: string;
   places?: Record<string, string>;
+  refused?: Array<{ d: string; dir: string }>;
   more?: Record<string, number>;
 };
 export type Reply = { type: string; reason?: string; taskId?: string; snapshot?: { inGame: boolean }; observation?: Observation };
@@ -243,4 +247,20 @@ export interface Scenario {
   setup?(c: Ctx): Promise<void>;
   act(c: Ctx): Promise<void>;
   verify(c: Ctx): Promise<void>;
+}
+
+// The test bot is a process of its own: this kills it and starts it again from the same checkout, which also
+// forgets everything it only held in memory (handles, refused places), and puts the runner's socket on the new one.
+export async function restartBot(c: Ctx, logFile = "/tmp/scuttle-run/bot-restart.log"): Promise<void> {
+  spawn("pkill", ["-f", "tsx src/index.ts --testworld"]);
+  // a duplicate login is kicked and costs minutes of backoff, so wait until the server has let go
+  for (let i = 0; i < 60 && (await c.world.run("list")).includes(c.bot); i++) await sleep(500);
+  const log = openSync(logFile, "a");
+  spawn("bash", ["testworld/bot.sh"], { detached: true, stdio: ["ignore", log, log] }).unref();
+  await c.body.reconnect();
+  for (let i = 0; i < 60; i++) {
+    if ((await c.body.send({ intent: "status" })).snapshot?.inGame) return;
+    await sleep(1000);
+  }
+  throw new Error("the restarted bot never spawned");
 }

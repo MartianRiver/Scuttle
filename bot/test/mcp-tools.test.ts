@@ -10,7 +10,8 @@ import { Audit } from "../src/mcp/audit";
 import type { BodyClient } from "../src/mcp/client";
 import { buildServer } from "../src/mcp/server";
 import { ACTIONS, REJECTS, TASK_SKILLS, skillsTable } from "../src/mcp/skills";
-import { TOOLS } from "../src/mcp/tools";
+import { line } from "../src/mcp/format";
+import { TOOLS, withoutStaleProgress } from "../src/mcp/tools";
 import { wakeReason } from "../src/mcp/wait";
 import { FakeBody, connected, sleep, until } from "./mcp-fake";
 
@@ -306,4 +307,72 @@ test("not configured: tools that need the body say so, skills still works", asyn
     await mcp.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("act task near: a block or place handle goes on the wire as near, nothing else may carry it", async () => {
+  await withBody(async (fake, client) => {
+    const ok = await call(client, "act", { action: "task", task: "get_wood", near: "b17kq", rationale: "trees by the lake" });
+    assert.equal(ok.accepted, true);
+    assert.deepEqual(fake.intents[0], { type: "intent", id: fake.intents[0].id, intent: "task", name: "get_wood", near: "b17kq" });
+    await call(client, "act", { action: "task", task: "get_stone", near: "table", rationale: "r" });
+    assert.equal(fake.intents[1].near, "table");
+    await call(client, "act", { action: "task", task: "get_wood", rationale: "r" });
+    assert.ok(!("near" in fake.intents[2]), "no near unless given");
+    for (const c of [
+      { action: "go_to", handle: "home", near: "home" },
+      { action: "come_to", player: "Sam", near: "home" },
+      { action: "task", task: "get_wood", near: "e4kq" }, // a mob moves: not valid
+      { action: "task", task: "get_wood", near: "12 64 -30" },
+    ]) {
+      const r = await call(client, "act", { ...c, rationale: "r" });
+      assert.equal(r.accepted, false, JSON.stringify(c));
+    }
+    assert.equal(fake.intents.length, 3);
+    // the body can still say the handle went stale
+    fake.reply = (m) => ({ type: "rejected", id: m.id, reason: "stale_handle" });
+    assert.equal((await call(client, "act", { action: "task", task: "get_wood", near: "b9kq", rationale: "r" })).reason, "stale_handle");
+  });
+  const t = skillsTable();
+  assert.ok(t.actions.task.args.includes("near?"));
+  assert.ok("stale_handle" in t.actions.task.refused_with);
+  assert.match(t.actions.task.does, /near/);
+});
+
+test("event lines show got and detail, and a task_progress step", () => {
+  const ev = (event: string, f: object) => ({ seq: 9, ts: 0, event, ...f });
+  assert.equal(
+    line(ev("task_failed", { taskId: "t3", reason: "protected", detail: "three digs undone near the trees, a fair way south-west", got: { oak_log: 4 } })),
+    '#9 task_failed taskId=t3 reason=protected detail="three digs undone near the trees, a fair way south-west" got=oak_log:4'
+  );
+  assert.equal(line(ev("task_finished", { taskId: "t3", got: { cobblestone: 16, oak_planks: 6 } })), "#9 task_finished taskId=t3 got=cobblestone:16,oak_planks:6");
+  assert.equal(line(ev("task_progress", { taskId: "t3", step: "mining stone", got: { cobblestone: 7 } })), '#9 task_progress taskId=t3 step="mining stone" got=cobblestone:7');
+});
+
+test("task_progress never wakes wait, wait's timeout carries the last one, and a read keeps only the newest per task", async () => {
+  await withBody(async (fake, client) => {
+    const { taskId } = await call(client, "act", { action: "task", task: "get_wood", rationale: "r" });
+    assert.equal(wakeReason({ seq: 1, ts: 0, event: "task_progress", taskId, step: "gathering wood" }, taskId), undefined);
+    fake.snapshot = { ...fake.snapshot, task: "task:get_wood", taskId };
+    setTimeout(() => {
+      fake.emit("task_progress", { taskId, step: "gathering wood" });
+      fake.emit("task_progress", { taskId, step: "gathering wood", got: { oak_log: 4 } });
+      fake.emit("task_progress", { taskId, step: "crafting tools", got: { oak_log: 8 } });
+    }, 20);
+    const w = await call(client, "wait", { taskId, timeout_s: 1 });
+    assert.equal(w.reason, "timeout", "progress lines do not wake it");
+    assert.equal(w.progress, `#3 task_progress taskId=${taskId} step="crafting tools" got=oak_log:8`);
+    assert.deepEqual(w.events, [w.progress], "one line for the task, the older ones are read");
+    assert.equal((await call(client, "events")).events.length, 0);
+    // another task's last line is not this one's
+    fake.emit("task_progress", { taskId: "t99", step: "other" });
+    await until(() => client.head === 4);
+    assert.equal((await call(client, "wait", { taskId, timeout_s: 1 })).progress, w.progress);
+  });
+});
+
+test("withoutStaleProgress: a long task cannot crowd the events that matter out of a capped read", () => {
+  const e = (seq: number, event: string, taskId = "t1") => ({ seq, ts: 0, event, taskId });
+  const kept = withoutStaleProgress([e(1, "task_progress"), e(2, "task_progress"), e(3, "chat"), e(4, "task_progress", "t2"), e(5, "task_progress"), e(6, "task_failed")]);
+  assert.deepEqual(kept.map((x) => x.seq), [3, 4, 5, 6]);
+  assert.deepEqual(withoutStaleProgress([]), []);
 });

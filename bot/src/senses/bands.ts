@@ -1,20 +1,8 @@
 // Numbers into words for the observation. Pure. The mind never gets a coordinate or an exact
 // distance: a band, a compass point and up or down.
-import { direction } from "../behaviors/place";
+import { direction, distanceBand } from "../behaviors/place";
 
-// upper edge in blocks, inclusive
-const DISTANCE: Array<[number, string]> = [
-  [3, "here"],
-  [8, "close"],
-  [16, "near"],
-  [32, "far"],
-  [48, "a short walk"],
-  [128, "a fair way"],
-  [320, "a long way"],
-  [Infinity, "very far"],
-];
-
-export const distanceBand = (blocks: number): string => DISTANCE.find(([max]) => blocks <= max)![1];
+export { distanceBand };
 
 const LEVEL = 2.5; // vertical offset that counts as above or below
 

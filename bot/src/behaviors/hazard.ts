@@ -41,7 +41,7 @@ export function classify(s: Sense, prev: Hazard | null = null): Hazard | null {
   return null;
 }
 
-const standable = (g: Grid, x: number, y: number, z: number): boolean => {
+export const standable = (g: Grid, x: number, y: number, z: number): boolean => {
   const feet = g(x, y, z);
   const head = g(x, y + 1, z);
   const floor = g(x, y - 1, z);

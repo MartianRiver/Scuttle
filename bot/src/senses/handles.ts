@@ -10,6 +10,9 @@ export const isPlace = (h: string): h is Place => (PLACES as readonly string[]).
 // the shape check the protocol does; whether it still points at anything is the table's business
 export const HANDLE_SHAPE = /^(?:[eb][0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed)$/;
 
+// what a task can be aimed at: a block or a known place; not a mob, which moves
+export const NEAR_SHAPE = /^(?:b[0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed)$/;
+
 export type Target =
   | { kind: "entity"; id: number; label: string }
   | { kind: "block"; x: number; y: number; z: number; name: string };

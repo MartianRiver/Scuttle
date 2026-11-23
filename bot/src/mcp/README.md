@@ -36,6 +36,10 @@ args, outcome. Outcomes hold event names and counts, never chat text or speaker 
   token stops it instead of retrying. It exits when its client closes stdin.
 - `status` is cached for 2 s because the body allows 10 intents per 10 s; `wait` on a timeout asks fresh.
 - `events` and `wait` share one read cursor. Both mark what they return as read.
+- `task_progress` lines are commentary: `wait` never wakes for them, `events` shows only the newest per task, and a
+  `wait` that times out carries the last one as `progress`. `task_failed` and `task_finished` lines show `detail=` (words)
+  and `got=` (items gained, `oak_log:4`).
+- `act` task takes `near` (a block handle or a place) to aim a task at a tree, ore or chest seen in `observe`.
 - Adding an intent (observe, go_to): its entry in `ACTIONS` in `skills.ts` (and its task or argument names
   there), the argument in the `act` schema in `tools.ts`, a line in `TASK_SKILLS` if it is a task. The
   skills test fails for a task in `TASKS` without a line. A new tool is one more entry in `TOOLS`.
