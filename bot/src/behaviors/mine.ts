@@ -40,6 +40,7 @@ export interface MineCtx {
 export interface MineSpec {
   names: readonly string[]; // the blocks dug
   drop: string; // the item that counts
+  drops?: readonly string[]; // every item the block drops, when it is more than `drop` (collect)
   target: number; // how many more of it than when it started
   range: number; // from the centre
   minY: number; // nothing at or below this
@@ -50,7 +51,7 @@ export interface MineSpec {
 }
 
 const keyOf = (p: Pos) => `${p.x},${p.y},${p.z}`;
-const nameAtOf =
+export const nameAtOf =
   (bot: Bot): NameAt =>
   (p) =>
     bot.blockAt(new Vec3(p.x, p.y, p.z))?.name ?? null;
@@ -86,7 +87,7 @@ function standable(bot: Bot, feet: Vec3): boolean {
 }
 
 // the cell beside the target, at its level or one under it, that is nearest the body
-function findStand(bot: Bot, target: Vec3): Vec3 | null {
+export function findStand(bot: Bot, target: Vec3): Vec3 | null {
   const me = bot.entity.position;
   let best: Vec3 | null = null;
   for (const dy of [0, -1]) {
@@ -105,7 +106,7 @@ function findStand(bot: Bot, target: Vec3): Vec3 | null {
 
 const isTarget = (spec: MineSpec, name: string | null | undefined) => name != null && spec.names.includes(name);
 
-interface Pick {
+export interface Pick {
   pos: Vec3;
   stand: Vec3;
 }
@@ -132,7 +133,7 @@ function pickTarget(bot: Bot, spec: MineSpec, centre: Vec3, list: Vec3[], skippe
 
 // a target nothing can walk to (a ledge in a pit, the far side of a wall) is dropped here rather than
 // found out by the walk timing out; a plan that runs out of time is given the benefit of the doubt
-function reachable(bot: Bot, pick: Pick): boolean {
+export function reachable(bot: Bot, pick: Pick): boolean {
   const goal = new goals.GoalBlock(pick.stand.x, pick.stand.y, pick.stand.z);
   const { status } = bot.pathfinder.getPathTo(bot.pathfinder.movements, goal, PATH_CHECK_MS);
   log.debug("route check", { position: pick.pos, status });
@@ -140,7 +141,7 @@ function reachable(bot: Bot, pick: Pick): boolean {
 }
 
 // walk, look again, dig, pick the drop up. Every wait is bounded; the caller reads the world after
-async function mineBlock(bot: Bot, ctx: MineCtx, spec: MineSpec, pick: Pick): Promise<void> {
+export async function mineBlock(bot: Bot, ctx: MineCtx, spec: MineSpec, pick: Pick): Promise<void> {
   await walkTo(bot, new goals.GoalBlock(pick.stand.x, pick.stand.y, pick.stand.z));
   ctx.checkStop();
   // the world may have moved on while it walked: judge the block again from where the feet really are
@@ -155,7 +156,7 @@ async function mineBlock(bot: Bot, ctx: MineCtx, spec: MineSpec, pick: Pick): Pr
   ctx.checkStop();
   await dig(bot, live, ctx.stopping);
   if (!isTarget(spec, bot.blockAt(pick.pos)?.name) && !ctx.stopping()) {
-    await pickUp(bot, pick.pos.offset(0.5, 0.5, 0.5), ctx.stopping, (name) => name === spec.drop);
+    await pickUp(bot, pick.pos.offset(0.5, 0.5, 0.5), ctx.stopping, (name) => (spec.drops ?? [spec.drop]).includes(name));
   }
 }
 

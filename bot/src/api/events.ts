@@ -2,22 +2,42 @@ import { randomBytes } from "node:crypto";
 
 export const DETAIL_MAX = 120;
 export const GOT_MAX_ITEMS = 4;
+export const STORED_MAX_ITEMS = 8;
 
-// The extra fields on a task's ending or progress line: `detail` is words only (a digit is dropped, so a
-// distance or a position cannot slip through) and short; `got` is item counts, a few of the biggest.
-export function endFields(info: { detail?: unknown; got?: unknown }): { detail?: string; got?: Record<string, number> } {
-  const out: { detail?: string; got?: Record<string, number> } = {};
-  if (typeof info.detail === "string") {
-    const detail = info.detail.replace(/\d+/g, "").replace(/\s+/g, " ").trim().slice(0, DETAIL_MAX);
-    if (detail) out.detail = detail;
+const wordsOnly = (s: string) => s.replace(/\d+/g, "").replace(/\s+/g, " ").trim().slice(0, DETAIL_MAX);
+
+// item counts, the biggest few; nothing but lowercase names and whole numbers gets through
+function counts(v: unknown, max: number): Record<string, number> | undefined {
+  if (typeof v !== "object" || v === null) return undefined;
+  const items = Object.entries(v as Record<string, unknown>)
+    .filter(([k, n]) => /^[a-z_]{1,48}$/.test(k) && Number.isInteger(n) && (n as number) > 0)
+    .sort((a, b) => (b[1] as number) - (a[1] as number))
+    .slice(0, max);
+  return items.length > 0 ? (Object.fromEntries(items) as Record<string, number>) : undefined;
+}
+
+export interface EndInfo {
+  detail?: unknown;
+  got?: unknown;
+  missing?: unknown;
+  stored?: unknown;
+  saw?: unknown;
+}
+
+// The extra fields on a task's ending or progress line: `detail` and `saw` are words only (a digit is dropped, so a
+// distance or a position cannot slip through) and short; `got`, `missing` and `stored` are item counts, a few of the biggest.
+export function endFields(info: EndInfo): { detail?: string; got?: Record<string, number>; missing?: Record<string, number>; stored?: Record<string, number>; saw?: string } {
+  const out: ReturnType<typeof endFields> = {};
+  for (const key of ["detail", "saw"] as const) {
+    const v = info[key];
+    if (typeof v === "string" && wordsOnly(v)) out[key] = wordsOnly(v);
   }
-  if (typeof info.got === "object" && info.got !== null) {
-    const items = Object.entries(info.got as Record<string, unknown>)
-      .filter(([k, v]) => /^[a-z_]{1,48}$/.test(k) && Number.isInteger(v) && (v as number) > 0)
-      .sort((a, b) => (b[1] as number) - (a[1] as number))
-      .slice(0, GOT_MAX_ITEMS);
-    if (items.length > 0) out.got = Object.fromEntries(items) as Record<string, number>;
-  }
+  const got = counts(info.got, GOT_MAX_ITEMS);
+  if (got) out.got = got;
+  const missing = counts(info.missing, GOT_MAX_ITEMS);
+  if (missing) out.missing = missing;
+  const stored = counts(info.stored, STORED_MAX_ITEMS);
+  if (stored) out.stored = stored;
   return out;
 }
 

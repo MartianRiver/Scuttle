@@ -3,12 +3,14 @@
 export interface FailInfo {
   detail?: string; // words only, no digits
   got?: Record<string, number>; // items gained in the run, by name
+  missing?: Record<string, number>; // a craft that was short: what it lacked
 }
 
 export class TaskError extends Error implements FailInfo {
   constructor(
     readonly reason: string,
-    readonly detail?: string
+    readonly detail?: string,
+    readonly missing?: Record<string, number>
   ) {
     super(reason);
   }

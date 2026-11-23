@@ -148,7 +148,9 @@ export type Observation = {
   refused?: Array<{ d: string; dir: string }>;
   more?: Record<string, number>;
 };
-export type Reply = { type: string; reason?: string; taskId?: string; snapshot?: { inGame: boolean }; observation?: Observation };
+export type Recipe = { item: string; makes?: number; needs?: Record<string, number>; table?: boolean; have?: Record<string, number>; missing?: Record<string, number>; craftable?: false };
+export type Stash = { items: Record<string, number>; fresh: boolean; looked: string; unseen?: number };
+export type Reply = { type: string; reason?: string; taskId?: string; snapshot?: { inGame: boolean }; observation?: Observation; recipe?: Recipe; stash?: Stash };
 export type BodyEvent = { event: string; taskId?: string; reason?: string; [k: string]: unknown };
 
 // The body API from the outside, as the real consumer sees it.

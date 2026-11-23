@@ -1,5 +1,5 @@
 import WebSocket from "ws";
-import type { Snapshot } from "../api/dispatch";
+import type { RecipeAnswer, Snapshot, StashAnswer } from "../api/dispatch";
 import type { Observation } from "../senses/compose";
 import type { BotEvent } from "../api/events";
 import { parseFrame } from "../api/protocol";
@@ -14,6 +14,8 @@ export type Reply =
   | { kind: "rejected"; reason: string }
   | { kind: "status"; snapshot: Snapshot }
   | { kind: "observation"; observation: Observation }
+  | { kind: "recipe"; recipe: RecipeAnswer }
+  | { kind: "stash"; stash: StashAnswer }
   | { kind: "invalid" } // our own frame failed the protocol's parser; nothing was sent
   | { kind: "offline" } // no connection to the body API
   | { kind: "no_reply" }; // sent, but the connection dropped or the reply timed out: outcome unknown
@@ -27,6 +29,7 @@ export interface ClientOptions {
   snapshotMaxAgeMs?: number; // status is cached this long, the body rate-limits intents
 }
 
+const READ_ONLY = ["status", "observe", "recipe", "stash"];
 const BACKOFF = [500, 1000, 2000, 4000, 8000, 10_000];
 
 export class BodyClient {
@@ -146,7 +149,7 @@ export class BodyClient {
       ws.send(raw, (err) => {
         if (err) this.pending.get(id)?.({ kind: "no_reply" });
       });
-      if (fields.intent !== "status" && fields.intent !== "observe") this.snapshotAt = 0; // the world just changed under the cache
+      if (!READ_ONLY.includes(fields.intent as string)) this.snapshotAt = 0; // the world just changed under the cache
     });
   }
 
@@ -188,6 +191,12 @@ export class BodyClient {
           break;
         case "observation":
           this.reply(m.id, { kind: "observation", observation: m.observation });
+          break;
+        case "recipe":
+          this.reply(m.id, { kind: "recipe", recipe: m.recipe });
+          break;
+        case "stash":
+          this.reply(m.id, { kind: "stash", stash: m.stash });
           break;
         case "accepted":
           this.reply(m.id, { kind: "accepted", ...(m.taskId && { taskId: m.taskId }) });
