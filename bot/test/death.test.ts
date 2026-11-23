@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createDispatcher, type BodyControl } from "../src/api/dispatch";
 import { EventLog } from "../src/api/events";
-import { AT_HOME, BANDS, deathCause, describePlace, direction } from "../src/behaviors/place";
+import { AT_HOME, DISTANCE, deathCause, describePlace, direction } from "../src/behaviors/place";
 
 const home = { x: 4, y: 68, z: -28 };
 const at = (dx: number, dz: number, y = 68) => ({ x: home.x + dx, y, z: home.z + dz });
@@ -22,19 +22,21 @@ test("direction follows the compass: +x east, +z south", () => {
 test("place: distance band, direction, height", () => {
   assert.equal(describePlace(home, home), "at home, on the surface");
   assert.equal(describePlace(at(AT_HOME - 1, 0), home), "at home, on the surface");
-  assert.equal(describePlace(at(30, -30), home), "a short walk to the north-east of home, on the surface");
-  assert.equal(describePlace(at(-100, 0), home), "a fair way to the west of home, on the surface");
+  assert.equal(describePlace(at(20, -20), home), "a short walk to the north-east of home, on the surface");
+  assert.equal(describePlace(at(30, -30), home), "a fair way to the north-east of home, on the surface");
+  assert.equal(describePlace(at(-100, 0), home), "far to the west of home, on the surface");
   assert.equal(describePlace(at(0, 200), home), "a long way to the south of home, on the surface");
-  assert.equal(describePlace(at(-2000, 0), home), "far to the west of home, on the surface");
+  assert.equal(describePlace(at(-2000, 0), home), "very far to the west of home, on the surface");
   assert.equal(describePlace(at(0, 0, 30), home), "at home, underground");
-  assert.equal(describePlace(at(0, 40, -20), home), "a short walk to the south of home, deep underground");
+  assert.equal(describePlace(at(0, 20, -20), home), "a short walk to the south of home, deep underground");
   assert.equal(describePlace(at(0, 0, 150), home), "at home, high up");
 });
 
-test("place: a band starts at its lower edge", () => {
+test("place: a band starts just past the one before, on the same scale observe uses", () => {
   let from = AT_HOME;
-  for (const [max, words] of BANDS) {
-    assert.ok(describePlace(at(from, 0), home).startsWith(words), `${words} from ${from}`);
+  for (const [max, words] of DISTANCE) {
+    if (max <= AT_HOME) continue;
+    assert.ok(describePlace(at(from + 1, 0), home).startsWith(words + " to"), `${words} from ${from}`);
     from = max;
   }
 });

@@ -2,12 +2,21 @@
 // this module (the API has no coordinate field, and a place string with digits would be one).
 
 export const AT_HOME = 16; // horizontal blocks from the bed counted as home
-export const BANDS: Array<[maxBlocks: number, words: string]> = [
-  [48, "a short walk"],
-  [128, "a fair way"],
+
+// Distance in words, one scale for everything the mind reads (observe and the death place), and the
+// words climb: each is farther than the one before. Upper edge in blocks, inclusive.
+export const DISTANCE: Array<[maxBlocks: number, words: string]> = [
+  [3, "here"],
+  [8, "close"],
+  [16, "near"],
+  [32, "a short walk"],
+  [48, "a fair way"],
+  [128, "far"],
   [320, "a long way"],
-  [Infinity, "far"],
+  [Infinity, "very far"],
 ];
+
+export const distanceBand = (blocks: number): string => DISTANCE.find(([max]) => blocks <= max)![1];
 export const UNDERGROUND_BELOW = 48; // overworld y; the surface sits around 63-100
 export const DEEP_BELOW = 0; // deepslate
 export const HIGH_ABOVE = 110; // mountain tops and the sky
@@ -51,7 +60,7 @@ export function describePlace(at: Point, home: Point, dimension?: string): strin
   const where =
     away < AT_HOME
       ? "at home"
-      : `${BANDS.find(([max]) => away < max)![1]} to the ${direction(dx, dz)} of home`;
+      : `${distanceBand(away)} to the ${direction(dx, dz)} of home`;
   return `${where}, ${height(at.y)}`;
 }
 

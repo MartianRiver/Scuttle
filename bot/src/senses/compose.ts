@@ -3,6 +3,7 @@
 // no-coordinates rule are tested on made-up input.
 import { directionWords, distanceBand, type healthBand } from "./bands";
 import { fitBudget } from "./budget";
+import type { Standing } from "./standing";
 
 export const OBSERVATION_MAX_CHARS = 1200;
 
@@ -34,6 +35,9 @@ export interface RawSense {
   tools: Array<{ name: string; left: number }>;
   entities: RawEntity[]; // nearest first within a kind
   blocks: RawBlock[];
+  standing?: Standing; // what it stands in, when not plain ground
+  stone?: Offset; // the nearest natural stone it may dig, in view
+  refused: Array<{ dx: number; dz: number; r: number }>; // places the server undid its digs, nearest first
   places: Array<{ name: string } & Offset> | null; // null away from the overworld
 }
 
@@ -44,12 +48,15 @@ export interface Observation {
   time?: string;
   weather: string;
   where: string;
+  in?: Standing;
   held: string | null;
   inv: Record<string, number>;
   tools?: string[];
   near: Array<Record<string, string>>;
   blocks: Array<Record<string, string>>;
+  stone?: string;
   places?: Record<string, string>;
+  refused?: Array<{ d: string; dir: string }>;
   more?: Record<string, number>; // how many were left off each list to fit
 }
 
@@ -75,6 +82,7 @@ export function compose(raw: RawSense, max = OBSERVATION_MAX_CHARS): Observation
       ...(e.hp && e.hp !== "full" && { hp: e.hp }),
     })),
     blocks: [...raw.blocks].sort(byDistance).map((b) => ({ h: b.handle, what: b.what, ...words(b) })),
+    refused: raw.refused.map(({ dx, dz, r }) => ({ d: distanceBand(Math.max(0, Math.hypot(dx, dz) - r)), dir: directionWords(dx, 0, dz) })),
     tools: raw.tools.map((t) => `${t.name} ${t.left}%`),
     inv: [...raw.items].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
   };
@@ -88,14 +96,17 @@ export function compose(raw: RawSense, max = OBSERVATION_MAX_CHARS): Observation
       ...(raw.time && { time: raw.time }),
       weather: raw.weather,
       where: raw.where,
+      ...(raw.standing && { in: raw.standing }),
       held: raw.held,
       inv: Object.fromEntries(l.inv.map((i) => [i.name, i.count])),
       ...(l.tools.length > 0 && { tools: l.tools }),
       near: l.near,
       blocks: l.blocks,
+      ...(raw.stone && { stone: placeWords(raw.stone) }),
       ...(raw.places && {
         places: Object.fromEntries(raw.places.map((p) => [p.name, placeWords(p)])),
       }),
+      ...(l.refused.length > 0 && { refused: l.refused }),
       ...(Object.keys(trimmed).length > 0 && { more: { ...trimmed } }),
     }),
     max

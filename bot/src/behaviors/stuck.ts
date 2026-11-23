@@ -44,3 +44,28 @@ export function judge(samples: Sample[], now: number, ctx: Context): Verdict {
   if (spread(inWindow) >= MIN_MOVE) return "ok";
   return ctx.nudges < MAX_NUDGES ? "nudge" : "give_up";
 }
+
+// ---- how a stuck walk is described to the mind: words only, never a player's name or a number ----
+
+// what the body was doing, from its status text
+export function activityWords(status: string): string {
+  const s = status.replace(/\d+/g, "").trim();
+  if (s === "" || s === "idle") return "walking";
+  if (s.startsWith("walking to ")) {
+    const rest = s.slice("walking to ".length);
+    return rest === "home" || rest.startsWith("the ") ? s : "walking to a player";
+  }
+  if (s.startsWith("bringing ")) return "bringing items to a player";
+  if (s.startsWith("following ") || s.startsWith("guarding ")) return `${s.split(" ")[0]} a player`;
+  return s;
+}
+
+export type StuckKind = "dry" | "no_bank" | "twice";
+
+// `deep` is whether the head was under; only the water kinds read it
+export function stuckWords(kind: StuckKind, status: string, deep = false): string {
+  const act = activityWords(status);
+  if (kind === "no_bank") return `in ${deep ? "deep water" : "the water"} while ${act}, no way out found`;
+  if (kind === "twice") return `stuck in the water twice while ${act}, the way on crosses water`;
+  return `no progress while ${act}`;
+}

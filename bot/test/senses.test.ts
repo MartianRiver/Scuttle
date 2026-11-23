@@ -14,8 +14,10 @@ test("distance bands and directions are words, with up and down", () => {
   assert.equal(distanceBand(3), "here");
   assert.equal(distanceBand(6), "close");
   assert.equal(distanceBand(16), "near");
-  assert.equal(distanceBand(17), "far");
-  assert.equal(distanceBand(40), "a short walk");
+  assert.equal(distanceBand(17), "a short walk");
+  assert.equal(distanceBand(40), "a fair way");
+  assert.equal(distanceBand(100), "far");
+  assert.equal(distanceBand(200), "a long way");
   assert.equal(distanceBand(1e6), "very far");
 
   assert.equal(directionWords(6, 0, 0), "east");
@@ -181,6 +183,7 @@ function raw(over: Partial<RawSense> = {}): RawSense {
     tools: [{ name: "iron_pickaxe", left: 87 }],
     entities: [{ handle: "e1kq", what: "cow", kind: "other", dx: 6, dy: 0, dz: 0 }],
     blocks: [{ handle: "b2kq", what: "chest", dx: -3, dy: 0, dz: 5 }],
+    refused: [],
     places: [{ name: "home", ...here }, { name: "table", dx: 0, dy: 0, dz: -4 }],
     ...over,
   };
@@ -231,7 +234,8 @@ function worst(): RawSense {
     hp: "hurt" as const,
   }));
   const blocks = Array.from({ length: 60 }, (_, i) => ({ handle: `b${i + 100}kq`, what: `deepslate_diamond_ore`, dx: i - 20, dy: -3, dz: 10 - i }));
-  return raw({ items, tools, entities, blocks, armor: 20, held: "netherite_pickaxe_0", where: "deep underground" });
+  const refused = [0, 1, 2].map((i) => ({ dx: 30 + i, dz: -20 - i, r: 12 }));
+  return raw({ items, tools, entities, blocks, refused, armor: 20, held: "netherite_pickaxe_0", where: "deep underground", standing: "deep_water", stone: { dx: 4, dy: -3, dz: -6 } });
 }
 
 test("compose: a worst case stays inside the budget, says what was left off and keeps the fixed part", () => {
@@ -241,6 +245,9 @@ test("compose: a worst case stays inside the budget, says what was left off and 
   assert.ok(o.more && Object.keys(o.more).length > 0);
   for (const [list, n] of Object.entries(o.more!)) assert.ok(n > 0, list);
   assert.equal(o.places && Object.keys(o.places).length, 2); // places are never trimmed
+  assert.equal(o.in, "deep_water");
+  assert.equal(o.stone, "close north-east below"); // scalars are never trimmed
+  assert.equal(o.refused?.length, 3, "the shortest list survives while longer ones give way");
   assert.equal(o.health, 20);
   // nearest-first inside a kind: what stays is the head of each list
   assert.equal(o.near[0].k, "player");
@@ -250,6 +257,34 @@ test("compose: a worst case stays inside the budget, says what was left off and 
   assert.deepEqual(tiny.near, []);
   assert.deepEqual(tiny.blocks, []);
   assert.deepEqual(tiny.inv, {});
+  assert.equal(tiny.refused, undefined);
+  assert.equal(tiny.more?.refused, 3, "refused is a trimmable list and says so");
+  // the part that is never trimmed, in chars: the floor the lists have to share the budget with
+  assert.ok(JSON.stringify(tiny).length < 520, `${JSON.stringify(tiny).length} chars`);
+});
+
+test("compose: in, stone and refused read as words", () => {
+  const o = compose(
+    raw({
+      standing: "water",
+      stone: { dx: 0, dy: 0, dz: -5 },
+      refused: [
+        { dx: 0, dz: -40, r: 12 },
+        { dx: 3, dz: 2, r: 12 },
+      ],
+    })
+  );
+  assert.equal(o.in, "water");
+  assert.equal(o.stone, "close north");
+  // the distance is to the edge of the place, and inside one it is here; the point is the middle of it
+  assert.deepEqual(o.refused, [
+    { d: "a short walk", dir: "north" },
+    { d: "here", dir: "south-east" },
+  ]);
+  const plain = compose(raw());
+  assert.equal(plain.in, undefined);
+  assert.equal(plain.stone, undefined);
+  assert.equal(plain.refused, undefined);
 });
 
 test("compose: no coordinate leaves it, whatever the offsets are", () => {

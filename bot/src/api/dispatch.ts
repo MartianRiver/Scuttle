@@ -1,6 +1,12 @@
-import type { EventLog } from "./events";
+import { endFields, type EventLog } from "./events";
 import type { Observation } from "../senses/compose";
 import type { Intent, TaskName } from "./protocol";
+
+export type Got = Record<string, number>;
+export interface TaskDone {
+  got?: Got;
+}
+export type Report = (p: { step: string; got?: Got }) => void;
 
 // What the real bot (body.ts) or a test stub has to provide.
 export interface BodyControl {
@@ -21,7 +27,9 @@ export interface BodyControl {
   // the handle's words for the status text, or null when it is unknown, expired or points at nothing now
   handleLabel(handle: string): string | null;
   observe(): Observation; // what it can see, in words (senses/)
-  runTask(name: TaskName): Promise<void>;
+  // `near` is a block or place handle that moves the search centre; rejects "stale_handle" if it is gone by the start.
+  // A failure's `detail` and `got` ride on the error; a finish may hand back `got`. `report` is for the progress lines.
+  runTask(name: TaskName, near: string | undefined, report: Report): Promise<TaskDone | void>;
   say(text: string): void; // one public chat line, already validated
   stop(): void; // the API's stop
   interrupt(): void; // the same cleanup, for the body's own reflexes taking over
@@ -65,28 +73,34 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
   });
 
   // late results from a stopped or replaced action are dropped here
-  const settle = (c: Current, event: "task_finished" | "task_failed", reason?: string) => {
+  const settle = (c: Current, event: "task_finished" | "task_failed", reason?: string, info: { detail?: unknown; got?: unknown } = {}) => {
     if (current?.taskId !== c.taskId) return;
     current = null;
-    log.emit(event, reason ? { taskId: c.taskId, reason } : { taskId: c.taskId });
+    log.emit(event, { taskId: c.taskId, ...(reason && { reason }), ...endFields(info) });
   };
 
-  const begin = (kind: string, isTask: boolean, run: Promise<void> | null, keepOnReflex = false): string => {
+  const begin = (kind: string, isTask: boolean, run: Promise<TaskDone | void> | null, keepOnReflex = false): string => {
     const c: Current = { taskId: `t${++counter}`, kind, isTask, keepOnReflex };
     current = c;
     log.emit("task_started", { taskId: c.taskId, kind });
     run?.then(
-      () => settle(c, "task_finished"),
-      (err) => settle(c, "task_failed", (err as Error).message)
+      (done) => settle(c, "task_finished", undefined, { got: done?.got }),
+      (err) => settle(c, "task_failed", (err as Error).message, err as { detail?: unknown; got?: unknown })
     );
     return c.taskId;
   };
 
-  const endCurrent = (event: "task_stopped" | "task_failed", reason?: string): string | undefined => {
+  // progress lines belong to the task that is running; one from a stopped or replaced run is dropped
+  const progress: Report = ({ step, got }) => {
+    if (!current?.isTask) return;
+    log.emit("task_progress", { taskId: current.taskId, step, ...endFields({ got }) });
+  };
+
+  const endCurrent = (event: "task_stopped" | "task_failed", reason?: string, detail?: string): string | undefined => {
     if (!current) return undefined;
     const { taskId } = current;
     current = null;
-    log.emit(event, reason ? { taskId, reason } : { taskId });
+    log.emit(event, { taskId, ...(reason && { reason }), ...endFields({ detail }) });
     return taskId;
   };
 
@@ -121,7 +135,8 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
 
     if (i.intent === "task") {
       if (current || body.busy()) return { kind: "rejected", reason: "busy" };
-      return { kind: "accepted", taskId: begin(i.intent + ":" + i.name, true, body.runTask(i.name)) };
+      if (i.near && !body.handleLabel(i.near)) return { kind: "rejected", reason: "stale_handle" };
+      return { kind: "accepted", taskId: begin(i.intent + ":" + i.name, true, body.runTask(i.name, i.near, progress)) };
     }
 
     if (current?.isTask || body.busy()) return { kind: "rejected", reason: "busy" };
@@ -160,10 +175,10 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
       log.emit("died", { place, cause });
     },
     // a reflex took the body: whatever was running ends with a typed reason
-    interrupted() {
+    interrupted(detail?: string) {
       body.interrupt();
       if (current?.keepOnReflex) return; // the guard resumes when the reflex lets go
-      endCurrent("task_failed", "interrupted");
+      endCurrent("task_failed", "interrupted", detail);
     },
   };
 }

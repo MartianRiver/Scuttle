@@ -6,7 +6,9 @@ import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
 import { ensureSticks, stashItems } from "./chores";
+import { TaskError } from "./fail";
 import { mineBlocks, type MineCtx, type MineSpec } from "./mine";
+import { nothingToDig, refusedNow } from "./refused";
 import {
   canMineIron, COAL_ORES, coalToMine, fuelFor, IRON_ORES, ironPlan, PICKAXE_INGOTS, rawToMine, stashCoalAmount, SWORD_INGOTS, toSmelt,
   xrayMode, type IronPlan,
@@ -36,6 +38,7 @@ const spec = (names: readonly string[], drop: string, target: number): MineSpec 
   minY: MIN_Y,
   looking: "looking for ore",
   mining: "mining ore",
+  what: "ore",
   xray,
 });
 
@@ -79,7 +82,7 @@ async function craftIronTools(bot: Bot, ctx: MineCtx, plan: IronPlan, ingots: nu
 // Throws the reason as the message: no_pickaxe, no_fuel, no_ore, smelt_failed, protected, stuck.
 export async function getIron(bot: Bot, ctx: MineCtx): Promise<void> {
   const count = held(bot);
-  if (!canMineIron(count)) throw new Error("no_pickaxe");
+  if (!canMineIron(count)) throw new TaskError("no_pickaxe");
   const plan = ironPlan(count);
   if (plan.ingots === 0) {
     log.info("already holds iron tools");
@@ -90,12 +93,12 @@ export async function getIron(bot: Bot, ctx: MineCtx): Promise<void> {
     // coal first: with none there is nothing to smelt on, so no iron is mined for nothing
     const coalWanted = coalToMine(count("coal"));
     if (coalWanted > 0) await mine(bot, ctx, spec(COAL_ORES, "coal", coalWanted), () => count("coal"));
-    if (count("coal") < fuelFor(plan.ingots)) throw new Error("no_fuel");
+    if (count("coal") < fuelFor(plan.ingots)) throw new TaskError("no_fuel", nothingToDig("coal", refusedNow().length > 0));
     await ctx.pause();
 
     const rawWanted = rawToMine(plan, count("iron_ingot"), count("raw_iron"));
     if (rawWanted > 0) await mine(bot, ctx, spec(IRON_ORES, "raw_iron", rawWanted), () => count("raw_iron") + count("iron_ingot"));
-    if (count("raw_iron") + count("iron_ingot") === 0) throw new Error("no_ore");
+    if (count("raw_iron") + count("iron_ingot") === 0) throw new TaskError("no_ore", nothingToDig("iron ore in the open", refusedNow().length > 0));
   } finally {
     bot.pathfinder.setMovements(safeMovements(bot));
   }
