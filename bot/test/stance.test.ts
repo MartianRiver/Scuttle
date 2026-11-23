@@ -77,3 +77,56 @@ test("bystanders: players, pets, villagers, golems and neutrals; not the mobs be
   assert.equal(isBystander("projectile", "arrow"), false);
   assert.equal(isBystander("other", "item"), false);
 });
+
+// --- guarding a player ---
+
+import { GUARD, guardTarget } from "../src/behaviors/stance";
+
+const ward = { x: 0, y: 0, z: 0 };
+const guarding = (self: Fighter, threats: ReturnType<typeof mob>[], fighting = false) => chooseStance(self, threats, fighting, ward);
+
+test("guarding: bare hands fight where they would run", () => {
+  assert.equal(guarding(me({ weapon: null }), [mob("zombie", 3)]).act, "fight");
+  assert.equal(chooseStance(me({ weapon: null }), [mob("zombie", 3)], false).act, "flee");
+});
+
+test("guarding: creepers and skeletons are fought, a skeleton with company too", () => {
+  assert.equal(guarding(me(), [mob("creeper", 5)]).act, "fight");
+  assert.equal(guarding(me(), [mob("skeleton", 11)]).act, "fight"); // beyond the usual chase: not a reason to run
+  assert.equal(guarding(me(), [mob("skeleton", 6), mob("zombie", 3)]).act, "fight");
+  assert.equal(guarding(me({ health: 11 }), [mob("skeleton", 6)]).act, "fight");
+});
+
+test("guarding: the retreat threshold stays, the start threshold is 10", () => {
+  assert.equal(guarding(me({ health: 9 }), [mob("zombie", 3)]).act, "flee");
+  assert.equal(guarding(me({ health: GUARD.fightFrom }), [mob("zombie", 3)]).act, "fight");
+  assert.equal(guarding(me({ health: 8 }), [mob("zombie", 3)], true).act, "fight");
+  assert.equal(guarding(me({ health: 7 }), [mob("zombie", 3)], true).act, "flee");
+  assert.deepEqual(guarding(me({ health: 5 }), [mob("creeper", 3)]), { act: "flee", why: "low health" });
+});
+
+test("guarding: witches and neutrals are still run from, and too many at once", () => {
+  assert.equal(guarding(me(), [mob("zombie", 3), mob("witch", 8)]).act, "flee");
+  assert.deepEqual(guarding(me(), [mob("enderman", 4)]), { act: "flee", why: "enderman is left alone" });
+  const four = [mob("zombie", 1), mob("zombie", 2), mob("zombie", 3), mob("creeper", 4)];
+  assert.equal(guarding(me(), four).act, "flee");
+  assert.equal(guarding(me({ armour: 15 }), four).act, "fight");
+});
+
+test("guarding: the target is what is nearest the ward, a creeper winning over a slightly nearer zombie", () => {
+  const s = me({ x: 6 }); // the body stands at x 6
+  const at = (id: number, name: string, x: number, z = 0) => ({ id, name, x, y: 0, z });
+  assert.equal(guardTarget(s, [at(1, "zombie", 9, 1), at(2, "zombie", 2, 2)], ward).id, 2);
+  assert.equal(guardTarget(s, [at(1, "zombie", 4, 1), at(2, "creeper", 6, 2)], ward).id, 2);
+  assert.equal(guardTarget(s, [at(1, "zombie", 4, 1), at(2, "creeper", 8, 2)], ward).id, 1);
+  // equal from the ward: the one nearer the body
+  assert.equal(guardTarget(s, [at(1, "zombie", -4), at(2, "zombie", 4)], ward).id, 2);
+});
+
+test("the sweep guard protects players only when not guarding", () => {
+  assert.equal(isBystander("player", "player", true), false);
+  assert.equal(isBystander("player", "player"), true);
+  assert.equal(isBystander("animal", "wolf", true), true);
+  assert.equal(isBystander("passive", "villager", true), true);
+  assert.equal(isBystander("hostile", "zombified_piglin", true), true);
+});

@@ -1,12 +1,13 @@
 // Everything a client may send. Strict on purpose: unknown fields are an error, and there is
-// no coordinate, command or chat-text field anywhere. See ../../API.md.
+// no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
 
 export const TASKS = ["get_wood"] as const;
 export type TaskName = (typeof TASKS)[number];
 
 export type Intent =
-  | { intent: "come_to" | "follow"; player: string }
+  | { intent: "come_to" | "follow" | "guard"; player: string }
   | { intent: "task"; name: TaskName }
+  | { intent: "say"; text: string }
   | { intent: "stop" }
   | { intent: "status" };
 
@@ -17,6 +18,14 @@ export type ClientMsg =
 export type Parsed = { ok: true; msg: ClientMsg } | { ok: false; id?: string };
 
 const PLAYER = /^[A-Za-z0-9_.]{1,17}$/;
+export const SAY_MAX = 100;
+
+// one plain line: no command, no newline or other control character
+export function sayable(text: unknown): text is string {
+  if (typeof text !== "string") return false;
+  const t = text.trim();
+  return t.length > 0 && t.length <= SAY_MAX && !t.startsWith("/") && !/\p{Cc}/u.test(t);
+}
 
 function onlyKeys(o: Record<string, unknown>, allowed: string[]): boolean {
   return Object.keys(o).every((k) => allowed.includes(k));
@@ -48,6 +57,7 @@ export function parseFrame(raw: string): Parsed {
   switch (m.intent) {
     case "come_to":
     case "follow":
+    case "guard":
       if (!onlyKeys(m, ["type", "id", "intent", "player"])) return bad;
       if (typeof m.player !== "string" || !PLAYER.test(m.player)) return bad;
       return { ok: true, msg: m as ClientMsg };
@@ -55,6 +65,10 @@ export function parseFrame(raw: string): Parsed {
       if (!onlyKeys(m, ["type", "id", "intent", "name"])) return bad;
       if (!(TASKS as readonly unknown[]).includes(m.name)) return bad;
       return { ok: true, msg: m as ClientMsg };
+    case "say":
+      if (!onlyKeys(m, ["type", "id", "intent", "text"])) return bad;
+      if (!sayable(m.text)) return bad;
+      return { ok: true, msg: { ...(m as object), text: m.text.trim() } as ClientMsg };
     case "stop":
     case "status":
       if (!onlyKeys(m, ["type", "id", "intent"])) return bad;

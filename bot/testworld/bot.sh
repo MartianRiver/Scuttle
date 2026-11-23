@@ -16,4 +16,4 @@ API_TOKENS=local:$(openssl rand -hex 24)
 ENV
 fi
 cd "$here/.."
-BOT_ENV="$run/bot.env" exec npx tsx src/index.ts
+BOT_ENV="$run/bot.env" exec npx tsx src/index.ts --testworld # the marker restarts match on, so they never hit a live bot

@@ -47,6 +47,19 @@ export const POLICY = {
   sweepClear: 2.5, // blocks from the target a bystander must be before a sword swings
 };
 
+// While guarding a player (River, 2026-11-23: protect them, friendly fire is fine). Everything not
+// listed here stays as in POLICY: the retreat threshold above all, so a badly hurt body still backs
+// off, and anything other than the fighters and creepers is still run from.
+export const GUARD = {
+  fightFrom: 10, // health needed to start a fight; a kid in trouble is worth a lower bar than 12
+  maxMelee: 3, // mobs at once, creepers and skeletons included
+  maxMeleeArmoured: 4,
+  chase: 12, // blocks from the body: a target further off is waited for while following the ward
+  leash: 14, // blocks from the ward: the body does not chase past this
+  wardRadius: 10, // a hostile this close to the ward is a threat, wherever the body is
+  creeperFirst: 3, // blocks of priority: a creeper is hit before a zombie that is a little nearer
+};
+
 // mobs that walk up and hit: worth standing for
 const MELEE = new Set(["zombie", "husk", "drowned", "zombie_villager", "spider", "cave_spider", "silverfish", "endermite", "slime", "magma_cube"]);
 // shoot from range: closed on only one at a time
@@ -67,9 +80,11 @@ export function armourPoints(worn: string[]): number {
 }
 
 // Who a sweep must not touch: players, pets and other animals, villagers, golems, neutrals. Not the
-// mobs being fought, not projectiles or items.
-export function isBystander(type: string, name: string): boolean {
-  if (type === "player" || NEUTRAL.has(name)) return true;
+// mobs being fought, not projectiles or items. While guarding, players are not protected from it:
+// the ward is next to the mob by definition, and a held swing there would be no protection at all.
+export function isBystander(type: string, name: string, guarding = false): boolean {
+  if (type === "player") return !guarding;
+  if (NEUTRAL.has(name)) return true;
   if (type === "other" || type === "projectile" || type === "hostile") return false;
   return !MELEE.has(name) && !RANGED.has(name);
 }
@@ -116,9 +131,16 @@ export type Stance = { act: "fight"; target: Mob } | { act: "flee"; why: string 
 
 const dist = (f: Fighter, m: Mob) => Math.hypot(m.x - f.x, m.y - f.y, m.z - f.z);
 
+export interface Ward {
+  x: number;
+  y: number;
+  z: number;
+}
+
 // `fighting` is whether the body is fighting now: it keeps on down to retreatBelow, but starts only
-// from fightFrom
-export function chooseStance(self: Fighter, threats: Mob[], fighting: boolean): Stance {
+// from fightFrom. `ward` is set while guarding a player, which changes the rules (see GUARD).
+export function chooseStance(self: Fighter, threats: Mob[], fighting: boolean, ward?: Ward): Stance {
+  if (ward) return guardStance(self, threats, fighting, ward);
   if (!self.weapon) return { act: "flee", why: "bare hands" };
   if (self.health < (fighting ? POLICY.retreatBelow : POLICY.fightFrom)) return { act: "flee", why: "low health" };
   const other = threats.find((m) => !MELEE.has(m.name) && !RANGED.has(m.name));
@@ -135,4 +157,24 @@ export function chooseStance(self: Fighter, threats: Mob[], fighting: boolean): 
   const most = self.armour >= POLICY.armouredAt ? POLICY.maxMeleeArmoured : POLICY.maxMelee;
   if (threats.length > most) return { act: "flee", why: "outnumbered" };
   return { act: "fight", target: byDistance[0] };
+}
+
+// Guarding: bare hands fight (a punch still draws a mob off the ward), creepers and skeletons are
+// fought, skeletons however many, and the target is whatever is nearest the ward. Out of reach is not
+// a reason to run: the caller keeps following the ward until the target comes in range.
+function guardStance(self: Fighter, threats: Mob[], fighting: boolean, ward: Ward): Stance {
+  if (self.health < (fighting ? POLICY.retreatBelow : GUARD.fightFrom)) return { act: "flee", why: "low health" };
+  const other = threats.find((m) => !MELEE.has(m.name) && !RANGED.has(m.name) && m.name !== "creeper");
+  if (other) return { act: "flee", why: NEUTRAL.has(other.name) ? `${other.name} is left alone` : `${other.name} is not fought` };
+  const most = self.armour >= POLICY.armouredAt ? GUARD.maxMeleeArmoured : GUARD.maxMelee;
+  if (threats.length > most) return { act: "flee", why: "outnumbered" };
+  return { act: "fight", target: guardTarget(self, threats, ward) };
+}
+
+const wardDist = (w: Ward, m: Mob) => Math.hypot(m.x - w.x, m.y - w.y, m.z - w.z);
+
+// nearest the ward first, a creeper counting as closer than it is, ties to whichever is nearer the body
+export function guardTarget(self: Fighter, threats: Mob[], ward: Ward): Mob {
+  const rank = (m: Mob) => wardDist(ward, m) - (m.name === "creeper" ? GUARD.creeperFirst : 0);
+  return [...threats].sort((a, b) => rank(a) - rank(b) || dist(self, a) - dist(self, b))[0];
 }

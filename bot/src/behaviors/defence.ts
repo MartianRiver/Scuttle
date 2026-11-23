@@ -7,16 +7,20 @@ import { pacing, reactionDelay } from "../lib/pacing";
 import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { isGuardFighting } from "./guard";
+import { callout, followWard, wardName, wardPosition } from "./escort";
+import { mergeThreats, wardThreats } from "./escort-policy";
 import { isFalling } from "./fall";
 import { isInHazard } from "./survive";
 import { calm, fleeTarget, LEASH, step, threatening, type DangerState, type Mob, type Self } from "./danger";
-import { armourPoints, bestWeapon, chooseStance, cooldownMs, isBystander, POLICY, weaponFor } from "./stance";
+import { armourPoints, bestWeapon, chooseStance, cooldownMs, GUARD, isBystander, POLICY, weaponFor, type Ward } from "./stance";
 
 const log = logger("defence");
 
 // Highest priority after `stop` and the hazards: when hostile mobs are close the body gives up
 // whatever it was doing (ends typed `interrupted`) and either fights or runs, as stance.ts decides
-// from its health, weapon and armour. `stop` still wins, but the next sight of the same mob starts
+// from its health, weapon and armour. While it guards a player (escort.ts) the ward counts as much as
+// the body: mobs near the ward are threats too, the stance rules lean toward fighting (stance.ts GUARD)
+// and the leash is measured from the ward. `stop` still wins, but the next sight of the same mob starts
 // the reaction delay again. A fight with a player stays with guard.ts.
 let state: DangerState = calm();
 let mode: "fight" | "flee" | null = null;
@@ -103,30 +107,35 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
 
   // close in on the target if it is near and inside the leash, else wait for it; swing when the
   // weapon has charged
-  const fight = (target: Mob): void => {
+  const fight = (target: Mob, ward: Ward | null): void => {
     lastTarget = null;
     const e = target.id !== undefined ? bot.entities[target.id] : undefined;
     if (!e) return;
     const near = Object.values(bot.entities).some(
-      (o) => o !== e && o !== bot.entity && isBystander(o.type, o.name ?? "") && o.position.distanceTo(e.position) <= POLICY.sweepClear
+      (o) => o !== e && o !== bot.entity && isBystander(o.type, o.name ?? "", ward !== null) && o.position.distanceTo(e.position) <= POLICY.sweepClear
     );
     const choice = weaponFor(bot.inventory.items().map((i) => i.name), near);
     const weapon = choice === "wait" ? null : choice;
     if (choice !== "wait") void equip(bot, weapon);
     const far = Math.hypot(e.position.x - bot.entity.position.x, e.position.z - bot.entity.position.z);
     const fromAnchor = anchor ? Math.hypot(e.position.x - anchor.x, e.position.z - anchor.z) : 0;
-    if (far <= POLICY.chase && fromAnchor <= LEASH) {
+    if (far <= (ward ? GUARD.chase : POLICY.chase) && fromAnchor <= (ward ? GUARD.leash : LEASH)) {
       if (chasing !== e.id) {
         bot.pathfinder.setMovements((movements ??= safeMovements(bot)));
         bot.pathfinder.setGoal(new goals.GoalFollow(e, 1), true);
         chasing = e.id;
       }
+    } else if (ward) {
+      // too far to chase: stay with the ward until it comes closer
+      chasing = null;
+      followWard(bot);
     } else if (chasing !== null) {
       bot.pathfinder.setGoal(null);
       chasing = null;
     }
     const held = bot.heldItem?.name ?? null;
-    if (choice === "wait" || held !== weapon || reachTo(bot, e) > POLICY.reach || Date.now() < nextSwing || equipping) return;
+    // bare hands (guarding only) swing whatever is in hand
+    if (choice === "wait" || (weapon !== null && held !== weapon) || reachTo(bot, e) > POLICY.reach || Date.now() < nextSwing || equipping) return;
     void bot.lookAt(new Vec3(e.position.x, e.position.y + (e.height ?? 1.8) * 0.8, e.position.z), true).then(() => {
       // a stop, a turn to running or a weapon change during the look cancels the swing
       if (mode === "fight" && (bot.heldItem?.name ?? null) === held && bot.entities[e.id] && reachTo(bot, e) <= POLICY.reach) bot.attack(e);
@@ -137,11 +146,16 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
   const tick = (): void => {
     if (!bot.entity || bot.health <= 0 || isGuardFighting() || isInHazard() || isFalling()) return;
     const self = { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z };
+    const ward = wardPosition(bot);
     const mobs: Mob[] = Object.values(bot.entities)
-      .filter((e) => e.type === "hostile" && e.name && e.position.distanceTo(bot.entity.position) < SCAN_BLOCKS)
+      .filter((e) => e.type === "hostile" && e.name && (e.position.distanceTo(bot.entity.position) < SCAN_BLOCKS || (ward && e.position.distanceTo(new Vec3(ward.x, ward.y, ward.z)) < SCAN_BLOCKS)))
       .map((e) => ({ id: e.id, name: e.name as string, x: e.position.x, y: e.position.y, z: e.position.z }));
 
-    const threats = threatening(self, mobs, state.fleeing);
+    let threats = threatening(self, mobs, state.fleeing);
+    if (ward) {
+      threats = mergeThreats(threats, wardThreats(ward, mobs, state.fleeing));
+      callout(bot, wardThreats(ward, mobs, false));
+    }
     const was = state.fleeing;
     const next = step(state, threats, Date.now(), reactionDelay);
     state = next.state;
@@ -151,17 +165,22 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
         bot.pathfinder.setGoal(null);
         log.info("clear of danger", { was: mode });
         reset(true);
-        void setStatus({ task: "idle" });
+        void setStatus({ task: wardName() ? `guarding ${wardName()}` : "idle" });
       }
       return;
     }
 
     const me = fighter(bot);
-    const stance = chooseStance(me, threats, mode === "fight");
+    const stance = chooseStance(me, threats, mode === "fight", ward ?? undefined);
+    if (ward) {
+      // guarding: the leash is round the ward wherever it walks
+      anchor = { x: ward.x, z: ward.z };
+      anchorUntil = Date.now() + ANCHOR_MS;
+    }
     if (!was) {
       // stale, or left far behind (a teleport, a long walk): start from here
       const away = anchor ? Math.hypot(self.x - anchor.x, self.z - anchor.z) : Infinity;
-      if (Date.now() > anchorUntil || away > LEASH) anchor = { x: self.x, z: self.z };
+      if (!ward && (Date.now() > anchorUntil || away > LEASH)) anchor = { x: self.x, z: self.z };
       interrupt();
     }
     const now = stance.act;
@@ -176,9 +195,10 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
       mode = now;
       lastTarget = null;
       chasing = null;
-      void setStatus({ task: now === "fight" ? `fighting ${stance.act === "fight" ? stance.target.name : ""}` : "fleeing" });
+      const fighting = stance.act === "fight" ? (ward ? `fighting for ${wardName()}` : `fighting ${stance.target.name}`) : "fleeing";
+      void setStatus({ task: fighting });
     }
-    if (stance.act === "fight") fight(stance.target);
+    if (stance.act === "fight") fight(stance.target, ward);
     else flee(self, threats);
   };
 

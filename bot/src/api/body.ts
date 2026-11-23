@@ -1,6 +1,7 @@
 import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { isFleeing, noteStop } from "../behaviors/defence";
+import { beginEscort, endEscort } from "../behaviors/escort";
 import { isGuardFighting } from "../behaviors/guard";
 import { isInHazard } from "../behaviors/survive";
 import { isTaskRunning, requestStop, startTask } from "../behaviors/task";
@@ -31,6 +32,7 @@ export function createBody(bot: Bot): BodyControl {
     vitals: () => ({ health: vitalOrNull(bot.health), food: vitalOrNull(bot.food) }),
 
     async comeTo(player) {
+      endEscort();
       const target = bot.players[player]?.entity;
       if (!target) throw new Error("lost sight of them");
       const { x, y, z } = target.position;
@@ -46,18 +48,25 @@ export function createBody(bot: Bot): BodyControl {
     },
 
     follow(player) {
+      endEscort();
       const target = bot.players[player]?.entity;
       if (!target) return;
       void setStatus({ task: `following ${player}` });
       bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), true);
     },
 
+    guard: (player) => beginEscort(player),
+
     async runTask(name) {
+      endEscort();
       const result = await startTask(bot, TASK_PHRASE[name]);
       if (!result.ok) throw new Error(result.reason);
     },
 
+    say: (text) => bot.chat(text),
+
     stop() {
+      endEscort();
       noteStop();
       requestStop(bot);
       bot.pathfinder.setGoal(null);

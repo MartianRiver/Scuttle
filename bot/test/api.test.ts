@@ -22,7 +22,12 @@ function stubBody(over: Partial<BodyControl> = {}) {
       return new Promise((res, rej) => ((finishWalk = res), (failWalk = rej)));
     },
     follow: (p) => void calls.push(`follow:${p}`),
+    guard: (p) => {
+      calls.push(`guard:${p}`);
+      return new Promise((res, rej) => ((finishWalk = res), (failWalk = rej)));
+    },
     runTask: () => new Promise((res, rej) => ((finishWalk = res), (failWalk = rej))),
+    say: (t) => void calls.push(`say:${t}`),
     stop: () => void calls.push("stop"),
     interrupt: () => void calls.push("interrupt"),
     ...over,
@@ -34,6 +39,9 @@ test("parseFrame is strict", () => {
   const ok = (o: object) => parseFrame(JSON.stringify(o)).ok;
   assert.ok(ok({ type: "intent", id: "1", intent: "come_to", player: "Sam" }));
   assert.ok(ok({ type: "intent", id: "1", intent: "task", name: "get_wood" }));
+  assert.ok(ok({ type: "intent", id: "1", intent: "guard", player: "Sam" }));
+  assert.ok(!ok({ type: "intent", id: "1", intent: "guard" })); // a player is required
+  assert.ok(!ok({ type: "intent", id: "1", intent: "guard", player: "Sam", x: 1 }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "come_to", player: "Sam", x: 1 })); // no coordinates
   assert.ok(!ok({ type: "intent", id: "1", intent: "come_to", player: "a b" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "task", name: "get wood" }));
@@ -92,6 +100,68 @@ test("dispatcher: replacing a walk, fight and not-in-game guards", async () => {
   fighting = false;
   inGame = false;
   assert.deepEqual(d.handle({ intent: "task", name: "get_wood" }), { kind: "rejected", reason: "not_in_game" });
+});
+
+test("dispatcher: guard is taken in danger, refused in a fight and needs the player in view", () => {
+  const log = new EventLog();
+  let danger = true;
+  let fighting = false;
+  const s = stubBody({ danger: () => danger, fighting: () => fighting });
+  const d = createDispatcher(s.body, log);
+
+  assert.deepEqual(d.handle({ intent: "follow", player: "Sam" }), { kind: "rejected", reason: "in_danger" });
+  assert.deepEqual(d.handle({ intent: "guard", player: "Ghost" }), { kind: "rejected", reason: "unknown_player" });
+  fighting = true;
+  assert.deepEqual(d.handle({ intent: "guard", player: "Sam" }), { kind: "rejected", reason: "in_fight" });
+  fighting = false;
+  assert.equal(d.handle({ intent: "guard", player: "Sam" }).kind, "accepted");
+  assert.equal(d.snapshot().task, "guard:Sam");
+  assert.deepEqual(s.calls, ["guard:Sam"]);
+});
+
+test("dispatcher: a reflex does not end a guard, stop, a newer order, losing the ward, death and disconnect do", async () => {
+  const kinds = (log: EventLog) => log.since(0).events.map((e) => (e.reason ? `${e.event}:${e.reason}` : e.event));
+
+  let log = new EventLog();
+  let s = stubBody();
+  let d = createDispatcher(s.body, log);
+  d.handle({ intent: "guard", player: "Sam" });
+  d.interrupted();
+  d.interrupted();
+  assert.deepEqual(s.calls, ["guard:Sam", "interrupt", "interrupt"]); // the body still clears its goal for the reflex
+  assert.deepEqual(kinds(log), ["task_started"]);
+  assert.equal(d.snapshot().task, "guard:Sam");
+
+  d.handle({ intent: "follow", player: "Sam" }); // a newer order replaces it
+  assert.deepEqual(kinds(log), ["task_started", "task_stopped", "task_started"]);
+  d.interrupted(); // a follow still ends as before
+  assert.equal(kinds(log).at(-1), "task_failed:interrupted");
+
+  log = new EventLog();
+  s = stubBody();
+  d = createDispatcher(s.body, log);
+  d.handle({ intent: "guard", player: "Sam" });
+  d.handle({ intent: "stop" });
+  assert.deepEqual(kinds(log), ["task_started", "task_stopped"]);
+
+  log = new EventLog();
+  s = stubBody();
+  d = createDispatcher(s.body, log);
+  d.handle({ intent: "guard", player: "Sam" });
+  s.fail(new Error("lost_ward"));
+  await Promise.resolve();
+  assert.deepEqual(kinds(log), ["task_started", "task_failed:lost_ward"]);
+  assert.equal(d.snapshot().task, null);
+
+  for (const end of [(x: typeof d) => x.bodyDied(), (x: typeof d) => x.bodyDisconnected("kicked")]) {
+    log = new EventLog();
+    s = stubBody();
+    d = createDispatcher(s.body, log);
+    d.handle({ intent: "guard", player: "Sam" });
+    end(d);
+    assert.equal(d.snapshot().task, null);
+    assert.equal(kinds(log)[1].startsWith("task_failed"), true);
+  }
 });
 
 test("dispatcher: finish and disconnect events carry the task id", async () => {
@@ -225,4 +295,34 @@ test("a reflex taking the body ends the action as interrupted, and new orders wa
   danger = true;
   assert.deepEqual(d.handle({ intent: "come_to", player: "Sam" }), { kind: "rejected", reason: "in_danger" });
   assert.equal(d.handle({ intent: "stop" }).kind, "accepted");
+});
+
+test("say: plain text only, own rate limit, never touches the running action", () => {
+  const ok = (text: unknown) => parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "say", text })).ok;
+  assert.ok(ok("hi there, I can't do that yet"));
+  assert.ok(!ok("/op Sam"));
+  assert.ok(!ok("  /op Sam")); // leading space doesn't hide a command
+  assert.ok(!ok("two\nlines"));
+  assert.ok(!ok(""));
+  assert.ok(!ok("   "));
+  assert.ok(!ok("x".repeat(101)));
+  assert.ok(ok("x".repeat(100)));
+  assert.ok(!ok(42));
+  assert.ok(!parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "say", text: "hi", extra: 1 })).ok);
+
+  let t = 1000;
+  let fighting = false;
+  const s = stubBody({ fighting: () => fighting });
+  const d = createDispatcher(s.body, new EventLog(), () => t);
+  d.handle({ intent: "follow", player: "Sam" });
+  fighting = true;
+  assert.deepEqual(d.handle({ intent: "say", text: "behind you!" }), { kind: "accepted" });
+  assert.deepEqual(d.handle({ intent: "say", text: "again" }), { kind: "rejected", reason: "rate_limited" });
+  t += 2000;
+  assert.deepEqual(d.handle({ intent: "say", text: "now" }), { kind: "accepted" });
+  assert.deepEqual(s.calls, ["follow:Sam", "say:behind you!", "say:now"]);
+  assert.equal(d.snapshot().task, "follow:Sam"); // still following
+
+  const out = createDispatcher(stubBody({ inGame: () => false }).body, new EventLog());
+  assert.deepEqual(out.handle({ intent: "say", text: "hi" }), { kind: "rejected", reason: "not_in_game" });
 });
