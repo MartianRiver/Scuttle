@@ -13,6 +13,8 @@ export interface BodyControl {
   follow(player: string): void; // runs until stop or replaced
   // runs until stop or replaced, and carries on through reflexes; rejects "lost_ward" when the player is gone for good
   guard(player: string): Promise<void>;
+  // walks to the player and throws the item at their feet; rejects "none_held" when it has none to spare
+  give(player: string, item: string, count?: number): Promise<void>;
   runTask(name: TaskName): Promise<void>;
   say(text: string): void; // one public chat line, already validated
   stop(): void; // the API's stop
@@ -117,6 +119,7 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
       return { kind: "accepted", taskId: begin(`follow:${i.player}`, false, null) };
     }
     if (i.intent === "guard") return { kind: "accepted", taskId: begin(`guard:${i.player}`, false, body.guard(i.player), true) };
+    if (i.intent === "give") return { kind: "accepted", taskId: begin(`give:${i.player}`, false, body.give(i.player, i.item, i.count)) };
     return { kind: "accepted", taskId: begin(`come_to:${i.player}`, false, body.comeTo(i.player)) };
   }
 

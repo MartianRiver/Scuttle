@@ -6,6 +6,7 @@ export type TaskName = (typeof TASKS)[number];
 
 export type Intent =
   | { intent: "come_to" | "follow" | "guard"; player: string }
+  | { intent: "give"; player: string; item: string; count?: number }
   | { intent: "task"; name: TaskName }
   | { intent: "say"; text: string }
   | { intent: "stop" }
@@ -18,6 +19,7 @@ export type ClientMsg =
 export type Parsed = { ok: true; msg: ClientMsg } | { ok: false; id?: string };
 
 const PLAYER = /^[A-Za-z0-9_.]{1,17}$/;
+const ITEM = /^[a-z_]{1,48}$/;
 export const SAY_MAX = 100;
 
 // one plain line of printable ASCII: nothing that is a command, a control or format character, a section sign
@@ -61,6 +63,12 @@ export function parseFrame(raw: string): Parsed {
     case "guard":
       if (!onlyKeys(m, ["type", "id", "intent", "player"])) return bad;
       if (typeof m.player !== "string" || !PLAYER.test(m.player)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "give":
+      if (!onlyKeys(m, ["type", "id", "intent", "player", "item", "count"])) return bad;
+      if (typeof m.player !== "string" || !PLAYER.test(m.player)) return bad;
+      if (typeof m.item !== "string" || !ITEM.test(m.item)) return bad;
+      if (m.count !== undefined && !(Number.isInteger(m.count) && (m.count as number) >= 1 && (m.count as number) <= 64)) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "task":
       if (!onlyKeys(m, ["type", "id", "intent", "name"])) return bad;

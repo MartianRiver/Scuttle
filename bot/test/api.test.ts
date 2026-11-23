@@ -26,6 +26,10 @@ function stubBody(over: Partial<BodyControl> = {}) {
       calls.push(`guard:${p}`);
       return new Promise((res, rej) => ((finishWalk = res), (failWalk = rej)));
     },
+    give: (p, item, n) => {
+      calls.push(`give:${p}:${item}:${n ?? "all"}`);
+      return new Promise((res, rej) => ((finishWalk = res), (failWalk = rej)));
+    },
     runTask: () => new Promise((res, rej) => ((finishWalk = res), (failWalk = rej))),
     say: (t) => void calls.push(`say:${t}`),
     stop: () => void calls.push("stop"),
@@ -329,4 +333,65 @@ test("say: plain text only, own rate limit, never touches the running action", (
 
   const out = createDispatcher(stubBody({ inGame: () => false }).body, new EventLog());
   assert.deepEqual(out.handle({ intent: "say", text: "hi" }), { kind: "rejected", reason: "not_in_game" });
+});
+
+test("give: item and count are strict, the player must be in view, and it fails with its own reason", async () => {
+  const ok = (o: object) => parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "give", player: "Sam", item: "oak_log", ...o })).ok;
+  assert.ok(ok({}));
+  assert.ok(ok({ count: 1 }));
+  assert.ok(ok({ count: 64 }));
+  assert.ok(!ok({ count: 0 }));
+  assert.ok(!ok({ count: 65 }));
+  assert.ok(!ok({ count: 1.5 }));
+  assert.ok(!ok({ count: "5" }));
+  assert.ok(!ok({ item: "minecraft:oak_log" }));
+  assert.ok(!ok({ item: "Oak_Log" }));
+  assert.ok(!ok({ item: "" }));
+  assert.ok(!ok({ item: "a".repeat(49) }));
+  assert.ok(!ok({ item: 5 }));
+  assert.ok(!ok({ player: "a b" }));
+  assert.ok(!ok({ x: 1 }));
+  assert.ok(!parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "give", item: "oak_log" })).ok); // a player is required
+  assert.ok(!parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "give", player: "Sam" })).ok); // so is an item
+
+  const log = new EventLog();
+  let danger = false;
+  let fighting = false;
+  let busy = false;
+  const s = stubBody({ danger: () => danger, fighting: () => fighting, busy: () => busy });
+  const d = createDispatcher(s.body, log);
+
+  assert.deepEqual(d.handle({ intent: "give", player: "Ghost", item: "oak_log" }), { kind: "rejected", reason: "unknown_player" });
+  danger = true;
+  assert.deepEqual(d.handle({ intent: "give", player: "Sam", item: "oak_log" }), { kind: "rejected", reason: "in_danger" });
+  danger = false;
+  fighting = true;
+  assert.deepEqual(d.handle({ intent: "give", player: "Sam", item: "oak_log" }), { kind: "rejected", reason: "in_fight" });
+  fighting = false;
+  busy = true;
+  assert.deepEqual(d.handle({ intent: "give", player: "Sam", item: "oak_log" }), { kind: "rejected", reason: "busy" });
+  busy = false;
+  assert.deepEqual(s.calls, []);
+
+  const a = d.handle({ intent: "give", player: "Sam", item: "oak_log", count: 12 });
+  assert.equal(a.kind, "accepted");
+  assert.equal(d.snapshot().task, "give:Sam");
+  assert.deepEqual(s.calls, ["give:Sam:oak_log:12"]);
+  s.fail(new Error("none_held"));
+  await Promise.resolve();
+  const failed = log.since(0).events.find((e) => e.event === "task_failed");
+  assert.equal((failed as { reason?: string }).reason, "none_held");
+  assert.equal(d.snapshot().task, null);
+
+  // finishing ends it cleanly; the count is optional
+  d.handle({ intent: "give", player: "Sam", item: "oak_log" });
+  assert.equal(s.calls[1], "give:Sam:oak_log:all");
+  s.finish();
+  await Promise.resolve();
+  assert.ok(log.since(0).events.some((e) => e.event === "task_finished"));
+
+  // a task blocks it, like come_to
+  const t = createDispatcher(stubBody().body, new EventLog());
+  t.handle({ intent: "task", name: "get_wood" });
+  assert.deepEqual(t.handle({ intent: "give", player: "Sam", item: "oak_log" }), { kind: "rejected", reason: "busy" });
 });
