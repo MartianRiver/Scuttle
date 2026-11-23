@@ -24,7 +24,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // the server's rule, not the pathfinder's: GoalLookAtBlock measures from the feet to the block's
 // bottom edge and refuses logs the bot can plainly hit from the ground
-function inReach(bot: Bot, pos: Vec3): boolean {
+export function inReach(bot: Bot, pos: Vec3): boolean {
   const eye = bot.entity.position.offset(0, EYE, 0);
   const clamp = (v: number, lo: number) => Math.max(lo, Math.min(lo + 1, v));
   const dx = eye.x - clamp(eye.x, pos.x);
@@ -49,7 +49,7 @@ async function walk(bot: Bot, goal: goals.Goal, ms: number): Promise<void> {
 
 // a stop that lands while dig() is still turning to face the block finds no dig to abort, so the
 // dig watches for it itself
-async function dig(bot: Bot, block: Block, shouldStop: () => boolean): Promise<void> {
+export async function dig(bot: Bot, block: Block, shouldStop: () => boolean): Promise<void> {
   const timer = setTimeout(() => {
     if (bot.targetDigBlock) bot.stopDigging();
   }, DIG_MS);
@@ -64,25 +64,30 @@ async function dig(bot: Bot, block: Block, shouldStop: () => boolean): Promise<v
   }
 }
 
-function dropsNear(bot: Bot, spot: Vec3, tries: Map<number, number>): Entity[] {
+function dropsNear(bot: Bot, spot: Vec3, tries: Map<number, number>, wanted: (name: string) => boolean): Entity[] {
   return Object.values(bot.entities)
     .filter((e) => {
       if (e.name !== "item" || !e.isValid || (tries.get(e.id) ?? 0) >= TRIES) return false;
       if (e.position.distanceTo(spot) > DROP_RADIUS) return false;
       const name = e.getDroppedItem()?.name;
-      return !name || isPlainLogName(name);
+      return !name || wanted(name);
     })
     .sort((a, b) => a.position.distanceTo(spot) - b.position.distanceTo(spot));
 }
 
 // each drop gets a few tries, by id, since one may still be sliding when first seen; items that
 // merge come back under a new id and get theirs
-async function pickUp(bot: Bot, spot: Vec3, shouldStop: () => boolean): Promise<void> {
+export async function pickUp(
+  bot: Bot,
+  spot: Vec3,
+  shouldStop: () => boolean,
+  wanted: (name: string) => boolean = isPlainLogName
+): Promise<void> {
   const end = Date.now() + PICKUP_MS;
   const tries = new Map<number, number>();
   await sleep(500); // the drop appears a moment after the break
   while (Date.now() < end && !shouldStop()) {
-    const drop = dropsNear(bot, spot, tries)[0];
+    const drop = dropsNear(bot, spot, tries, wanted)[0];
     if (!drop) return;
     tries.set(drop.id, (tries.get(drop.id) ?? 0) + 1);
     const { x, y, z } = drop.position;

@@ -43,12 +43,15 @@ test("parseFrame is strict", () => {
   const ok = (o: object) => parseFrame(JSON.stringify(o)).ok;
   assert.ok(ok({ type: "intent", id: "1", intent: "come_to", player: "Sam" }));
   assert.ok(ok({ type: "intent", id: "1", intent: "task", name: "get_wood" }));
+  assert.ok(ok({ type: "intent", id: "1", intent: "task", name: "get_stone" }));
   assert.ok(ok({ type: "intent", id: "1", intent: "guard", player: "Sam" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "guard" })); // a player is required
   assert.ok(!ok({ type: "intent", id: "1", intent: "guard", player: "Sam", x: 1 }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "come_to", player: "Sam", x: 1 })); // no coordinates
   assert.ok(!ok({ type: "intent", id: "1", intent: "come_to", player: "a b" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "task", name: "get wood" }));
+  assert.ok(!ok({ type: "intent", id: "1", intent: "task", name: "get_stone", count: 3 }));
+  assert.ok(!ok({ type: "intent", id: "1", intent: "task", name: "get_diamonds" }));
   assert.ok(!ok({ type: "intent", id: "1", intent: "command", text: "op me" }));
   assert.ok(!ok({ type: "intent", intent: "stop" })); // id required
   assert.ok(!ok({ type: "auth", token: "x", extra: 1 }));
@@ -394,4 +397,35 @@ test("give: item and count are strict, the player must be in view, and it fails 
   const t = createDispatcher(stubBody().body, new EventLog());
   t.handle({ intent: "task", name: "get_wood" });
   assert.deepEqual(t.handle({ intent: "give", player: "Sam", item: "oak_log" }), { kind: "rejected", reason: "busy" });
+});
+
+test("get_stone: runs as a task, one at a time, and fails with the body's own reason", async () => {
+  const kinds = (log: EventLog) => log.since(0).events.map((e) => (e.reason ? `${e.event}:${e.reason}` : e.event));
+  const ran: string[] = [];
+  const log = new EventLog();
+  const s = stubBody({
+    runTask: (name) => {
+      ran.push(name);
+      return new Promise<void>((res, rej) => setTimeout(() => (name === "get_stone" ? rej(new Error("no_stone")) : res()), 0));
+    },
+  });
+  const d = createDispatcher(s.body, log);
+
+  assert.equal(d.handle({ intent: "task", name: "get_stone" }).kind, "accepted");
+  assert.equal(d.snapshot().task, "task:get_stone");
+  assert.deepEqual(d.handle({ intent: "task", name: "get_stone" }), { kind: "rejected", reason: "busy" });
+  assert.deepEqual(d.handle({ intent: "task", name: "get_wood" }), { kind: "rejected", reason: "busy" });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(kinds(log), ["task_started", "task_failed:no_stone"]);
+  assert.deepEqual(ran, ["get_stone"]);
+
+  // stop mid-run: task_stopped, and the late failure from the cancelled run is dropped
+  const log2 = new EventLog();
+  const s2 = stubBody();
+  const d2 = createDispatcher(s2.body, log2);
+  d2.handle({ intent: "task", name: "get_stone" });
+  d2.handle({ intent: "stop" });
+  s2.fail(new Error("stopped"));
+  await Promise.resolve();
+  assert.deepEqual(kinds(log2), ["task_started", "task_stopped"]);
 });
