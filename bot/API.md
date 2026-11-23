@@ -24,6 +24,7 @@ Client → bot:
 {"type":"intent","id":"c2g","intent":"guard","player":"Sam"}
 {"type":"intent","id":"c7","intent":"give","player":"Sam","item":"oak_log","count":12}
 {"type":"intent","id":"c3","intent":"task","name":"get_wood"}
+{"type":"intent","id":"c3n","intent":"task","name":"get_wood","near":"b7kq"}
 {"type":"intent","id":"c3s","intent":"task","name":"get_stone"}
 {"type":"intent","id":"c3i","intent":"task","name":"get_iron"}
 {"type":"intent","id":"c6","intent":"say","text":"Can't do that yet, want me to tell you how?"}
@@ -36,6 +37,8 @@ Client → bot:
 `player` is a Minecraft username (`^[A-Za-z0-9_.]{1,17}$`, the dot being Floodgate's prefix).
 `handle` is what `observe` handed out: `e` or `b` and a number, then two lowercase letters (`e4kq`, `b17kq`), or a known place
 by name (`home`, `table`, `stash`, `furnace`, `bed`); anything else is `bad_intent`.
+A task's optional `near` is a block handle or a known place by name (not a mob's handle, which moves: `bad_intent`),
+see Rules.
 `item` is a Minecraft item name (`^[a-z_]{1,48}$`, no namespace) and `count` an integer 1 to 64, optional.
 There is no coordinate or command field anywhere, and there won't be one. `say` is the one
 free-text field (so the consumer can talk through the body): one public chat
@@ -65,18 +68,23 @@ Snapshot: `{inGame, task, taskId, health, food}`. No position.
 `observe` is read-only and answers at once: like `status` it is allowed mid-fight and while in danger, never touches the
 running action, counts toward the rate limit, and is `not_in_game` only while the body is offline. The answer is one compact
 JSON object, at most 1,200 characters (about 300 tokens). **No coordinate and no exact distance is in it**: places are a
-distance band (`here` up to 3 blocks, `close` 8, `near` 16, `far` 32, then `a short walk`, `a fair way`, `a long way`,
-`very far`), one of eight compass points (north is -z, east is +x) with `above` or `below` when it is 2.5 or more blocks up
+distance band (`here` up to 3 blocks, `close` 8, `near` 16, `a short walk` 32, `a fair way` 48, `far` 128, `a long way` 320,
+then `very far`; the words climb, so each is farther than the one before; the `died` event's place uses the same scale),
+one of eight compass points (north is -z, east is +x) with `above` or `below` when it is 2.5 or more blocks up
 or down, and a handle to point at it with.
 
 ```
 {"health":20,"food":20,"armor":7?,"time":"day|dusk|night|dawn","weather":"clear|rain|thunder",
- "where":"at home, on the surface|underground|in the Nether...","held":"iron_pickaxe"|null,
+ "where":"at home, on the surface|underground|in the Nether...","in":"water|deep_water|lava"?,
+ "held":"iron_pickaxe"|null,
  "inv":{"oak_log":42,"cobblestone":40},            counts per item, biggest first
  "tools":["iron_pickaxe 87%"],                       anything with durability, share left
  "near":[{"h":"e4kq","what":"cow","k":"hostile|player"?,"d":"close","dir":"east","hp":"hurt|low"?}],
- "blocks":[{"h":"b7kq","what":"chest","d":"near","dir":"north-west above"}],
+ "blocks":[{"h":"b7kq","what":"chest","d":"near","dir":"north-west above"},
+          {"h":"b9kq","what":"oak_log","d":"close","dir":"east"}],   a tree: its base log
+ "stone":"close north"?,                             the nearest natural stone it may dig, in view; no handle
  "places":{"home":"close north","table":"here","stash":"near north-west","furnace":"…","bed":"…"},
+ "refused":[{"d":"a short walk","dir":"north-east"}]?,  places where the server undid its digs; no handle
  "more":{"near":3,"blocks":5}?}                      how many were left off each list to fit the budget
 ```
 
@@ -87,14 +95,25 @@ or down, and a handle to point at it with.
 - `near` lists players first, then hostile mobs (`k`), then the rest, each nearest first; `what` is a player's name or a mob's
   type (never a custom name). `hp` appears for mobs it knows the full health of, and only when below full.
 - `blocks` lists the nearest 3 of each kind (2 of water and lava): chests, barrels, crafting tables, furnaces, beds, doors,
-  ores, water, lava, spawners. A block that is a known place's spot (the table, the first stash chest and furnace, the
+  ores, water, lava, spawners, and trees. A tree is one entry, its base log (`what` is the log, `oak_log`), and only
+  one `get_wood` would cut: a plain log with natural leaves near it, so a log cabin or a trunk under placed leaves is not
+  one. A thick trunk (2 by 2) is one tree. Aim a task at one with `near`. A block that is a known place's spot (the table, the first stash chest and furnace, the
   bed) is left out, since it is in `places`.
+- `in` is there only when the body stands in something other than plain ground: `water` (feet in water), `deep_water`
+  (head under too: 2 or more deep, no way to touch the bottom and breathe) or `lava`.
+- `stone` is the nearest natural stone `get_stone` would take that is in view: within 40 blocks of home, above y 30, not in a
+  refused place, passing the look-before-you-dig rule, with an open face. A band and a compass point only; there is no
+  handle, since there are a lot of faces.
+- `refused` lists up to 3 places where the server undid a dig, nearest first, from the digs the body itself saw undone
+  (it never reads the server's regions): kept for the bot's life, fading after 30 minutes, shared by `get_wood`,
+  `get_stone` and `get_iron`. `d` is the distance to the place's edge (`here` inside it), `dir` the way to its middle.
+  Nearby refusals merge into one bigger place. No handle: the body does not go there. Unlike `places` it is trimmed by the budget.
 - `where` is the body's level (`on the surface`, `underground`, `deep underground`, `high up`), with `at home, ` in front
   within 16 blocks of the bed, or the dimension (`in the Nether`) away from the overworld. How far and which way home is
   comes from `places.home`, on the same scale as everything else.
 - `places` is always listed, in view or not (overworld only; absent elsewhere along with `time`), and never trimmed.
   `home` and `bed` are the same spot.
-- When the object is over budget the last item of the longest list among `near`, `blocks`, `tools` and `inv` goes, until it fits;
+- When the object is over budget the last item of the longest list among `near`, `blocks`, `tools`, `inv` and `refused` goes, until it fits;
   `more` says how many of each went (nearest first, so far animals and the smallest stacks go first).
 - Handles are minted by the body per process: `e` for an entity, `b` for a block, a counter, then two letters that are new
   on every start, so a handle from before a restart never matches a new one. The same entity or block keeps its handle while it
@@ -119,8 +138,9 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 |---|---|
 | `body_connected` / `body_disconnected` | `reason` on disconnect |
 | `task_started` | `taskId`, `kind` |
-| `task_finished` | `taskId` |
-| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `no_stone` (a `get_stone` found no natural stone it may dig within 40 blocks of home and above y 30, or none it could take), `no_pickaxe` (a `get_stone` while holding no pickaxe, a `get_iron` while holding none at stone level or better), `no_ore` (a `get_iron` found no iron ore with a face in the open, or none it could take), `no_fuel` (a `get_iron` with no coal to smelt on, held or found), `smelt_failed` (a `get_iron` that found no furnace it may use, or got no ingot out), `none_held` (a `give` with nothing of that item to spare, see Rules), `stale_handle` (a `go_to` whose mob was gone mid-walk), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges; also ends a `come_to`, a `go_to` or a `give`, a `get_wood` that got no wood, a `get_stone` whose attempts got no stone, and a `get_iron` whose attempts got no coal or iron), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
+| `task_progress` | `taskId`, `step` (the status text: `gathering wood`, `crafting tools`, `mining stone`, `smelting`, `stashing ore`...), `got`? (items gained so far). Only for a `task`, on a change of step and at most one every 15 s, never closer than 2 s: a 2-minute task makes a handful. It is only a commentary: a client that waits for a task's end has no reason to wake for it |
+| `task_finished` | `taskId`, `got`? (items gained in the run, net of what it used, counting what it stashed: `{"oak_log":11}`, the 4 biggest; only for a `task`) |
+| `task_failed` | `taskId`, `reason`, `detail`?, `got`?. `detail` is a short line of words (no digit, 120 characters at most) about the cause: `three digs undone near the trees, a fair way south-west`, `in deep water while walking to home, no way out found`, `no natural trees it may cut in range`, `no progress while stashing wood`; `got` as for `task_finished`, what it had when it failed. `reason`: `protected` (the server undid the digs three times in the run, or the only trees or ore left are in places where it did; the places are kept, see `refused`), `no_trees`, `no_stone` (a `get_stone` found no natural stone it may dig within 40 blocks of home and above y 30, or none it could take), `no_pickaxe` (a `get_stone` while holding no pickaxe, a `get_iron` while holding none at stone level or better), `no_ore` (a `get_iron` found no iron ore with a face in the open, or none it could take), `no_fuel` (a `get_iron` with no coal to smelt on, held or found), `smelt_failed` (a `get_iron` that found no furnace it may use, or got no ingot out), `none_held` (a `give` with nothing of that item to spare, see Rules), `stale_handle` (a `go_to` whose mob was gone mid-walk), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges, and in water it swims to the nearest bank once and walks on, ending `stuck` with a `detail` saying water if it can't get out or is stuck in water again; also ends a `come_to`, a `go_to` or a `give`, a `get_wood` that got no wood, a `get_stone` whose attempts got no stone, and a `get_iron` whose attempts got no coal or iron), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`; a hazard adds a `detail`: `in lava`, `in fire`, `on fire`, `in deep water, swimming for the bank`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `died` | `place`, `cause`: the body died (idle or not; a running action first ends with `task_failed` `died`) and respawns by itself. `place` is words only, never coordinates: how far and which way from home, surface or underground, the dimension if not the overworld ("a short walk to the north-east of home, on the surface"). `cause` is `mob`, `fall`, `lava`, `fire`, `drowning` or `other`. Nothing is carried over: the task is over, the inventory is what the respawn left, and fetching drops is not automatic |
 | `no_food` | `food` (the level, 0 to 14). The body is hungry (food below 15) and carries nothing it will eat: no rotten flesh above food 6, nothing poisonous, no golden apples unless hurt. Sent once per hunger episode; the next one needs it to have eaten or its food to have come back to 15 or more. No position. The body never walks to the stash for food by itself; a `get_wood` that stands at the stash takes some |
@@ -147,6 +167,11 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   again on arrival, since it may have eaten or swapped its held item on the way). Other endings: `stuck`,
   `interrupted`, `died`, a short "lost sight of them". Status text: `bringing <item> to <name>`. No chat
   phrase: only the API sends it.
+- `task` takes an optional `near`: a block handle (a tree, a chest, an ore) or a known place by name. The search is then
+  centred on that spot instead of home (for `get_wood`, instead of the body), with the same radius; crafting, stashing and
+  smelting still happen at the home table, stash and furnace, and every dig rule still applies (dig-safety, the
+  no-dig places, the refused places). A handle the body no longer has is `rejected` `stale_handle` and nothing starts; a block
+  that goes between the order and the start ends it `task_failed` `stale_handle`. A refused place has no handle, so it can't be aimed at.
 - `task get_stone` mines natural `stone` (not cobblestone, deepslate or the andesite, diorite and granite that drop
   themselves) within 40 blocks of home and above y 30, until it holds 16 cobblestone more than it started with, then
   makes a stone pickaxe and a stone sword at the home table if it holds none at stone level or better (sticks from planks,
@@ -183,6 +208,11 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   `interrupted`, the guard follows the player again when the reflex lets go. Only `stop`, a newer
   order, `lost_ward`, `died` or `disconnected` end it. Status text: `guarding <name>` and
   `fighting for <name>`.
+- Water: a body that is deep in water with its air running low gets itself out by hand, to the nearest bank it can reach
+  by swimming (searching up to 24 blocks out, through the water; a shore flush with the surface or one block above it,
+  with 2 air over it), ending whatever it was doing as `interrupted` (`detail` `in deep water, swimming for the bank`). A
+  walk that makes no progress while in water does the same swim once on its own and walks on; if it is stuck in water
+  again, or there is no bank to swim to (a pit with walls), the walk ends `stuck` with a `detail` saying water.
 - While hostile mobs have the body (it fights them or runs, by its health and gear) it ends the current
   action as `task_failed` `interrupted` and answers everything except `stop`, `status` and `guard` with
   `in_danger`. `stop` wins, but the body fights or runs again after its reaction delay if the mobs are

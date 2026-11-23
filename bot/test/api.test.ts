@@ -34,7 +34,7 @@ function stubBody(over: Partial<BodyControl> = {}) {
       calls.push(`go_to:${h}`);
       return new Promise((res, rej) => ((finishWalk = res), (failWalk = rej)));
     },
-    handleLabel: (h) => (h === "e1ab" || h === "home" ? "the cow" : null),
+    handleLabel: (h) => (h === "e1ab" || h === "b3ab" || h === "home" ? "the cow" : null),
     observe: () => ({ health: 20, food: 18, weather: "clear", where: "at home, on the surface", held: null, inv: {}, near: [], blocks: [] }),
     runTask: () => new Promise((res, rej) => ((finishWalk = res), (failWalk = rej))),
     say: (t) => void calls.push(`say:${t}`),
@@ -535,4 +535,100 @@ test("socket: observe answers with an observation frame", async () => {
     assert.deepEqual(await c.next((x) => x.id === "g1"), { type: "rejected", id: "g1", reason: "stale_handle" });
     c.ws.close();
   });
+});
+
+test("task near: a block or place handle moves the search, a stale one is refused before anything starts", () => {
+  const ok = (o: object) => parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "task", name: "get_wood", ...o })).ok;
+  for (const near of ["b3ab", "b17zz", "home", "table", "stash", "furnace", "bed"]) assert.ok(ok({ near }), near);
+  // not a mob (it moves), and nothing that could be a position
+  for (const near of ["e4kq", "", "4kq", "b3", "12 64 -30", "home ", "b3ab;op", 7, null, ["b3ab"]]) assert.ok(!ok({ near }), `rejects ${JSON.stringify(near)}`);
+  assert.ok(!parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "go_to", handle: "home", near: "home" })).ok, "near belongs to task only");
+  assert.ok(!parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "stop", near: "home" })).ok);
+
+  const seen: Array<[string, string | undefined]> = [];
+  const log = new EventLog();
+  const s = stubBody({
+    runTask: (name, near) => {
+      seen.push([name, near]);
+      return new Promise<void>(() => {});
+    },
+  });
+  const d = createDispatcher(s.body, log);
+  assert.deepEqual(d.handle({ intent: "task", name: "get_wood", near: "b9zz" }), { kind: "rejected", reason: "stale_handle" });
+  assert.deepEqual(log.since(0).events, [], "no event for a refusal");
+  assert.equal(d.handle({ intent: "task", name: "get_wood", near: "b3ab" }).kind, "accepted");
+  assert.deepEqual(seen, [["get_wood", "b3ab"]]);
+});
+
+test("task_progress: lines carry the running task's id and got, and a stopped or finished run's late line is dropped", async () => {
+  const log = new EventLog();
+  let report: (p: { step: string; got?: Record<string, number> }) => void = () => {};
+  const s = stubBody({
+    runTask: (_n, _near, r) => {
+      report = r;
+      return new Promise<void>((res, rej) => ((s.finish = res), (s.fail = rej)));
+    },
+  }) as ReturnType<typeof stubBody> & { finish: () => void; fail: (e: Error) => void };
+  const d = createDispatcher(s.body, log);
+  report({ step: "before any task" }); // nothing is running
+  d.handle({ intent: "task", name: "get_wood" });
+  report({ step: "gathering wood" });
+  report({ step: "crafting tools", got: { oak_log: 7, stick: 4 } });
+  const evs = () => log.since(0).events.map((e) => e);
+  assert.deepEqual(
+    evs().filter((e) => e.event === "task_progress").map((e) => [e.taskId, e.step, e.got]),
+    [["t1", "gathering wood", undefined], ["t1", "crafting tools", { oak_log: 7, stick: 4 }]]
+  );
+  d.handle({ intent: "stop" });
+  report({ step: "late" });
+  assert.equal(evs().filter((e) => e.event === "task_progress").length, 2);
+});
+
+test("task_failed and task_finished carry got and detail from the body, words only", async () => {
+  const run = async (settle: (s: { finish: (v?: unknown) => void; fail: (e: Error) => void }) => void) => {
+    const log = new EventLog();
+    let res!: (v?: unknown) => void;
+    let rej!: (e: Error) => void;
+    const s = stubBody({ runTask: () => new Promise((a, b) => ((res = a as never), (rej = b))) });
+    const d = createDispatcher(s.body, log);
+    d.handle({ intent: "task", name: "get_wood" });
+    settle({ finish: res, fail: rej });
+    await Promise.resolve();
+    await Promise.resolve();
+    return log.since(0).events.at(-1)!;
+  };
+  const failed = await run((t) => t.fail(Object.assign(new Error("protected"), { detail: "three digs undone near the trees, a fair way south-west", got: { oak_log: 4 } })));
+  assert.equal(failed.event, "task_failed");
+  assert.equal(failed.reason, "protected");
+  assert.equal(failed.detail, "three digs undone near the trees, a fair way south-west");
+  assert.deepEqual(failed.got, { oak_log: 4 });
+  const digits = await run((t) => t.fail(Object.assign(new Error("stuck"), { detail: "at 12 64 -30 in the water" })));
+  assert.equal(digits.detail, "at - in the water");
+  const bare = await run((t) => t.fail(new Error("no_trees")));
+  assert.equal("detail" in bare || "got" in bare, false);
+  const done = await run((t) => t.finish({ got: { cobblestone: 16 } }));
+  assert.equal(done.event, "task_finished");
+  assert.deepEqual(done.got, { cobblestone: 16 });
+  assert.equal("got" in (await run((t) => t.finish())), false);
+});
+
+test("a stuck go_to says why, and a reflex that takes the body says what it was", async () => {
+  const log = new EventLog();
+  const s = stubBody();
+  const d = createDispatcher(s.body, log);
+  d.handle({ intent: "go_to", handle: "home" });
+  s.fail(Object.assign(new Error("stuck"), { detail: "in deep water while walking to home, no way out found" }));
+  await Promise.resolve();
+  const e = log.since(0).events.at(-1)!;
+  assert.equal(e.reason, "stuck");
+  assert.equal(e.detail, "in deep water while walking to home, no way out found");
+
+  d.handle({ intent: "task", name: "get_wood" });
+  d.interrupted("in deep water, swimming for the bank");
+  const i = log.since(0).events.at(-1)!;
+  assert.equal(i.reason, "interrupted");
+  assert.equal(i.detail, "in deep water, swimming for the bank");
+  d.handle({ intent: "task", name: "get_wood" });
+  d.interrupted();
+  assert.equal("detail" in log.since(0).events.at(-1)!, false);
 });

@@ -5,19 +5,26 @@ import { Movements } from "mineflayer-pathfinder";
 // plain logs only: stripped ones are something a player made
 export const isPlainLogName = (name: string): boolean => /^(?!stripped_)\w+_log$/.test(name);
 
-// Leaves that grew with the tree are not persistent; player-placed ones are. A trunk can sit a few
-// blocks under the lowest leaves, so the box reaches further up than sideways.
-export function isNaturalLog(bot: Bot, block: Block): boolean {
-  if (!isPlainLogName(block.name)) return false;
+// Natural leaves (non-persistent, grown with the tree; player-placed ones are persistent) close to a
+// log say it is part of a tree. A trunk can sit a few blocks under the lowest leaves, so the box reaches
+// further up than sideways. `naturalLeaf` is asked about offsets from the log.
+export function nearNaturalLeaves(naturalLeaf: (dx: number, dy: number, dz: number) => boolean): boolean {
   for (let dy = -1; dy <= 6; dy++) {
     for (let dx = -3; dx <= 3; dx++) {
       for (let dz = -3; dz <= 3; dz++) {
-        const near = bot.blockAt(block.position.offset(dx, dy, dz));
-        if (near?.name.endsWith("_leaves") && near.getProperties().persistent === false) return true;
+        if (naturalLeaf(dx, dy, dz)) return true;
       }
     }
   }
   return false;
+}
+
+export function isNaturalLog(bot: Bot, block: Block): boolean {
+  if (!isPlainLogName(block.name)) return false;
+  return nearNaturalLeaves((dx, dy, dz) => {
+    const near = bot.blockAt(block.position.offset(dx, dy, dz));
+    return Boolean(near?.name.endsWith("_leaves") && near.getProperties().persistent === false);
+  });
 }
 
 // Default for everything: walk and jump, never dig or build.

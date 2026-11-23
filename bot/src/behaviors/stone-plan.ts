@@ -2,6 +2,8 @@
 
 export const COBBLE_TARGET = 16; // more than the body held at the start
 export const KEEP_COBBLE = 4; // left in the inventory after the stash
+export const STONE_RANGE = 40; // blocks from the search centre (the home table unless aimed)
+export const STONE_MIN_Y = 30; // nothing at or below this
 
 const MINES_STONE = ["wooden_pickaxe", "golden_pickaxe", "stone_pickaxe", "iron_pickaxe", "diamond_pickaxe", "netherite_pickaxe"];
 const STONE_OR_BETTER_PICKAXE = ["stone_pickaxe", "iron_pickaxe", "diamond_pickaxe", "netherite_pickaxe"];

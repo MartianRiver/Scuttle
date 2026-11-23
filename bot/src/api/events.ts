@@ -1,5 +1,26 @@
 import { randomBytes } from "node:crypto";
 
+export const DETAIL_MAX = 120;
+export const GOT_MAX_ITEMS = 4;
+
+// The extra fields on a task's ending or progress line: `detail` is words only (a digit is dropped, so a
+// distance or a position cannot slip through) and short; `got` is item counts, a few of the biggest.
+export function endFields(info: { detail?: unknown; got?: unknown }): { detail?: string; got?: Record<string, number> } {
+  const out: { detail?: string; got?: Record<string, number> } = {};
+  if (typeof info.detail === "string") {
+    const detail = info.detail.replace(/\d+/g, "").replace(/\s+/g, " ").trim().slice(0, DETAIL_MAX);
+    if (detail) out.detail = detail;
+  }
+  if (typeof info.got === "object" && info.got !== null) {
+    const items = Object.entries(info.got as Record<string, unknown>)
+      .filter(([k, v]) => /^[a-z_]{1,48}$/.test(k) && Number.isInteger(v) && (v as number) > 0)
+      .sort((a, b) => (b[1] as number) - (a[1] as number))
+      .slice(0, GOT_MAX_ITEMS);
+    if (items.length > 0) out.got = Object.fromEntries(items) as Record<string, number>;
+  }
+  return out;
+}
+
 export interface BotEvent {
   seq: number;
   ts: number;

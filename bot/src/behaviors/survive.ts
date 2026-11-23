@@ -3,6 +3,7 @@ import { Vec3 } from "vec3";
 import { logger } from "../lib/logger";
 import { instinctDelay, pacing } from "../lib/pacing";
 import { setStatus } from "../lib/status";
+import { findBank, waypoint, type Route } from "./bank";
 import { calm, step, type DangerState } from "./danger";
 import { classify, findEscape, type Cell, type Hazard, type Pos, type Sense } from "./hazard";
 
@@ -14,7 +15,9 @@ const log = logger("survive");
 let state: DangerState = calm();
 let active: Hazard | null = null;
 let burningUntil = 0;
-let held: { family: "swim" | "fire"; cell: Pos } | null = null; // the way out stays chosen until reached
+let held: { family: "swim" | "fire"; cell: Pos; route?: Route } | null = null; // the way out stays chosen until reached
+
+const HAZARD_WORDS: Record<Hazard, string> = { lava: "in lava", fire: "in fire", burning: "on fire", drowning: "in deep water, swimming for the bank" };
 
 export const isInHazard = (): boolean => active !== null;
 
@@ -48,7 +51,8 @@ function sense(bot: Bot): Sense {
     inLava,
     inFire,
     headInWater: head?.name === "water" || head?.name === "bubble_column",
-    feetInWater: feet?.name === "water" || feet?.name === "bubble_column",
+    // a jump at the surface lifts the feet clear for a moment; that is not out of the water
+    feetInWater: feet?.name === "water" || feet?.name === "bubble_column" || (!bot.entity.onGround && bot.blockAt(pos.offset(0, -0.6, 0))?.name === "water"),
     oxygen: bot.oxygenLevel ?? 20,
     burning: Date.now() < burningUntil,
   };
@@ -58,7 +62,7 @@ function release(bot: Bot): void {
   for (const c of ["forward", "sprint", "jump"] as const) bot.setControlState(c, false);
 }
 
-export function startSurvive(bot: Bot, interrupt: () => void): () => void {
+export function startSurvive(bot: Bot, interrupt: (detail?: string) => void): () => void {
   const tick = (): void => {
     if (!bot.entity || bot.health <= 0) return;
     const feel = sense(bot);
@@ -69,7 +73,9 @@ export function startSurvive(bot: Bot, interrupt: () => void): () => void {
 
     if (hazard && (!held || held.family !== family || Math.hypot(held.cell.x + 0.5 - pos.x, held.cell.z + 0.5 - pos.z) < 0.8)) {
       const cell = findEscape(hazard, grid, pos);
-      held = cell ? { family, cell } : null;
+      // the quick look found no shore in 8 blocks: search through the water itself, further out
+      const route = !cell && hazard === "drowning" ? findBank(grid, pos) : null;
+      held = cell ? { family, cell } : route ? { family, cell: route.bank, route } : null;
     }
     // a rescue from the water ends once the head is clear and there is no shore to reach
     if (hazard === "drowning" && !feel.headInWater && !held) hazard = null;
@@ -91,13 +97,16 @@ export function startSurvive(bot: Bot, interrupt: () => void): () => void {
 
     if (!was) {
       log.warn("hazard", { hazard, health: bot.health });
-      interrupt();
+      interrupt(HAZARD_WORDS[hazard]);
       bot.pathfinder.setGoal(null);
       void setStatus({ task: `getting out of ${hazard}` });
     }
     active = hazard;
 
-    if (held) void bot.lookAt(new Vec3(held.cell.x + 0.5, pos.y + 1.6, held.cell.z + 0.5), true);
+    if (held) {
+      const to = held.route ? waypoint(held.route, pos) : held.cell;
+      void bot.lookAt(new Vec3(to.x + 0.5, pos.y + 1.6, to.z + 0.5), true);
+    }
     bot.setControlState("forward", Boolean(held));
     bot.setControlState("sprint", hazard === "burning");
     // up out of water and over the lip of a pool or pit; walking to water to put a burn out needs no jumping

@@ -1,10 +1,14 @@
 import type { Bot } from "mineflayer";
 import type { goals } from "mineflayer-pathfinder";
 import { logger } from "../lib/logger";
+import { getStatus } from "../lib/status";
+import { bodyStanding } from "../senses/standing";
+import { findBank } from "./bank";
 import { isFalling } from "./fall";
 import { isFleeing } from "./defence";
-import { isInHazard } from "./survive";
-import { judge, MAX_NUDGES, SAMPLE_MS, trim, type Sample } from "./stuck";
+import { inWater, swimTo } from "./swim";
+import { cellAt, isInHazard } from "./survive";
+import { judge, MAX_NUDGES, SAMPLE_MS, stuckWords, trim, type Sample, type StuckKind } from "./stuck";
 
 const log = logger("unstuck");
 
@@ -13,10 +17,13 @@ const log = logger("unstuck");
 // walks to the table and the chest; follow runs until stopped by design and stays out of it, and
 // get_wood's log walks have their own time limits (lib/collect.ts).
 export class StuckError extends Error {
-  constructor() {
+  constructor(readonly detail?: string) {
     super("stuck");
   }
 }
+
+// words for the mind about why it is stuck and where it was (the status text still names the walk)
+const stuckError = (bot: Bot, kind: StuckKind) => new StuckError(stuckWords(kind, getStatus().task, bodyStanding(bot) === "deep_water"));
 
 const NUDGE_MS = 600;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -58,7 +65,8 @@ async function nudge(bot: Bot, n: number, again: () => boolean): Promise<void> {
 export async function walkTo(bot: Bot, goal: goals.Goal): Promise<void> {
   let samples: Sample[] = [];
   let nudges = 0;
-  let verdict: "give_up" | null = null;
+  let verdict: "give_up" | "water" | null = null;
+  let rescues = 0; // swims to a bank in this walk
   let nudging: Promise<void> | null = null;
   let ours = false; // goal_updated fired by this function
   let cancelled = false;
@@ -94,6 +102,13 @@ export async function walkTo(bot: Bot, goal: goals.Goal): Promise<void> {
     const v = judge(samples, now, { goalSet: true, busy: false, nudges });
     if (v === "ok") return;
     samples = [];
+    if (inWater(bot)) {
+      // the pathfinder does not get out of water by itself: swim to a bank, then walk on
+      log.warn("no progress in water", { position: p });
+      verdict = "water";
+      set(() => bot.pathfinder.setGoal(null));
+      return;
+    }
     if (v === "give_up") {
       log.warn("giving up, no progress", { position: p, nudges });
       verdict = "give_up";
@@ -113,6 +128,19 @@ export async function walkTo(bot: Bot, goal: goals.Goal): Promise<void> {
     }
   }, SAMPLE_MS);
 
+  // out of the water by hand; the first time the walk resumes after it, the second time it ends stuck
+  const swimOut = async (): Promise<void> => {
+    if (!owned()) throw new Error("interrupted");
+    const route = findBank(cellAt(bot), bot.entity.position);
+    log.info("swimming to a bank", { found: route !== null, rescues: rescues + 1 });
+    if (!route) throw stuckError(bot, "no_bank");
+    const out = await swimTo(bot, route, owned);
+    if (!owned()) throw new Error("interrupted");
+    if (!out) throw stuckError(bot, "no_bank");
+    if (++rescues > 1) throw stuckError(bot, "twice");
+    samples = [];
+  };
+
   try {
     for (;;) {
       try {
@@ -120,9 +148,13 @@ export async function walkTo(bot: Bot, goal: goals.Goal): Promise<void> {
         if (reached || goal.isEnd(bot.entity.position.floored() as never)) return;
         // goto came back without arriving: nothing to wait on, so a nudge or two, then stuck
         if (!owned()) throw new Error("interrupted");
+        if (inWater(bot)) {
+          await swimOut();
+          continue;
+        }
         if (nudges >= MAX_NUDGES) {
           log.warn("no way to the goal", { position: bot.entity.position, nudges });
-          throw new StuckError();
+          throw stuckError(bot, "dry");
         }
         nudges++;
         log.info("goto ended short of the goal, nudging", { position: bot.entity.position, n: nudges });
@@ -130,7 +162,12 @@ export async function walkTo(bot: Bot, goal: goals.Goal): Promise<void> {
         if (!owned()) throw new Error("interrupted");
       } catch (err) {
         if (err instanceof StuckError || (err as Error).message === "interrupted") throw err;
-        if (verdict) throw new StuckError();
+        if (verdict === "water") {
+          verdict = null;
+          await swimOut();
+          continue;
+        }
+        if (verdict) throw stuckError(bot, "dry");
         if (!nudging) throw err;
         await nudging;
         nudging = null;

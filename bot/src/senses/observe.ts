@@ -6,14 +6,20 @@
 import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
+import { safeToDig } from "../behaviors/dig-safety";
 import { describeLevel } from "../behaviors/place";
+import { nearestRefused, refusedNow, reverted } from "../behaviors/refused";
+import { STONE_MIN_Y, STONE_RANGE } from "../behaviors/stone-plan";
 import { armourPoints } from "../behaviors/stance";
 import { home } from "../lib/home";
+import { isPlainLogName } from "../lib/movement";
 import { durabilityLeft, mobHealthBand, timeWords, weatherWords } from "./bands";
 import { compose, type Observation, type RawBlock, type RawEntity, type RawSense } from "./compose";
 import { HandleTable, PLACES, type Place } from "./handles";
 import { blockKind, PER_KIND, PER_LIQUID, SIGHT_BLOCKS, SIGHT_ENTITIES } from "./notable";
 import { blockVisible, entityVisible, hasOpenFace, type Opaque } from "./sight";
+import { bodyStanding } from "./standing";
+import { pickTrees, type TreeProbe } from "./trees";
 
 const LIVING = new Set(["player", "hostile", "animal", "passive", "mob", "ambient", "water_creature"]);
 const NAME = /^[A-Za-z0-9_.]{1,17}$/;
@@ -94,7 +100,10 @@ function gather(v: View): RawSense {
     items,
     tools,
     entities: seenEntities(v),
-    blocks: seenBlocks(v),
+    blocks: [...seenBlocks(v), ...seenTrees(v)],
+    standing: bodyStanding(bot),
+    stone: seenStone(v),
+    refused: nearestRefused(refusedNow(), feet).map((z) => ({ dx: z.x - feet.x, dz: z.z - feet.z, r: z.r })),
     places: overworld ? PLACES.map((name) => ({ name, ...v.rel(centre(placeSpot(name))) })) : null,
   };
 }
@@ -149,4 +158,39 @@ function seenBlocks({ bot, handles, opaque, feet, eye, rel }: View): RawBlock[] 
     out.push({ handle, what: block.name, ...rel(centre(pos)) });
   }
   return out;
+}
+
+// one handle per tree, on its base log; the gate is get_wood's own (trees.ts)
+function seenTrees({ bot, handles, opaque, feet, eye, rel }: View): RawBlock[] {
+  const ids = bot.registry.blocksArray.filter((b) => isPlainLogName(b.name)).map((b) => b.id);
+  const logs = bot.findBlocks({ matching: ids, maxDistance: SIGHT_BLOCKS, count: 300 }).sort((a, b) => a.distanceTo(feet) - b.distanceTo(feet));
+  const at = (p: { x: number; y: number; z: number }) => bot.blockAt(new Vec3(p.x, p.y, p.z));
+  const probe: TreeProbe = {
+    nameAt: (p) => at(p)?.name ?? null,
+    naturalLeafAt: (p) => {
+      const b = at(p);
+      return Boolean(b?.name.endsWith("_leaves") && b.getProperties().persistent === false);
+    },
+    visible: (p) => hasOpenFace(p, opaque) && blockVisible(eye, p, opaque),
+  };
+  return pickTrees(logs, probe).map((p) => {
+    const name = at(p)?.name ?? "oak_log";
+    return { handle: handles.mint({ kind: "block", x: p.x, y: p.y, z: p.z, name }), what: name, ...rel(centre(new Vec3(p.x, p.y, p.z))) };
+  });
+}
+
+// the nearest natural stone get_stone would take (within its range of home, above its floor, not in a
+// refused place, safe by the dig rule) that is in view; no handle, since there are a lot of faces
+function seenStone({ bot, opaque, feet, eye, rel }: View): { dx: number; dy: number; dz: number } | undefined {
+  const id = bot.registry.blocksByName.stone?.id;
+  if (id === undefined) return undefined;
+  const nameAt = (p: { x: number; y: number; z: number }) => bot.blockAt(new Vec3(p.x, p.y, p.z), false)?.name ?? null;
+  let tested = 0;
+  for (const pos of bot.findBlocks({ matching: id, maxDistance: SIGHT_BLOCKS, count: 64 }).sort((a, b) => a.distanceTo(feet) - b.distanceTo(feet))) {
+    if (pos.y <= STONE_MIN_Y || pos.distanceTo(home.craftingTable) > STONE_RANGE || reverted.covers(pos)) continue;
+    if (!hasOpenFace(pos, opaque)) continue;
+    if (++tested > 20) break;
+    if (blockVisible(eye, pos, opaque) && safeToDig(pos, nameAt)) return rel(centre(pos));
+  }
+  return undefined;
 }

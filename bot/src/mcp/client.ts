@@ -98,6 +98,11 @@ export class BodyClient {
     return this.buf.find(pred);
   }
 
+  findLast(pred: (e: BotEvent) => boolean): BotEvent | undefined {
+    for (let i = this.buf.length - 1; i >= 0; i--) if (pred(this.buf[i])) return this.buf[i];
+    return undefined;
+  }
+
   get oldest(): number {
     return this.buf[0]?.seq ?? this.head + 1;
   }

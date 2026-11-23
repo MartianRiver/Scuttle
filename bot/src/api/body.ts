@@ -1,5 +1,6 @@
 import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
+import type { Vec3 } from "vec3";
 import { isFleeing, noteStop } from "../behaviors/defence";
 import { beginEscort, endEscort } from "../behaviors/escort";
 import { giveItem } from "../behaviors/give";
@@ -76,10 +77,16 @@ export function createBody(bot: Bot): BodyControl {
       return giveItem(bot, player, item, count);
     },
 
-    async runTask(name) {
+    async runTask(name, near, report) {
       endEscort();
-      const result = await startTask(bot, TASK_PHRASE[name]);
-      if (!result.ok) throw new Error(result.reason);
+      let aim: Vec3 | undefined;
+      if (near) {
+        aim = destination(bot, handles, near)?.at() ?? undefined;
+        if (!aim) throw new Error("stale_handle");
+      }
+      const result = await startTask(bot, TASK_PHRASE[name], { aim, onProgress: report });
+      if (!result.ok) throw Object.assign(new Error(result.reason), { detail: result.detail, got: result.got });
+      return { got: result.got };
     },
 
     say: (text) => bot.chat(text),

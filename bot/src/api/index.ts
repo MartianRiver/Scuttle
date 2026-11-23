@@ -13,7 +13,7 @@ const log = logger("api");
 
 export interface BodyApi {
   dispatch(intent: Intent): Outcome;
-  interrupt(): void;
+  interrupt(detail?: string): void;
   noFood(food: number): void;
   close(): void;
 }

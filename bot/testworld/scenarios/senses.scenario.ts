@@ -3,10 +3,8 @@
 // against that. Mobs are NoAI so they stay where they were put, and the zombie stands 14 blocks out,
 // past the 10 at which the defence reflex would move the body mid-check.
 // The last scenario restarts the bot process; the runner's socket is replaced, the bot ends idle.
-import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
 import { arena, C, tidy } from "./arena";
-import { sleep, type Ctx, type Observation, type Scenario } from "./lib";
+import { restartBot as restart, sleep, type Ctx, type Observation, type Scenario } from "./lib";
 
 const MOB = "NoAI:1b,PersistenceRequired:1b";
 const at = (dx: number, dz: number, dy = 0) => `${C.x + dx + 0.5} ${C.y + dy} ${C.z + dz + 0.5}`;
@@ -111,7 +109,7 @@ export default [
         c.check(cows.length === 3, `three cows listed, the fourth is out of range (${cows.length})`);
         c.check(find("east")?.d === "close", `the east cow is close (${JSON.stringify(find("east"))})`);
         c.check(find("north")?.d === "near" && find("north")?.hp === "low", `the north cow is near and low (${JSON.stringify(find("north"))})`);
-        c.check(find("west")?.d === "far", `the west cow is far (${JSON.stringify(find("west"))})`);
+        c.check(find("west")?.d === "a short walk", `the west cow is a short walk (${JSON.stringify(find("west"))})`);
         c.check(cows.every((e) => /^e\d+[a-z]{2}$/.test(e.h)), "each has an entity handle");
         c.check(find("east")?.hp === undefined, "a cow at full health has no hp");
         c.check(obs?.time === "night", `it is night (${obs?.time})`);
@@ -215,20 +213,7 @@ export default [
     let known = "";
     let fresh = "";
     let walked = false;
-    // the test bot is a process of its own; this kills it and starts it again from the same checkout
-    const restartBot = async (c: Ctx) => {
-      spawn("pkill", ["-f", "tsx src/index.ts --testworld"]);
-      // a duplicate login is kicked and costs minutes of backoff, so wait until the server has let go
-      for (let i = 0; i < 60 && (await c.world.run("list")).includes(c.bot); i++) await sleep(500);
-      const log = openSync("/tmp/scuttle-run/bot-senses.log", "a");
-      spawn("bash", ["testworld/bot.sh"], { detached: true, stdio: ["ignore", log, log] }).unref();
-      await c.body.reconnect();
-      for (let i = 0; i < 60; i++) {
-        if ((await c.body.send({ intent: "status" })).snapshot?.inGame) return;
-        await sleep(1000);
-      }
-      throw new Error("the restarted bot never spawned");
-    };
+    const restartBot = (c: Ctx) => restart(c, "/tmp/scuttle-run/bot-senses.log");
     return arenaScenario("senses: a handle from before a bot restart answers stale_handle, a new one works", {
       timeoutMs: 120_000,
       async setup(c) {
