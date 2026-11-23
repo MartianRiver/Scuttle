@@ -303,6 +303,7 @@ test("say: plain text only, own rate limit, never touches the running action", (
   assert.ok(!ok("/op Sam"));
   assert.ok(!ok("  /op Sam")); // leading space doesn't hide a command
   assert.ok(!ok("two\nlines"));
+  assert.ok(!ok("colour \u00a7c codes")); // the server disconnects a client that sends a section sign
   assert.ok(!ok(""));
   assert.ok(!ok("   "));
   assert.ok(!ok("x".repeat(101)));

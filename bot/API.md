@@ -31,7 +31,7 @@ Client → bot:
 `player` is a Minecraft username (`^[A-Za-z0-9_.]{1,17}$`, the dot being Floodgate's prefix).
 There is no coordinate or command field anywhere, and there won't be one. `say` is the one
 free-text field (so the consumer can talk through the body): one public chat
-line, 1 to 100 characters, no leading `/`, no newline or control character, at most one line per
+line, 1 to 100 characters, no leading `/`, no newline, control character or section sign (`§`, which the server kicks a client for), at most one line per
 2 s (`rate_limited` otherwise). It is accepted at once with no `taskId`, is allowed mid-fight, and
 never touches the running action. Rejected with `not_in_game` when the body is offline.
 
