@@ -24,6 +24,7 @@ Client → bot:
 {"type":"intent","id":"c2g","intent":"guard","player":"Sam"}
 {"type":"intent","id":"c7","intent":"give","player":"Sam","item":"oak_log","count":12}
 {"type":"intent","id":"c3","intent":"task","name":"get_wood"}
+{"type":"intent","id":"c3s","intent":"task","name":"get_stone"}
 {"type":"intent","id":"c6","intent":"say","text":"Can't do that yet, want me to tell you how?"}
 {"type":"intent","id":"c4","intent":"stop"}
 {"type":"intent","id":"c5","intent":"status"}
@@ -63,7 +64,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `body_connected` / `body_disconnected` | `reason` on disconnect |
 | `task_started` | `taskId`, `kind` |
 | `task_finished` | `taskId` |
-| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `none_held` (a `give` with nothing of that item to spare, see Rules), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges; also ends a `come_to` or a `give`, and a `get_wood` that got no wood), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
+| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `no_stone` (a `get_stone` found no natural stone it may dig within 40 blocks of home and above y 30, or none it could take), `no_pickaxe` (a `get_stone` while holding no pickaxe), `none_held` (a `give` with nothing of that item to spare, see Rules), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges; also ends a `come_to` or a `give`, a `get_wood` that got no wood, and a `get_stone` whose attempts got no stone), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `died` | `place`, `cause`: the body died (idle or not; a running action first ends with `task_failed` `died`) and respawns by itself. `place` is words only, never coordinates: how far and which way from home, surface or underground, the dimension if not the overworld ("a short walk to the north-east of home, on the surface"). `cause` is `mob`, `fall`, `lava`, `fire`, `drowning` or `other`. Nothing is carried over: the task is over, the inventory is what the respawn left, and fetching drops is not automatic |
 | `no_food` | `food` (the level, 0 to 14). The body is hungry (food below 15) and carries nothing it will eat: no rotten flesh above food 6, nothing poisonous, no golden apples unless hurt. Sent once per hunger episode; the next one needs it to have eaten or its food to have come back to 15 or more. No position. The body never walks to the stash for food by itself; a `get_wood` that stands at the stash takes some |
@@ -90,6 +91,17 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   again on arrival, since it may have eaten or swapped its held item on the way). Other endings: `stuck`,
   `interrupted`, `died`, a short "lost sight of them". Status text: `bringing <item> to <name>`. No chat
   phrase: only the API sends it.
+- `task get_stone` mines natural `stone` (not cobblestone, deepslate or the andesite, diorite and granite that drop
+  themselves) within 40 blocks of home and above y 30, until it holds 16 cobblestone more than it started with, then
+  makes a stone pickaxe and a stone sword at the home table if it holds none at stone level or better (sticks from planks,
+  planks from a log it carries; no sticks to be had means no tools, quietly), keeps 4 cobblestone and stashes the rest.
+  It needs a pickaxe in the inventory (any that mines stone), else `no_pickaxe` at once. Each block is dug by hand and
+  only when it passes the look-before-you-dig rule: no lava or water against any face, nothing falling (sand, gravel)
+  over it, nothing a player makes (planks, torches, chests, glass, cobblestone...) within 3 blocks, and the body beside
+  it at its level or one below, never above or under. It ends `no_stone` when there is nothing it may dig,
+  `protected` when the server undoes the digs, `stuck`, `interrupted`, `died`; if it got some stone but not 16 before it
+  ran out of places, it finishes with that. Status text: `looking for stone`, `mining stone`, `crafting stone tools`,
+  `stashing stone`.
 - `guard` is `follow` that also protects: the body keeps near the player, counts hostile mobs within
   10 blocks of the player as threats as well as the ones near itself, and fights them (creepers and
   skeletons too, bare-handed if it has to; it still backs off below 8 health and from anything that
@@ -107,7 +119,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   `in_danger`. `stop` wins, but the body fights or runs again after its reaction delay if the mobs are
   still there, so a stopped bot is not frozen for good.
 - Public chat goes through the same path: `come here` becomes `come_to` (the speaker), `guard me` becomes
-  `guard` (the speaker), `stop` becomes `stop`, `get wood` becomes `task get_wood`, spelled exactly. Actions started that way are ordinary
+  `guard` (the speaker), `stop` becomes `stop`, `get wood` becomes `task get_wood`, `get stone` becomes `task get_stone`, spelled exactly. Actions started that way are ordinary
   tasks with ordinary events, and get the same `busy` / `in_fight` / `unknown_player` checks. This works with
   the WebSocket server off; it is the only optional part.
 - The bot validates every intent against this list itself. Nothing upstream is trusted to have.
