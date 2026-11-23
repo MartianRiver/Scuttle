@@ -23,7 +23,7 @@ export interface Destination {
 // null for a handle that is unknown, expired, or whose target has gone
 export function destination(bot: Bot, handles: HandleTable, handle: string): Destination | null {
   if (isPlace(handle)) {
-    if (!isOverworld(bot)) return null; // the known places are overworld positions
+    if (!isOverworld(bot) || !placeSpot(handle)) return null; // the known places are overworld positions; the stair only once dug
     return { label: handle === "home" ? "home" : `the ${handle}`, at: () => placeSpot(handle), moves: false, near: handle === "home" ? 4 : 2 };
   }
   const t = handles.resolve(handle);

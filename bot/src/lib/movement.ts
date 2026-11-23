@@ -37,6 +37,19 @@ export function safeMovements(bot: Bot): Movements {
   return m;
 }
 
+// For `explore`: water is a wall, to wade as much as to swim, so a route goes round a pond. By default the planner
+// only charges for moving *out of* water, so a straight line over a lake or the sea costs about two land blocks a
+// block and wins against any detour; kelp and seagrass read as open air to it, so they are listed too.
+const WET = ["water", "bubble_column", "kelp", "kelp_plant", "seagrass", "tall_seagrass"];
+export function dryMovements(bot: Bot): Movements {
+  const m = safeMovements(bot);
+  for (const name of WET) {
+    const id = bot.registry.blocksByName[name]?.id;
+    if (id !== undefined) m.blocksToAvoid.add(id);
+  }
+  return m;
+}
+
 // For the wood gathering step only: it may break natural logs and the natural leaves around them,
 // nothing else. A canopy is a wall to the pathfinder otherwise. collectLog asks safeToBreak before
 // every dig, so this is also the gate for the dig itself. Made per task, so the memo never outlives

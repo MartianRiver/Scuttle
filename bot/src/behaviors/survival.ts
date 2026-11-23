@@ -13,6 +13,7 @@ const CHECK_INTERVAL_MS = 5000;
 const CONSUME_MS = 5000; // a meal takes 1.6 s; a consume that never ends must not hang the caller
 
 let eating = false;
+export const isEating = (): boolean => eating;
 let reported = false; // `no_food` already sent for this hunger episode
 
 export function foodTable(bot: Bot): FoodTable {

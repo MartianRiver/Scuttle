@@ -11,6 +11,7 @@ import { callout, followWard, wardName, wardPosition } from "./escort";
 import { mergeThreats, wardThreats } from "./escort-policy";
 import { isFalling } from "./fall";
 import { isInHazard } from "./survive";
+import { mobsWords, type ReflexEnd } from "./reflex-words";
 import { calm, fleeTarget, LEASH, step, threatening, type DangerState, type Mob, type Self } from "./danger";
 import { armourPoints, bestWeapon, chooseStance, cooldownMs, GUARD, isBystander, POLICY, weaponFor, type Ward } from "./stance";
 
@@ -34,6 +35,9 @@ let equipping = false;
 
 // true while mobs have the body, fighting or running
 export const isFleeing = (): boolean => state.fleeing;
+
+let threatNames: string[] = []; // the kinds of the mobs that last counted as threats
+export const mobsNearWords = (): string => mobsWords(threatNames);
 
 // the anchor outlives the run: a mob that lost the body walks back, and a fresh anchor per run let
 // flee, clear, flee again carry it off the leash a run at a time
@@ -90,7 +94,8 @@ async function equip(bot: Bot, weapon: string | null): Promise<void> {
   }
 }
 
-export function startDefence(bot: Bot, interrupt: () => void): () => void {
+// `ended` hears when a run of fleeing or fighting ends because the mobs are gone (not when `stop` cut it short)
+export function startDefence(bot: Bot, interrupt: () => void, ended: (e: ReflexEnd) => void = () => {}): () => void {
   let movements: Movements | null = null;
 
   const flee = (self: Self, threats: Mob[]): void => {
@@ -166,9 +171,11 @@ export function startDefence(bot: Bot, interrupt: () => void): () => void {
         log.info("clear of danger", { was: mode });
         reset(true);
         void setStatus({ task: wardName() ? `guarding ${wardName()}` : "idle" });
+        ended({ what: "mobs", ok: true });
       }
       return;
     }
+    if (threats.length > 0) threatNames = threats.map((t) => t.name);
 
     const me = fighter(bot);
     const stance = chooseStance(me, threats, mode === "fight", ward ?? undefined);

@@ -1,7 +1,7 @@
 import type { BotEvent } from "../api/events";
 import type { BodyClient } from "./client";
 
-export type WakeReason = "task_ended" | "chat" | "died" | "no_food" | "disconnected" | "interrupted" | "restarted" | "timeout";
+export type WakeReason = "task_ended" | "chat" | "died" | "no_food" | "disconnected" | "interrupted" | "reflex_ended" | "restarted" | "timeout";
 
 const ENDS = ["task_finished", "task_failed", "task_stopped"];
 
@@ -18,6 +18,8 @@ export function wakeReason(e: BotEvent, taskId?: string): WakeReason | undefined
       return "no_food";
     case "body_disconnected":
       return "disconnected";
+    case "reflex_ended":
+      return "reflex_ended";
   }
   if (e.event === "task_failed" && e.reason === "interrupted") return "interrupted";
   if (taskId && ENDS.includes(e.event) && e.taskId === taskId) return "task_ended";

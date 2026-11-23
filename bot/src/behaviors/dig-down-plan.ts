@@ -1,0 +1,172 @@
+// The stair `dig_down` cuts, planned apart from the world: which way it faces, what each step digs and where the body
+// stands after, when it stops. Pure, on a grid of names, so it is tested on made-up ground.
+//
+// Standing at S (feet cell, y), facing (dx, dz), the next step is the column c = S + facing: three blocks to take out,
+// A = (c, y+1) at head height, B = (c, y) at the feet and C = (c, y-1) one down; then the body walks forward and drops
+// into C. C then has B and A over it, two blocks of room, and the floor under C must already be solid. A step into stone
+// is never dug (that wants a pickaxe): it stops before.
+import { isFalling, NATURAL_STONE, isLiquid, isMade, isStandHazard, madeBlocksNear, safeToDig, type NameAt, type Pos } from "./dig-safety";
+
+export const MAX_STEPS = 12;
+export const PROBE = 3; // steps looked at when choosing which way to face
+
+export interface Facing {
+  dx: -1 | 0 | 1;
+  dz: -1 | 0 | 1;
+}
+export const FACINGS: readonly Facing[] = [{ dx: 1, dz: 0 }, { dx: 0, dz: 1 }, { dx: -1, dz: 0 }, { dx: 0, dz: -1 }];
+
+// the stone the stair stops at: natural rock that wants a pickaxe
+export const STONE_STOP: ReadonlySet<string> = new Set(NATURAL_STONE);
+
+export interface Grid {
+  name: NameAt;
+  solid(p: Pos): boolean; // a full block in the way: something to dig, or ground to stand on
+}
+
+export type StepPlan =
+  | { kind: "stop" } // stone under it or in front
+  | { kind: "blocked"; detail: string } // water, lava, a hollow, something it cannot break
+  | { kind: "refused"; detail: string } // a build, a place where digs were undone
+  | { kind: "step"; dig: Pos[]; to: Pos; level: boolean };
+
+const at = (p: Pos, dx: number, dy: number, dz: number): Pos => ({ x: p.x + dx, y: p.y + dy, z: p.z + dz });
+const SIX: ReadonlyArray<readonly [number, number, number]> = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+
+// "water behind the wall", "lava below": where the liquid is, as a body that has not dug there yet would say
+function liquidWords(name: string, below: boolean): string {
+  const what = name === "lava" ? "lava" : "water";
+  return below ? `${what} below` : `${what} behind the wall`;
+}
+
+// the first liquid next to any of the cells (or in them), as words
+function liquidNear(g: Grid, cells: Pos[], extra: Pos[]): string | null {
+  const bottom = cells.reduce((lowest, p) => Math.min(lowest, p.y), Infinity);
+  for (const p of cells) {
+    const own = g.name(p);
+    if (own !== null && isLiquid(own)) return liquidWords(own, false);
+    for (const [dx, dy, dz] of SIX) {
+      const n = g.name(at(p, dx, dy, dz));
+      if (n !== null && isLiquid(n)) return liquidWords(n, dy < 0 && p.y === bottom);
+    }
+  }
+  for (const p of extra) {
+    const n = g.name(p);
+    if (n !== null && isLiquid(n)) return liquidWords(n, false);
+  }
+  return null;
+}
+
+// One step from `cur`. `canBreak` says whether the game lets a body break a block of that name at all.
+export function planStep(g: Grid, cur: Pos, f: Facing, canBreak: (name: string) => boolean): StepPlan {
+  const floor = g.name(at(cur, 0, -1, 0));
+  if (floor !== null && STONE_STOP.has(floor)) return { kind: "stop" };
+
+  const c = at(cur, f.dx, 0, f.dz);
+  const A = at(c, 0, 1, 0);
+  const B = c;
+  const C = at(c, 0, -1, 0);
+  const names = [A, B, C].map((p) => g.name(p));
+  if (names.some((n) => n === null)) return { kind: "blocked", detail: "it cannot see far enough ahead" };
+  const [nA, nB, nC] = names as string[];
+  if (STONE_STOP.has(nA) || STONE_STOP.has(nB)) return { kind: "stop" };
+  // the step down would be into stone: walk on level onto it instead, and the next look finds stone underfoot
+  const level = STONE_STOP.has(nC);
+  const dig = level ? [A, B] : [A, B, C];
+  const to = level ? B : C;
+
+  const ahead = at(c, f.dx, 0, f.dz);
+  const wet = liquidNear(g, dig, level ? [] : [at(ahead, 0, -1, 0), at(ahead, 0, -2, 0)]);
+  if (wet) return { kind: "blocked", detail: wet };
+
+  if (!level) {
+    const under = at(C, 0, -1, 0);
+    const n = g.name(under);
+    if (n === null) return { kind: "blocked", detail: "it cannot see far enough ahead" };
+    if (!g.solid(under)) return { kind: "blocked", detail: "a hollow below" };
+    if (isStandHazard(n)) return { kind: "blocked", detail: "something hot or prickly below" };
+  }
+
+  for (const p of dig) {
+    const n = g.name(p) as string;
+    if (!g.solid(p)) {
+      if (isStandHazard(n)) return { kind: "blocked", detail: "something sticky or prickly in the way" };
+      continue; // air, or a plant it walks through
+    }
+    if (isMade(n)) return { kind: "refused", detail: "something a player built is in the way" };
+    if (!canBreak(n)) return { kind: "blocked", detail: "rock it cannot break is in the way" };
+    if (!safeToDig(p, g.name)) {
+      if (madeBlocksNear(p, g.name).length > 0) return { kind: "refused", detail: "something a player built is too close" };
+      const falling = [1, 2].some((dy) => {
+        const over = g.name(at(p, 0, dy, 0));
+        return over !== null && isFalling(over);
+      });
+      return { kind: "blocked", detail: falling ? "sand or gravel overhead" : "it cannot see far enough ahead" };
+    }
+  }
+  return { kind: "step", dig, to, level };
+}
+
+// the grid as it will be once `dug` is taken out
+function withDug(g: Grid, dug: Pos[]): Grid {
+  const key = (p: Pos) => `${p.x},${p.y},${p.z}`;
+  const gone = new Set(dug.map(key));
+  return {
+    name: (p) => (gone.has(key(p)) ? "air" : g.name(p)),
+    solid: (p) => !gone.has(key(p)) && g.solid(p),
+  };
+}
+
+export interface Chosen {
+  facing: Facing;
+  steps: number; // steps that go through before anything stops it (a stop at stone counts as all)
+  first: StepPlan; // what the first step says, for the words when nothing goes through
+}
+
+// The way to face: the one whose first few steps all go through, the first of `prefer` on a tie. When every way
+// is stopped early the longest is taken, and the stop is found when the body gets there.
+export function chooseFacing(g: Grid, start: Pos, prefer: readonly Facing[], canBreak: (name: string) => boolean): Chosen {
+  let best: Chosen | null = null;
+  for (const f of prefer) {
+    let grid = g;
+    let cur = start;
+    let steps = 0;
+    let first: StepPlan | null = null;
+    for (; steps < PROBE; steps++) {
+      const plan = planStep(grid, cur, f, canBreak);
+      first ??= plan;
+      if (plan.kind === "stop") {
+        steps = PROBE;
+        break;
+      }
+      if (plan.kind !== "step") break;
+      grid = withDug(grid, plan.dig);
+      cur = plan.to;
+    }
+    if (!best || steps > best.steps) best = { facing: f, steps, first: first as StepPlan };
+    if (steps >= PROBE) break;
+  }
+  return best as Chosen;
+}
+
+// the four facings with the one nearest `yaw` first (mineflayer's yaw: forward is (-sin, -cos))
+export function facingsFrom(yaw: number): Facing[] {
+  const fx = -Math.sin(yaw);
+  const fz = -Math.cos(yaw);
+  return [...FACINGS].sort((a, b) => b.dx * fx + b.dz * fz - (a.dx * fx + a.dz * fz));
+}
+
+const NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+export const numberWords = (n: number): string => NUMBERS[n] ?? "many";
+
+// the status line while digging: a count of steps in words
+export const digStatus = (steps: number): string => (steps === 0 ? "digging down" : `digging down, ${numberWords(steps)} ${steps === 1 ? "step" : "steps"}`);
+
+// how far down it came, with no number
+export function depthWords(down: number): string {
+  if (down <= 0) return "right here";
+  if (down <= 2) return "a block or two down";
+  if (down <= 5) return "a few blocks down";
+  if (down <= 9) return "several blocks down";
+  return "a long way down";
+}

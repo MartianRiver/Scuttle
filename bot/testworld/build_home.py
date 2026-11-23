@@ -30,6 +30,14 @@ for z0, z1 in ((-44, -17), (-16, 10)):
     run(f"fill -24 62 {z0} 24 66 {z1} dirt")
     run(f"fill -24 67 {z0} 24 67 {z1} grass_block")
     run(f"fill -24 68 {z0} 24 90 {z1} air")
+    # the seed put sea under the shelf (y 55-61) with stone below; land has stone a few blocks down, so make it so
+    run(f"fill -24 50 {z0} 24 61 {z1} stone replace water")
+    run(f"fill -24 50 {z0} 24 61 {z1} stone replace sand")
+    run(f"fill -24 50 {z0} 24 61 {z1} stone replace clay")
+
+# coal and iron in the grove's rock, enclosed as it is in the wild: reaching it means digging
+for x0, y0, z0, ore in ((6, 57, -4, "coal_ore"), (-10, 55, 6, "coal_ore"), (16, 54, -6, "iron_ore"), (2, 52, 8, "iron_ore")):
+    run(f"fill {x0} {y0} {z0} {x0+1} {y0+1} {z0+1} {ore}")
 
 run("setblock 0 68 -23 crafting_table")
 run("setblock 1 68 -23 furnace[facing=south]")
@@ -53,7 +61,7 @@ run("gamerule advance_time false")
 # the console has no WorldEdit selection for rg define, so write the region file and reload it
 bot_uuid = offline_uuid(BOT)
 grove = f"""    scuttle-grove:
-        min: {{x: -18, y: 60, z: -8}}
+        min: {{x: -18, y: 40, z: -8}}
         max: {{x: 26, y: 100, z: 10}}
         members:
             unique-ids:

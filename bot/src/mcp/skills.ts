@@ -13,10 +13,11 @@ export interface ActArgs {
   near?: string;
   dir?: string;
   far?: string;
+  to?: string;
 }
 
 // where each act argument goes on the wire
-const WIRE: Record<keyof ActArgs, string> = { player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far" };
+const WIRE: Record<keyof ActArgs, string> = { player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to" };
 
 export interface ActionDef {
   does: string;
@@ -52,7 +53,7 @@ export const ACTIONS: Record<string, ActionDef> = {
     ends: "Never finishes on its own. Ends with stop, a newer order, task_failed lost_ward (player out of view or over 48 blocks for 15 s), died, disconnected. Reflexes (fleeing, fighting) pause it without ending it. Accepted even when mobs are near.",
   },
   go_to: {
-    does: "Walk to what a handle from observe points at (a mob, a player, a block), or to a place by name: home, table, stash, furnace, bed.",
+    does: "Walk to what a handle from observe points at (a mob, a player, a block), or to a place by name: home, table, stash, furnace, bed, and stair (the one dug with dig_down, once there is one).",
     required: ["handle"],
     optional: [],
     rejects: ["busy", "in_fight", "in_danger", "not_in_game", "stale_handle"],
@@ -114,6 +115,20 @@ export const ACTIONS: Record<string, ActionDef> = {
     rejects: [...ACT_REJECTS, "too_far"],
     ends: "task_finished with saw= kinds newly in view on the way, in words (trees, stone, iron ore, water, lava, doors, players; no handles: call observe next); task_failed blocked or stuck with detail= what is in the way (a cliff to the north, the sea to the east), interrupted, died, disconnected. Rejected too_far at once if the end point would be past the leash from home. Like a task: busy while anything runs.",
   },
+  dig_down: {
+    does: "Cut a one-block-wide staircase down from where it stands, toward natural stone (to: stone, the only target and the default), facing whichever way is clear. It stops on stone, at most twelve steps down, and remembers the stair. observe then lists that stair among the places (go_to stair walks to its top, climb_up goes there) and the stone it stopped at as a block with a handle, so collect or get_stone can take it. Refuses at once on or beside anything a player built, in a place where digs were undone, or with water or lava beside the way; stops before sand or gravel overhead. Never digs where it would let water or lava in.",
+    required: [],
+    optional: ["to"],
+    rejects: ACT_REJECTS,
+    ends: "task_finished with detail= where it stopped (stone ahead, a few blocks down); task_progress digging down, N steps in words; task_failed refused or blocked with detail= why, protected (the server undid a dig), stuck (no stone within twelve steps, or could not step down), interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
+  climb_up: {
+    does: "Walk back up the stair dig_down cut, to the cell it started from.",
+    required: [],
+    optional: [],
+    rejects: ACT_REJECTS,
+    ends: "task_finished at the top; task_failed no_stair (it has dug none), stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
   stop: {
     does: "Stop whatever the body is doing, at once. Always accepted. Returns the taskId of what was stopped, if anything.",
     required: [],
@@ -126,7 +141,7 @@ export const ACTIONS: Record<string, ActionDef> = {
 export const REJECTS: Record<string, string> = {
   busy: "a task is running, or the body is still winding one down; stop first, or wait",
   in_fight: "the body is in a fight; only stop and status are taken",
-  in_danger: "hostile mobs are on the body; only stop, status and guard are taken",
+  in_danger: "a reflex has the body (mobs close, or a hazard like deep water, lava or fire); detail says which. Only stop, status and guard are taken. Wait for it: wait wakes on a reflex_ended event",
   not_in_game: "the body is not connected to the game server",
   unknown_item: "the game has no item by that name (lowercase_with_underscores, no namespace, like oak_planks)",
   none_held: "it does not carry that item",

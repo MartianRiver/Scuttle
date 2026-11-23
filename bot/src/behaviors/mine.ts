@@ -11,6 +11,7 @@ import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
 import { isLiquid, isStandHazard, madeBlocksNear, safeToDig, standOk, type NameAt, type Pos } from "./dig-safety";
 import { NoDigMap, noteMade } from "./no-dig";
+import { isStairStep } from "./stair";
 import { isCandidate, type Cell } from "./ore-plan";
 import { noteRefused, refusedNow, reverted, undoneWords } from "./refused";
 import { TaskError } from "./fail";
@@ -86,7 +87,16 @@ function standable(bot: Bot, feet: Vec3): boolean {
   return ![body, head, floor].some((b) => isStandHazard(b.name));
 }
 
-// the cell beside the target, at its level or one under it, that is nearest the body
+// Digging the floor of the last step of a stair it cut: the hole is one deep, which climb_up fills again with a block,
+// and the ground under it must be solid. Nowhere else does the body dig what it stands on.
+export function stairFloor(bot: Bot, target: Vec3, feet: Vec3): boolean {
+  if (feet.x !== target.x || feet.z !== target.z || feet.y !== target.y + 1 || !isStairStep(feet)) return false;
+  const under = bot.blockAt(target.offset(0, -1, 0));
+  return under?.boundingBox === "block" && !isStandHazard(under.name);
+}
+
+// the cell beside the target, at its level or one under it, that is nearest the body; failing that, the foot of a
+// stair it dug when the target is the floor there
 export function findStand(bot: Bot, target: Vec3): Vec3 | null {
   const me = bot.entity.position;
   let best: Vec3 | null = null;
@@ -97,7 +107,9 @@ export function findStand(bot: Bot, target: Vec3): Vec3 | null {
       if (!best || feet.distanceTo(me) < best.distanceTo(me)) best = feet;
     }
   }
-  return best;
+  if (best) return best;
+  const over = target.offset(0, 1, 0);
+  return standable(bot, over) && stairFloor(bot, target, over) ? over : null;
 }
 
 // Where the server undid a dig is remembered for the bot's life (refused.ts, shared with get_wood); the
@@ -147,7 +159,8 @@ export async function mineBlock(bot: Bot, ctx: MineCtx, spec: MineSpec, pick: Pi
   // the world may have moved on while it walked: judge the block again from where the feet really are
   const live = bot.blockAt(pick.pos);
   const feet = bot.entity.position.floored();
-  if (!live || !isTarget(spec, live.name) || !inReach(bot, pick.pos) || !safeToDig(pick.pos, nameAtOf(bot), feet)) return;
+  const onStair = stairFloor(bot, pick.pos, feet);
+  if (!live || !isTarget(spec, live.name) || !inReach(bot, pick.pos) || !safeToDig(pick.pos, nameAtOf(bot), onStair ? undefined : feet)) return;
   try {
     await bot.tool.equipForBlock(live, { requireHarvest: true });
   } catch {

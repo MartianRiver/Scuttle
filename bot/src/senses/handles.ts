@@ -3,12 +3,13 @@
 // the known places. A handle maps to a position or entity id inside the body only; none of that is
 // ever sent. Pure.
 
-export const PLACES = ["home", "table", "stash", "furnace", "bed"] as const;
+// `stair` is the one that is not fixed: the way down the body dug, and only once there is one
+export const PLACES = ["home", "table", "stash", "furnace", "bed", "stair"] as const;
 export type Place = (typeof PLACES)[number];
 export const isPlace = (h: string): h is Place => (PLACES as readonly string[]).includes(h);
 
 // the shape check the protocol does; whether it still points at anything is the table's business
-export const HANDLE_SHAPE = /^(?:[eb][0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed)$/;
+export const HANDLE_SHAPE = /^(?:[eb][0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed|stair)$/;
 
 // a block only: what `collect` takes
 export const BLOCK_SHAPE = /^b[0-9]{1,9}[a-z]{2}$/;

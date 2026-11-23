@@ -65,6 +65,70 @@ export function findBank(g: Grid, from: Pos, radius = BANK_RADIUS): Route | null
   return null;
 }
 
+export const BACK_RADIUS = 100; // blocks sideways, for the way back to ground the body knows
+const MAX_COLUMNS = 60_000;
+const BACK_NEAR = 3; // a bank this close to the target ends the search
+
+// a water cell with nothing over it: the top of the water
+const surface = (g: Grid, p: Pos) => {
+  const above = g(p.x, p.y + 1, p.z);
+  return swimmable(g, p) && !above.solid && above.fluid === null;
+};
+
+const SIDEWAYS: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// The bank that is nearest `target` among those that can be swum to, searched along the top of the water so that
+// a shore a hundred blocks off is still found. For when no bank is in the quick look: ground it stood on a moment
+// ago is the one place known to be dry. Null when not in water or nothing is reachable.
+export function findRouteBack(g: Grid, from: Pos, target: Pos, radius = BACK_RADIUS): Route | null {
+  const feet = { x: Math.floor(from.x), y: Math.floor(from.y), z: Math.floor(from.z) };
+  const start = swimmable(g, feet) ? feet : swimmable(g, { ...feet, y: feet.y - 1 }) ? { ...feet, y: feet.y - 1 } : null;
+  if (!start) return null;
+
+  const rise: Pos[] = [start];
+  let top = start;
+  for (let i = 0; i < 48 && !surface(g, top); i++) {
+    top = { ...top, y: top.y + 1 };
+    if (!swimmable(g, top)) return null; // a roof over the water
+    rise.push(top);
+  }
+
+  const parent = new Map<string, Pos | null>([[key(top), null]]);
+  const queue: Pos[] = [top];
+  let best: { bank: Pos; at: Pos; d: number } | null = null;
+  for (let i = 0; i < queue.length && i < MAX_COLUMNS; i++) {
+    const cur = queue[i];
+    const bank = bankBeside(g, cur);
+    if (bank) {
+      const d = Math.hypot(bank.x - target.x, bank.z - target.z);
+      if (!best || d < best.d) best = { bank, at: cur, d };
+      if (d <= BACK_NEAR) break;
+    }
+    for (const [dx, dz] of SIDEWAYS) {
+      const x = cur.x + dx;
+      const z = cur.z + dz;
+      if (Math.max(Math.abs(x - top.x), Math.abs(z - top.z)) > radius) continue;
+      const next = [cur.y, cur.y + 1, cur.y - 1].map((y) => ({ x, y, z })).find((p) => surface(g, p));
+      if (!next || parent.has(key(next))) continue;
+      parent.set(key(next), cur);
+      queue.push(next);
+    }
+  }
+  if (!best) return null;
+
+  const along: Pos[] = [best.bank];
+  for (let p: Pos | null | undefined = best.at; p; p = parent.get(key(p))) along.unshift(p);
+  return { bank: best.bank, path: [...rise.slice(0, -1), ...along] };
+}
+
+// The way out of the water: the nearest bank and then the way back to known ground, or the other way round
+// (`prefer`) for a walk that wants to be back where it was.
+export function wayOut(g: Grid, from: Pos, back: Pos | null, prefer: "bank" | "footing" = "bank"): Route | null {
+  const bank = () => findBank(g, from);
+  const home = () => (back ? findRouteBack(g, from, back) : null);
+  return prefer === "bank" ? (bank() ?? home()) : (home() ?? bank());
+}
+
 // Where to head from `at`: past the cell of the route it is nearest to, the first one more than a block
 // away sideways; the bank when none is left.
 export function waypoint(route: Route, at: Pos): Pos {
