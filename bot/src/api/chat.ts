@@ -1,12 +1,15 @@
 import { parseFrame, type Intent } from "./protocol";
 
-// Public chat has three commands, spelled exactly. Each is built as an API frame and parsed, so
+// Public chat has four commands, spelled exactly. Each is built as an API frame and parsed, so
 // a speaker's name faces the same check as one sent over the socket.
 export function chatIntent(username: string, message: string): Intent | null {
   let frame: Record<string, unknown>;
   switch (message) {
     case "come here":
       frame = { intent: "come_to", player: username };
+      break;
+    case "guard me":
+      frame = { intent: "guard", player: username };
       break;
     case "stop":
       frame = { intent: "stop" };

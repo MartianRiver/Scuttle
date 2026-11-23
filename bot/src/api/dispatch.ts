@@ -11,12 +11,15 @@ export interface BodyControl {
   vitals(): { health: number | null; food: number | null };
   comeTo(player: string): Promise<void>; // resolves on arrival, rejects if cancelled or unreachable
   follow(player: string): void; // runs until stop or replaced
+  // runs until stop or replaced, and carries on through reflexes; rejects "lost_ward" when the player is gone for good
+  guard(player: string): Promise<void>;
   runTask(name: TaskName): Promise<void>;
+  say(text: string): void; // one public chat line, already validated
   stop(): void; // the API's stop
   interrupt(): void; // the same cleanup, for the body's own reflexes taking over
 }
 
-export type Reject = "busy" | "in_fight" | "in_danger" | "not_in_game" | "unknown_player";
+export type Reject = "busy" | "in_fight" | "in_danger" | "not_in_game" | "unknown_player" | "rate_limited";
 export type Outcome =
   | { kind: "accepted"; taskId?: string }
   | { kind: "rejected"; reason: Reject }
@@ -34,12 +37,16 @@ interface Current {
   taskId: string;
   kind: string;
   isTask: boolean;
+  keepOnReflex?: boolean; // a reflex taking the body does not end it (guard)
 }
 
 // Owns "one action at a time" and turns each action's life into events.
-export function createDispatcher(body: BodyControl, log: EventLog) {
+export const SAY_GAP_MS = 2000;
+
+export function createDispatcher(body: BodyControl, log: EventLog, now: () => number = Date.now) {
   let current: Current | null = null;
   let counter = 0;
+  let lastSay = -Infinity;
 
   const snapshot = (): Snapshot => ({
     inGame: body.inGame(),
@@ -55,8 +62,8 @@ export function createDispatcher(body: BodyControl, log: EventLog) {
     log.emit(event, reason ? { taskId: c.taskId, reason } : { taskId: c.taskId });
   };
 
-  const begin = (kind: string, isTask: boolean, run: Promise<void> | null): string => {
-    const c: Current = { taskId: `t${++counter}`, kind, isTask };
+  const begin = (kind: string, isTask: boolean, run: Promise<void> | null, keepOnReflex = false): string => {
+    const c: Current = { taskId: `t${++counter}`, kind, isTask, keepOnReflex };
     current = c;
     log.emit("task_started", { taskId: c.taskId, kind });
     run?.then(
@@ -82,9 +89,20 @@ export function createDispatcher(body: BodyControl, log: EventLog) {
       return { kind: "accepted", taskId: endCurrent("task_stopped") };
     }
 
+    if (i.intent === "say") {
+      // talking never touches the running action, even mid-fight
+      if (!body.inGame()) return { kind: "rejected", reason: "not_in_game" };
+      const t = now();
+      if (t - lastSay < SAY_GAP_MS) return { kind: "rejected", reason: "rate_limited" };
+      lastSay = t;
+      body.say(i.text);
+      return { kind: "accepted" };
+    }
+
     if (!body.inGame()) return { kind: "rejected", reason: "not_in_game" };
     if (body.fighting()) return { kind: "rejected", reason: "in_fight" };
-    if (body.danger()) return { kind: "rejected", reason: "in_danger" };
+    // a guard order is exactly what gets typed when a player is in trouble, so mobs near the body don't refuse it
+    if (i.intent !== "guard" && body.danger()) return { kind: "rejected", reason: "in_danger" };
 
     if (i.intent === "task") {
       if (current || body.busy()) return { kind: "rejected", reason: "busy" };
@@ -98,6 +116,7 @@ export function createDispatcher(body: BodyControl, log: EventLog) {
       body.follow(i.player);
       return { kind: "accepted", taskId: begin(`follow:${i.player}`, false, null) };
     }
+    if (i.intent === "guard") return { kind: "accepted", taskId: begin(`guard:${i.player}`, false, body.guard(i.player), true) };
     return { kind: "accepted", taskId: begin(`come_to:${i.player}`, false, body.comeTo(i.player)) };
   }
 
@@ -122,6 +141,7 @@ export function createDispatcher(body: BodyControl, log: EventLog) {
     // a reflex took the body: whatever was running ends with a typed reason
     interrupted() {
       body.interrupt();
+      if (current?.keepOnReflex) return; // the guard resumes when the reflex lets go
       endCurrent("task_failed", "interrupted");
     },
   };

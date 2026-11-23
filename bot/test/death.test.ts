@@ -89,7 +89,9 @@ function stubBody(calls: string[]): BodyControl {
     vitals: () => ({ health: 20, food: 20 }),
     comeTo: () => new Promise(() => {}),
     follow: () => void calls.push("follow"),
+    guard: () => new Promise(() => {}),
     runTask: () => new Promise(() => {}),
+    say: () => {},
     stop: () => void calls.push("stop"),
     interrupt: () => void calls.push("interrupt"),
   };
