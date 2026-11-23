@@ -20,11 +20,11 @@ export type Parsed = { ok: true; msg: ClientMsg } | { ok: false; id?: string };
 const PLAYER = /^[A-Za-z0-9_.]{1,17}$/;
 export const SAY_MAX = 100;
 
-// one plain line: no command, no newline or other control character
+// one plain line: no command, no newline or other control character, no section sign (the server kicks a client that sends one)
 export function sayable(text: unknown): text is string {
   if (typeof text !== "string") return false;
   const t = text.trim();
-  return t.length > 0 && t.length <= SAY_MAX && !t.startsWith("/") && !/\p{Cc}/u.test(t);
+  return t.length > 0 && t.length <= SAY_MAX && !t.startsWith("/") && !/[\p{Cc}\u00a7]/u.test(t);
 }
 
 function onlyKeys(o: Record<string, unknown>, allowed: string[]): boolean {
