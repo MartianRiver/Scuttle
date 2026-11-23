@@ -25,6 +25,7 @@ Client → bot:
 {"type":"intent","id":"c7","intent":"give","player":"Sam","item":"oak_log","count":12}
 {"type":"intent","id":"c3","intent":"task","name":"get_wood"}
 {"type":"intent","id":"c3s","intent":"task","name":"get_stone"}
+{"type":"intent","id":"c3i","intent":"task","name":"get_iron"}
 {"type":"intent","id":"c6","intent":"say","text":"Can't do that yet, want me to tell you how?"}
 {"type":"intent","id":"c4","intent":"stop"}
 {"type":"intent","id":"c5","intent":"status"}
@@ -64,7 +65,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `body_connected` / `body_disconnected` | `reason` on disconnect |
 | `task_started` | `taskId`, `kind` |
 | `task_finished` | `taskId` |
-| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `no_stone` (a `get_stone` found no natural stone it may dig within 40 blocks of home and above y 30, or none it could take), `no_pickaxe` (a `get_stone` while holding no pickaxe), `none_held` (a `give` with nothing of that item to spare, see Rules), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges; also ends a `come_to` or a `give`, a `get_wood` that got no wood, and a `get_stone` whose attempts got no stone), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
+| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `no_stone` (a `get_stone` found no natural stone it may dig within 40 blocks of home and above y 30, or none it could take), `no_pickaxe` (a `get_stone` while holding no pickaxe, a `get_iron` while holding none at stone level or better), `no_ore` (a `get_iron` found no iron ore with a face in the open, or none it could take), `no_fuel` (a `get_iron` with no coal to smelt on, held or found), `smelt_failed` (a `get_iron` that found no furnace it may use, or got no ingot out), `none_held` (a `give` with nothing of that item to spare, see Rules), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges; also ends a `come_to` or a `give`, a `get_wood` that got no wood, a `get_stone` whose attempts got no stone, and a `get_iron` whose attempts got no coal or iron), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `died` | `place`, `cause`: the body died (idle or not; a running action first ends with `task_failed` `died`) and respawns by itself. `place` is words only, never coordinates: how far and which way from home, surface or underground, the dimension if not the overworld ("a short walk to the north-east of home, on the surface"). `cause` is `mob`, `fall`, `lava`, `fire`, `drowning` or `other`. Nothing is carried over: the task is over, the inventory is what the respawn left, and fetching drops is not automatic |
 | `no_food` | `food` (the level, 0 to 14). The body is hungry (food below 15) and carries nothing it will eat: no rotten flesh above food 6, nothing poisonous, no golden apples unless hurt. Sent once per hunger episode; the next one needs it to have eaten or its food to have come back to 15 or more. No position. The body never walks to the stash for food by itself; a `get_wood` that stands at the stash takes some |
@@ -102,6 +103,17 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   `protected` when the server undoes the digs, `stuck`, `interrupted`, `died`; if it got some stone but not 16 before it
   ran out of places, it finishes with that. Status text: `looking for stone`, `mining stone`, `crafting stone tools`,
   `stashing stone`.
+- `task get_iron` needs a stone pickaxe or better in the inventory (else `no_pickaxe` at once) and does nothing when
+  it already holds an iron pickaxe and sword. It mines coal ore until it holds 8 coal (`no_fuel` if it holds none after
+  that, before any iron is touched), then iron ore until the iron tools still missing are covered (5 raw iron for a
+  pickaxe and a sword, less what it already holds as raw iron or ingots), within 64 blocks of home and above y 8. It only
+  goes for ore with a face in the open (a surface outcrop, a cave wall), never ore buried in rock, and digs each block by
+  hand under the same look-before-you-dig rule as `get_stone` (nothing with lava or water against it, nothing a player
+  made within 3 blocks). It then smelts the raw iron at a home furnace on that coal (a furnace holding anything but
+  coal in its fuel slot is left alone), makes an iron pickaxe and sword at the home table (sticks as for `get_stone`),
+  keeps 4 coal and stashes the rest of the coal and any raw iron. `no_ore` when it got no iron; if iron ran out
+  before the tools were covered it makes what it can and finishes. A `stop` mid-smelt closes the furnace and leaves
+  what is in it there. Status text: `looking for ore`, `mining ore`, `smelting`, `crafting iron tools`, `stashing ore`.
 - `guard` is `follow` that also protects: the body keeps near the player, counts hostile mobs within
   10 blocks of the player as threats as well as the ones near itself, and fights them (creepers and
   skeletons too, bare-handed if it has to; it still backs off below 8 health and from anything that
@@ -119,7 +131,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   `in_danger`. `stop` wins, but the body fights or runs again after its reaction delay if the mobs are
   still there, so a stopped bot is not frozen for good.
 - Public chat goes through the same path: `come here` becomes `come_to` (the speaker), `guard me` becomes
-  `guard` (the speaker), `stop` becomes `stop`, `get wood` becomes `task get_wood`, `get stone` becomes `task get_stone`, spelled exactly. Actions started that way are ordinary
+  `guard` (the speaker), `stop` becomes `stop`, `get wood` becomes `task get_wood`, `get stone` becomes `task get_stone`, `get iron` becomes `task get_iron`, spelled exactly. Actions started that way are ordinary
   tasks with ordinary events, and get the same `busy` / `in_fight` / `unknown_player` checks. This works with
   the WebSocket server off; it is the only optional part.
 - The bot validates every intent against this list itself. Nothing upstream is trusted to have.

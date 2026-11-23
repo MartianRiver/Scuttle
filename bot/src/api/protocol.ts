@@ -1,7 +1,7 @@
 // Everything a client may send. Strict on purpose: unknown fields are an error, and there is
 // no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
 
-export const TASKS = ["get_wood", "get_stone"] as const;
+export const TASKS = ["get_wood", "get_stone", "get_iron"] as const;
 export type TaskName = (typeof TASKS)[number];
 
 export type Intent =
