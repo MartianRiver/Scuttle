@@ -10,6 +10,9 @@ export type CompassPoint = (typeof COMPASS_POINTS)[number];
 export const EXPLORE_BANDS = ["near", "a short walk", "a fair way", "far"] as const;
 export type ExploreBand = (typeof EXPLORE_BANDS)[number];
 
+export const DIG_TARGETS = ["stone"] as const;
+export type DigTarget = (typeof DIG_TARGETS)[number];
+
 export type Intent =
   | { intent: "come_to" | "follow" | "guard"; player: string }
   | { intent: "go_to"; handle: string }
@@ -23,14 +26,16 @@ export type Intent =
   | { intent: "take"; item: string; count?: number }
   | { intent: "stash" }
   | { intent: "explore"; dir: CompassPoint; far?: ExploreBand }
+  | { intent: "dig_down"; to?: DigTarget }
+  | { intent: "climb_up" }
   | { intent: "say"; text: string }
   | { intent: "stop" }
   | { intent: "status" }
   | { intent: "observe" };
 
 // the actions that run like a task: one at a time, with task events
-export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" }>;
-export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore"] as const;
+export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "climb_up" }>;
+export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "climb_up"] as const;
 
 export type ClientMsg =
   | { type: "auth"; token: string; since?: number; epoch?: string }
@@ -125,6 +130,10 @@ export function parseFrame(raw: string): Parsed {
       if (!(COMPASS_POINTS as readonly unknown[]).includes(m.dir)) return bad;
       if (m.far !== undefined && !(EXPLORE_BANDS as readonly unknown[]).includes(m.far)) return bad;
       return { ok: true, msg: m as ClientMsg };
+    case "dig_down":
+      if (!onlyKeys(m, ["type", "id", "intent", "to"])) return bad;
+      if (m.to !== undefined && !(DIG_TARGETS as readonly unknown[]).includes(m.to)) return bad;
+      return { ok: true, msg: m as ClientMsg };
     case "say":
       if (!onlyKeys(m, ["type", "id", "intent", "text"])) return bad;
       if (!sayable(m.text)) return bad;
@@ -133,6 +142,7 @@ export function parseFrame(raw: string): Parsed {
     case "status":
     case "observe":
     case "stash":
+    case "climb_up":
       if (!onlyKeys(m, ["type", "id", "intent"])) return bad;
       return { ok: true, msg: m as ClientMsg };
     default:

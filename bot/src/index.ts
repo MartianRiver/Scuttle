@@ -3,11 +3,12 @@ import { pathfinder } from "mineflayer-pathfinder";
 import { plugin as collectBlockPlugin } from "mineflayer-collectblock";
 import { config } from "./lib/config";
 import { logger } from "./lib/logger";
-import { setStatus } from "./lib/status";
+import { getStatus, setStatus } from "./lib/status";
 import { safeMovements } from "./lib/movement";
 import { isFleeing, startDefence } from "./behaviors/defence";
 import { isGuarding, startEscort } from "./behaviors/escort";
-import { startSurvival } from "./behaviors/survival";
+import { startSurvival, isEating } from "./behaviors/survival";
+import { startIdleHand } from "./behaviors/idle-hand";
 import { isTaskRunning } from "./behaviors/task";
 import { isFalling, startFall } from "./behaviors/fall";
 import { isInHazard, startSurvive } from "./behaviors/survive";
@@ -70,10 +71,11 @@ bot.once("spawn", () => {
   stopTimers.push(
     startSurvival(bot, isTaskRunning, api.noFood),
     startGuard(bot),
-    startDefence(bot, api.interrupt),
-    startSurvive(bot, api.interrupt),
+    startDefence(bot, api.interrupt, api.reflexEnded),
+    startSurvive(bot, api.interrupt, api.reflexEnded),
     startFall(bot, api.interrupt),
-    startEscort(bot, () => isFleeing() || isInHazard() || isFalling() || isGuardFighting())
+    startEscort(bot, () => isFleeing() || isInHazard() || isFalling() || isGuardFighting()),
+    startIdleHand(bot, () => getStatus().task === "idle" && !isTaskRunning() && !isEating() && !isFleeing() && !isInHazard() && !isFalling() && !isGuardFighting() && !isGuarding())
   );
 
   bot.on("goal_reached", () => {

@@ -11,7 +11,7 @@ export type ConnState = "connecting" | "connected" | "reconnecting" | "auth_fail
 
 export type Reply =
   | { kind: "accepted"; taskId?: string }
-  | { kind: "rejected"; reason: string }
+  | { kind: "rejected"; reason: string; detail?: string }
   | { kind: "status"; snapshot: Snapshot }
   | { kind: "observation"; observation: Observation }
   | { kind: "recipe"; recipe: RecipeAnswer }
@@ -202,7 +202,7 @@ export class BodyClient {
           this.reply(m.id, { kind: "accepted", ...(m.taskId && { taskId: m.taskId }) });
           break;
         case "rejected":
-          this.reply(m.id, { kind: "rejected", reason: String(m.reason) });
+          this.reply(m.id, { kind: "rejected", reason: String(m.reason), ...(typeof m.detail === "string" && { detail: m.detail }) });
           break;
       }
     });

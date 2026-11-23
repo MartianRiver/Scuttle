@@ -18,6 +18,7 @@ export interface RawEntity extends Offset {
   what: string; // a player's name or the mob's type, never a custom name
   kind: "player" | "hostile" | "other";
   hp?: ReturnType<typeof healthBand>;
+  water?: boolean; // a fish or squid: told as one line per kind, not one each
 }
 export interface RawBlock extends Offset {
   handle: string;
@@ -38,7 +39,7 @@ export interface RawSense {
   standing?: Standing; // what it stands in, when not plain ground
   stone?: Offset; // the nearest natural stone it may dig, in view
   refused: Array<{ dx: number; dz: number; r: number }>; // places the server undid its digs, nearest first
-  places: Array<{ name: string } & Offset> | null; // null away from the overworld
+  places: Array<{ name: string; leads?: "up" | "down" } & Offset> | null; // null away from the overworld; `leads` is the dug stair's
 }
 
 export interface Observation {
@@ -71,16 +72,37 @@ const placeWords = (o: Offset): string => {
 const RANK = { player: 0, hostile: 1, other: 2 };
 const byDistance = (a: Offset, b: Offset) => Math.hypot(a.dx, a.dy, a.dz) - Math.hypot(b.dx, b.dy, b.dz);
 
+// Fish and squid come as one line per kind, a count and the nearest band, after everything else so a trim drops
+// them first. They carry a handle only when there is nothing else in `near`: a school is not worth pointing at.
+export function waterLines(water: readonly RawEntity[], withHandle: boolean): Array<Record<string, string>> {
+  const kinds = new Map<string, RawEntity[]>();
+  for (const e of [...water].sort(byDistance)) kinds.set(e.what, [...(kinds.get(e.what) ?? []), e]);
+  return [...kinds.values()].map((group) => {
+    const nearest = group[0];
+    const w = words(nearest);
+    return {
+      ...(withHandle && nearest.handle && { h: nearest.handle }),
+      what: group.length > 1 ? `${nearest.what} x${group.length}` : nearest.what,
+      ...(group.length === 1 && { dir: w.dir }),
+      d: w.d,
+    };
+  });
+}
+
 export function compose(raw: RawSense, max = OBSERVATION_MAX_CHARS): Observation {
-  const entities = [...raw.entities].sort((a, b) => RANK[a.kind] - RANK[b.kind] || byDistance(a, b));
+  const entities = [...raw.entities].filter((e) => !e.water).sort((a, b) => RANK[a.kind] - RANK[b.kind] || byDistance(a, b));
+  const fish = raw.entities.filter((e) => e.water);
   const lists = {
-    near: entities.map((e) => ({
-      h: e.handle,
-      what: e.what,
-      ...(e.kind !== "other" && { k: e.kind }),
-      ...words(e),
-      ...(e.hp && e.hp !== "full" && { hp: e.hp }),
-    })),
+    near: [
+      ...entities.map((e) => ({
+        h: e.handle,
+        what: e.what,
+        ...(e.kind !== "other" && { k: e.kind }),
+        ...words(e),
+        ...(e.hp && e.hp !== "full" && { hp: e.hp }),
+      })),
+      ...waterLines(fish, entities.length === 0),
+    ],
     blocks: [...raw.blocks].sort(byDistance).map((b) => ({ h: b.handle, what: b.what, ...words(b) })),
     refused: raw.refused.map(({ dx, dz, r }) => ({ d: distanceBand(Math.max(0, Math.hypot(dx, dz) - r)), dir: directionWords(dx, 0, dz) })),
     tools: raw.tools.map((t) => `${t.name} ${t.left}%`),
@@ -104,7 +126,7 @@ export function compose(raw: RawSense, max = OBSERVATION_MAX_CHARS): Observation
       blocks: l.blocks,
       ...(raw.stone && { stone: placeWords(raw.stone) }),
       ...(raw.places && {
-        places: Object.fromEntries(raw.places.map((p) => [p.name, placeWords(p)])),
+        places: Object.fromEntries(raw.places.map((p) => [p.name, p.leads ? `${placeWords(p)}, the stair you dug, ${p.leads}` : placeWords(p)])),
       }),
       ...(l.refused.length > 0 && { refused: l.refused }),
       ...(Object.keys(trimmed).length > 0 && { more: { ...trimmed } }),

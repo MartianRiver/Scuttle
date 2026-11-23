@@ -53,6 +53,62 @@ export function legTo(from: Spot, goal: Spot, degrees = 0, step = LEG): Spot {
 
 // the order detours are tried in when the straight way is stuck
 export const DETOURS = [45, -45, 90, -90] as const;
+// straight on, then the detours: the turns a leg may take, in order
+export const ANGLES = [0, ...DETOURS] as const;
+
+// What one column of the world is, for a body that must keep its feet dry: "deep" water is 2 or more blocks, a
+// body in it cannot stand; "shallow" is a wade; "unknown" is not loaded.
+export type Column = "dry" | "shallow" | "deep" | "lava" | "unknown";
+
+export const LOOK_PAST = 4; // columns checked beyond a leg's end, so a leg never ends at the lip of the sea
+export const SCAN = 48; // columns along the compass line looked at to say how wide the water is
+
+// the columns (as block cells) a straight walk from `from` to `to` passes over, then `past` more along the same line
+export function lineCells(from: Spot, to: Spot, past = 0): Spot[] {
+  const len = Math.hypot(to.x - from.x, to.z - from.z);
+  if (len < 1e-6) return [];
+  const ux = (to.x - from.x) / len;
+  const uz = (to.z - from.z) / len;
+  const out: Spot[] = [];
+  let last = "";
+  for (let d = 1; d <= len + past; d++) {
+    const x = Math.floor(from.x + ux * d);
+    const z = Math.floor(from.z + uz * d);
+    const key = `${x},${z}`;
+    if (key === last) continue;
+    last = key;
+    out.push({ x, z });
+  }
+  return out;
+}
+
+// the first thing along the way that a body must not walk into (deep water, lava), or null
+export function firstHazard(cols: readonly Column[]): { at: number; kind: "deep" | "lava" } | null {
+  const at = cols.findIndex((c) => c === "deep" || c === "lava");
+  return at < 0 ? null : { at, kind: cols[at] as "deep" | "lava" };
+}
+
+export const SEA_WIDTH = 24; // wet columns in a row that make it the sea
+export const LAKE_WIDTH = 6;
+
+// What is in the way along a compass line, in words that carry no number: from the first deep column to the
+// first dry one, how wide the water is, or still water where the look ends. Null when the way is clear.
+export function wetWords(dir: CompassPoint, cols: readonly Column[]): string | null {
+  const hit = firstHazard(cols);
+  if (!hit) return null;
+  if (hit.kind === "lava") return `lava to the ${dir}`;
+  let wet = 0;
+  let open = true;
+  for (let i = hit.at; i < cols.length; i++) {
+    if (cols[i] === "dry") {
+      open = false;
+      break;
+    }
+    wet++;
+  }
+  if (open || wet >= SEA_WIDTH) return `the sea to the ${dir}`;
+  return wet >= LAKE_WIDTH ? `a lake to the ${dir}` : `a river to the ${dir}`;
+}
 
 // a walk may take about this long: the way there at a walking pace, with room for the pathfinder's detours
 export const budgetMs = (far: ExploreBand = DEFAULT_BAND): number => Math.min(6 * 60_000, 40_000 + EDGE[far] * 2_500);
@@ -62,10 +118,9 @@ export type Ahead = "open" | "water" | "lava" | "wall" | "drop";
 // what stopped it, from what lies in the cells ahead (nearest first), in words that carry no number
 export function blockedWords(dir: CompassPoint, ahead: readonly Ahead[]): string {
   const first = ahead.find((a) => a !== "open");
-  const water = ahead.filter((a) => a === "water").length;
   switch (first) {
     case "water":
-      return water >= 3 ? `the sea to the ${dir}` : `water to the ${dir}`;
+      return `water to the ${dir}`; // how wide it is comes from wetWords, which looks further than these cells
     case "lava":
       return `lava to the ${dir}`;
     case "wall":

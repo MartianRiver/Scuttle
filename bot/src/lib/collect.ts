@@ -47,6 +47,16 @@ async function walk(bot: Bot, goal: goals.Goal, ms: number): Promise<void> {
   }
 }
 
+// A tool that doesn't make the dig any faster only wears out on it (the idle hand holds a pickaxe, and dirt took
+// a fifth of one), so the hand goes empty for it.
+async function spareTool(bot: Bot, block: Block): Promise<void> {
+  const held = bot.heldItem;
+  if (!held || held.maxDurability === undefined) return;
+  const dig = (type: number | null) => block.digTime(type, false, false, false, [], []);
+  if (dig(held.type) < dig(null)) return;
+  await bot.unequip("hand").catch(() => {});
+}
+
 // a stop that lands while dig() is still turning to face the block finds no dig to abort, so the
 // dig watches for it itself
 export async function dig(bot: Bot, block: Block, shouldStop: () => boolean): Promise<void> {
@@ -57,6 +67,7 @@ export async function dig(bot: Bot, block: Block, shouldStop: () => boolean): Pr
     if (shouldStop() && bot.targetDigBlock) bot.stopDigging();
   }, 100);
   try {
+    await spareTool(bot, block);
     await bot.dig(block);
   } finally {
     clearTimeout(timer);

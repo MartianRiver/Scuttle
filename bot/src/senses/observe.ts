@@ -10,6 +10,8 @@ import { safeToDig } from "../behaviors/dig-safety";
 import { describeLevel } from "../behaviors/place";
 import { nearestRefused, refusedNow, reverted } from "../behaviors/refused";
 import { STONE_MIN_Y, STONE_RANGE } from "../behaviors/stone-plan";
+import { STONE_STOP } from "../behaviors/dig-down-plan";
+import { isStairStep, stairFacing, stairLeads, stairTop } from "../behaviors/stair";
 import { armourPoints } from "../behaviors/stance";
 import { home } from "../lib/home";
 import { isPlainLogName } from "../lib/movement";
@@ -27,8 +29,13 @@ const MAX_ENTITIES = 40; // looked at, nearest first, before the budget trims th
 const TESTS_PER_KIND = 40; // blocks of one kind ray-tested before giving up on it
 
 // where each known place is; goto.ts walks to the same spots
-export const placeSpot = (p: Place): Vec3 =>
-  p === "table" ? home.craftingTable : p === "stash" ? home.stashChests[0] : p === "furnace" ? home.furnaces[0] : home.bed[0];
+export function placeSpot(p: Place): Vec3 | null {
+  if (p === "stair") {
+    const top = stairTop();
+    return top ? new Vec3(top.x, top.y, top.z) : null;
+  }
+  return p === "table" ? home.craftingTable : p === "stash" ? home.stashChests[0] : p === "furnace" ? home.furnaces[0] : home.bed[0];
+}
 
 const centre = (p: Vec3) => p.offset(0.5, 0.5, 0.5);
 
@@ -89,10 +96,11 @@ function gather(v: View): RawSense {
     else items.push({ name: it.name, count: it.count });
   }
 
-  // the stone it would take is also a block it can be pointed at, for `collect`
-  const stone = seenStone(v);
+  // the stone it would take is also a block it can be pointed at, for `collect`; at the foot of a stair it dug, the
+  // stone that stopped it comes first, wherever that is from home
+  const stone = stairStone(v) ?? seenStone(v);
   const blocks = [...seenBlocks(v), ...seenTrees(v)];
-  if (stone) blocks.push({ handle: v.handles.mint({ kind: "block", ...stone.at, name: "stone" }), what: "stone", ...stone.rel });
+  if (stone) blocks.push({ handle: v.handles.mint({ kind: "block", ...stone.at, name: stone.name }), what: stone.name, ...stone.rel });
 
   return {
     health: typeof bot.health === "number" ? bot.health : null,
@@ -109,28 +117,51 @@ function gather(v: View): RawSense {
     standing: bodyStanding(bot),
     stone: stone?.rel,
     refused: nearestRefused(refusedNow(), feet).map((z) => ({ dx: z.x - feet.x, dz: z.z - feet.z, r: z.r })),
-    places: overworld ? PLACES.map((name) => ({ name, ...v.rel(centre(placeSpot(name))) })) : null,
+    places: overworld ? seenPlaces(v) : null,
   };
 }
 
+// the known places with where they are, the stair only once there is one
+function seenPlaces(v: View): NonNullable<RawSense["places"]> {
+  const out: NonNullable<RawSense["places"]> = [];
+  for (const name of PLACES) {
+    const spot = placeSpot(name);
+    if (!spot) continue;
+    out.push({ name, ...v.rel(centre(spot)), ...(name === "stair" && { leads: stairLeads(v.feet) }) });
+  }
+  return out;
+}
+
+// fish and squid: the registry's water creatures, and the squids it calls passive
+const WATER_MOBS = new Set(["cod", "salmon", "tropical_fish", "pufferfish", "squid", "glow_squid", "tadpole"]);
+const MAX_WATER = 30; // ray-tested, nearest first
+export const isWaterMob = (name: string | undefined, type: string | undefined): boolean => type === "water_creature" || WATER_MOBS.has(name ?? "");
+
 function seenEntities({ bot, handles, opaque, feet, eye, rel }: View): RawEntity[] {
-  const near = Object.values(bot.entities)
+  const all = Object.values(bot.entities)
     .filter((e): e is Entity => e !== bot.entity && Boolean(e.position) && LIVING.has(e.type ?? ""))
-    .map((e) => ({ e, d: e.position.distanceTo(feet) }))
+    .map((e) => ({ e, d: e.position.distanceTo(feet), water: isWaterMob(e.name, e.type) }))
     .filter(({ d }) => d <= SIGHT_ENTITIES)
-    .sort((a, b) => a.d - b.d)
-    .slice(0, MAX_ENTITIES);
+    .sort((a, b) => a.d - b.d);
+  const near = [...all.filter((x) => !x.water).slice(0, MAX_ENTITIES), ...all.filter((x) => x.water).slice(0, MAX_WATER)];
 
   const out: RawEntity[] = [];
-  for (const { e } of near) {
-    if (!entityVisible(eye, e.position, e.height ?? 1.8, opaque)) continue;
+  const seen = near.filter(({ e }) => entityVisible(eye, e.position, e.height ?? 1.8, opaque));
+  // a school is not worth pointing at: water creatures get a handle (the nearest of each kind) only when nothing else is in view
+  const alone = !seen.some((x) => !x.water);
+  const minted = new Set<string>();
+  for (const { e, water } of seen) {
     const player = e.type === "player";
     // a player's name is the server's validated one; a mob is its type, never a custom name a player set
     const what = player ? (e.username && NAME.test(e.username) ? e.username : "player") : (e.name ?? "mob");
-    const handle = handles.mint({ kind: "entity", id: e.id, label: player ? what : `the ${what.replace(/_/g, " ")}` });
+    let handle = "";
+    if (!water || (alone && !minted.has(what))) {
+      handle = handles.mint({ kind: "entity", id: e.id, label: player ? what : `the ${what.replace(/_/g, " ")}` });
+      if (water) minted.add(what);
+    }
     // a living entity's health is metadata slot 9
     const hp = player ? undefined : mobHealthBand(what, e.metadata?.[9]);
-    out.push({ handle, what, kind: player ? "player" : e.type === "hostile" ? "hostile" : "other", ...(hp && { hp }), ...rel(e.position) });
+    out.push({ handle, what, kind: player ? "player" : e.type === "hostile" ? "hostile" : "other", ...(hp && { hp }), ...(water && { water }), ...rel(e.position) });
   }
   return out;
 }
@@ -144,7 +175,7 @@ function seenBlocks({ bot, handles, opaque, feet, eye, rel }: View): RawBlock[] 
     if (id !== undefined) found.push(...bot.findBlocks({ matching: id, maxDistance: SIGHT_BLOCKS, count: 30 }));
   }
   // a known place that is also in view is listed once, under its place handle
-  const spots = new Set([...PLACES.filter((p) => p !== "home").map(placeSpot), home.bed[1]].map((v) => v.toString()));
+  const spots = new Set([...PLACES.filter((p) => p !== "home" && p !== "stair").map(placeSpot), home.bed[1]].map((v) => (v as Vec3).toString()));
 
   const listed = new Map<string, number>();
   const tested = new Map<string, number>();
@@ -186,7 +217,7 @@ function seenTrees({ bot, handles, opaque, feet, eye, rel }: View): RawBlock[] {
 
 // the nearest natural stone get_stone would take (within its range of home, above its floor, not in a
 // refused place, safe by the dig rule) that is in view; observe lists it once among the blocks, with a handle
-function seenStone({ bot, opaque, feet, eye, rel }: View): { rel: { dx: number; dy: number; dz: number }; at: Vec3 } | undefined {
+function seenStone({ bot, opaque, feet, eye, rel }: View): { rel: { dx: number; dy: number; dz: number }; at: Vec3; name: string } | undefined {
   const id = bot.registry.blocksByName.stone?.id;
   if (id === undefined) return undefined;
   const nameAt = (p: { x: number; y: number; z: number }) => bot.blockAt(new Vec3(p.x, p.y, p.z), false)?.name ?? null;
@@ -195,7 +226,26 @@ function seenStone({ bot, opaque, feet, eye, rel }: View): { rel: { dx: number; 
     if (pos.y <= STONE_MIN_Y || pos.distanceTo(home.craftingTable) > STONE_RANGE || reverted.covers(pos)) continue;
     if (!hasOpenFace(pos, opaque)) continue;
     if (++tested > 20) break;
-    if (blockVisible(eye, pos, opaque) && safeToDig(pos, nameAt)) return { rel: rel(centre(pos)), at: pos };
+    if (blockVisible(eye, pos, opaque) && safeToDig(pos, nameAt)) return { rel: rel(centre(pos)), at: pos, name: "stone" };
+  }
+  return undefined;
+}
+
+// On a step of the stair it dug: the natural stone under its feet or in front, the block `dig_down` stopped at and
+// `collect` can take from here. Home's range and the 30-block floor do not apply; collect has its own guards.
+function stairStone({ bot, feet, rel }: View): { rel: { dx: number; dy: number; dz: number }; at: Vec3; name: string } | undefined {
+  const here = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) };
+  const f = stairFacing();
+  if (!f || !isStairStep(here)) return undefined;
+  const nameAt = (p: { x: number; y: number; z: number }) => bot.blockAt(new Vec3(p.x, p.y, p.z), false)?.name ?? null;
+  const spots = [
+    { x: here.x + f.dx, y: here.y + 1, z: here.z + f.dz },
+    { x: here.x + f.dx, y: here.y, z: here.z + f.dz },
+    { x: here.x, y: here.y - 1, z: here.z },
+  ];
+  for (const p of spots) {
+    const name = nameAt(p);
+    if (name && STONE_STOP.has(name) && !reverted.covers(p) && safeToDig(p, nameAt)) return { rel: rel(centre(new Vec3(p.x, p.y, p.z))), at: new Vec3(p.x, p.y, p.z), name };
   }
   return undefined;
 }

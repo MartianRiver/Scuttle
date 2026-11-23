@@ -7,6 +7,7 @@ export interface TaskDone {
   got?: Got;
   stored?: Got; // a `store`: what went into the stash
   saw?: string; // an `explore`: kinds newly in view, in words
+  detail?: string; // a `dig_down`: where it ended up, in words
 }
 
 // what a `recipe` answers: the first recipe that fits what it holds, else the simplest, in words
@@ -33,7 +34,8 @@ export type Report = (p: { step: string; got?: Got }) => void;
 export interface BodyControl {
   inGame(): boolean;
   fighting(): boolean;
-  danger(): boolean; // the defence reflex is running from hostile mobs
+  danger(): boolean; // a reflex has the body: running from or fighting mobs, or getting out of a hazard
+  dangerWhy?(): string | undefined; // that reflex in words (no digits), for the refusal
   busy(): boolean; // a task is still winding down after the dispatcher let go of it (stop)
   canSee(player: string): boolean;
   vitals(): { health: number | null; food: number | null };
@@ -77,7 +79,7 @@ export type Reject =
   | "too_far";
 export type Outcome =
   | { kind: "accepted"; taskId?: string }
-  | { kind: "rejected"; reason: Reject }
+  | { kind: "rejected"; reason: Reject; detail?: string }
   | { kind: "status"; snapshot: Snapshot }
   | { kind: "observation"; observation: Observation }
   | { kind: "recipe"; recipe: RecipeAnswer }
@@ -185,7 +187,10 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     if (!body.inGame()) return { kind: "rejected", reason: "not_in_game" };
     if (body.fighting()) return { kind: "rejected", reason: "in_fight" };
     // a guard order is exactly what gets typed when a player is in trouble, so mobs near the body don't refuse it
-    if (i.intent !== "guard" && body.danger()) return { kind: "rejected", reason: "in_danger" };
+    if (i.intent !== "guard" && body.danger()) {
+      const { detail } = endFields({ detail: body.dangerWhy?.() });
+      return { kind: "rejected", reason: "in_danger", ...(detail && { detail }) };
+    }
 
     if (i.intent === "task") {
       if (current || body.busy()) return { kind: "rejected", reason: "busy" };
@@ -198,7 +203,13 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
       if ((i.intent === "craft" || i.intent === "take") && !body.knowsItem(i.item)) return { kind: "rejected", reason: "unknown_item" };
       if (i.intent === "collect" && !body.handleLabel(i.handle)) return { kind: "rejected", reason: "stale_handle" };
       if (i.intent === "explore" && !body.canExplore(i.dir, i.far)) return { kind: "rejected", reason: "too_far" };
-      const what = i.intent === "collect" ? i.handle : i.intent === "explore" ? i.dir : i.intent === "store" ? (i.item ?? "all") : i.item;
+      const what =
+        i.intent === "collect" ? i.handle
+        : i.intent === "explore" ? i.dir
+        : i.intent === "store" ? (i.item ?? "all")
+        : i.intent === "dig_down" ? (i.to ?? "stone")
+        : i.intent === "climb_up" ? "up"
+        : i.item;
       return { kind: "accepted", taskId: begin(`${i.intent}:${what}`, true, body.runAction(i, progress)) };
     }
 
@@ -242,6 +253,10 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     },
     died(place: string, cause: string) {
       log.emit("died", { place, cause });
+    },
+    // a run of a reflex (mobs, a hazard) is over: `ok` false when it gave up. A mind refused in_danger waits on this
+    reflexEnded(what: string, ok: boolean, detail?: string) {
+      log.emit("reflex_ended", { what, ok, ...endFields({ detail }) });
     },
     // a reflex took the body: whatever was running ends with a typed reason
     interrupted(detail?: string) {

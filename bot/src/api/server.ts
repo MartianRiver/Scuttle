@@ -89,7 +89,7 @@ function serve(ws: WebSocket, opts: ApiOptions, dispatcher: Dispatcher, events: 
     else if (out.kind === "recipe") send({ type: "recipe", id: m.id, recipe: out.recipe });
     else if (out.kind === "stash") send({ type: "stash", id: m.id, stash: out.stash });
     else if (out.kind === "accepted") send({ type: "accepted", id: m.id, ...(out.taskId && { taskId: out.taskId }) });
-    else send({ type: "rejected", id: m.id, reason: out.reason });
+    else send({ type: "rejected", id: m.id, reason: out.reason, ...(out.detail && { detail: out.detail }) });
   });
 }
 
