@@ -90,6 +90,7 @@ function stubBody(calls: string[]): BodyControl {
     comeTo: () => new Promise(() => {}),
     follow: () => void calls.push("follow"),
     guard: () => new Promise(() => {}),
+    give: () => new Promise(() => {}),
     runTask: () => new Promise(() => {}),
     say: () => {},
     stop: () => void calls.push("stop"),

@@ -22,6 +22,7 @@ Client → bot:
 {"type":"intent","id":"c1","intent":"come_to","player":"Sam"}
 {"type":"intent","id":"c2","intent":"follow","player":"Sam"}
 {"type":"intent","id":"c2g","intent":"guard","player":"Sam"}
+{"type":"intent","id":"c7","intent":"give","player":"Sam","item":"oak_log","count":12}
 {"type":"intent","id":"c3","intent":"task","name":"get_wood"}
 {"type":"intent","id":"c6","intent":"say","text":"Can't do that yet, want me to tell you how?"}
 {"type":"intent","id":"c4","intent":"stop"}
@@ -29,6 +30,7 @@ Client → bot:
 ```
 
 `player` is a Minecraft username (`^[A-Za-z0-9_.]{1,17}$`, the dot being Floodgate's prefix).
+`item` is a Minecraft item name (`^[a-z_]{1,48}$`, no namespace) and `count` an integer 1 to 64, optional.
 There is no coordinate or command field anywhere, and there won't be one. `say` is the one
 free-text field (so the consumer can talk through the body): one public chat
 line, 1 to 100 characters, no leading `/`, no newline or control character, at most one line per
@@ -61,7 +63,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `body_connected` / `body_disconnected` | `reason` on disconnect |
 | `task_started` | `taskId`, `kind` |
 | `task_finished` | `taskId` |
-| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `stuck` (a walk made no progress: under a block in 8 s, even after two nudges; also ends a `come_to`, and a `get_wood` that got no wood), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
+| `task_failed` | `taskId`, `reason`: `protected` (the server undid the digs), `no_trees`, `none_held` (a `give` with nothing of that item to spare, see Rules), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges; also ends a `come_to` or a `give`, and a `get_wood` that got no wood), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `died` | `place`, `cause`: the body died (idle or not; a running action first ends with `task_failed` `died`) and respawns by itself. `place` is words only, never coordinates: how far and which way from home, surface or underground, the dimension if not the overworld ("a short walk to the north-east of home, on the surface"). `cause` is `mob`, `fall`, `lava`, `fire`, `drowning` or `other`. Nothing is carried over: the task is over, the inventory is what the respawn left, and fetching drops is not automatic |
 | `no_food` | `food` (the level, 0 to 14). The body is hungry (food below 15) and carries nothing it will eat: no rotten flesh above food 6, nothing poisonous, no golden apples unless hurt. Sent once per hunger episode; the next one needs it to have eaten or its food to have come back to 15 or more. No position. The body never walks to the stash for food by itself; a `get_wood` that stands at the stash takes some |
@@ -76,6 +78,18 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   `come_to`/`follow` need the player in the bot's own loaded view, else `unknown_player`.
   While the plugin has the bot in a real fight,
   everything except `stop` and `status` is `in_fight`.
+- `give` walks to the player (within about 2 blocks), faces them and throws the item at them, one stack at a
+  time, up to `count` (default: all it holds, at most 64). It is a movement action like `come_to`: `busy`
+  while a task runs, `in_fight`, `in_danger`, `not_in_game`, `unknown_player` when the player is not in
+  its own loaded view, and it replaces a running `come_to`/`follow`/`guard`. `task_finished` once everything
+  is thrown, which is when the items are on the ground, not in the player's hands: they pick them up. It
+  never throws a held tool, weapon or shield (anything that does not stack; a stack of logs or bread that
+  happens to be in its hand goes like any other); armour on its body and the off hand are not in
+  its inventory list and stay too. Asking for more than the other stacks hold throws what they hold. If
+  there is nothing to throw, the task ends `task_failed` `none_held` (checked at once, before walking, and
+  again on arrival, since it may have eaten or swapped its held item on the way). Other endings: `stuck`,
+  `interrupted`, `died`, a short "lost sight of them". Status text: `bringing <item> to <name>`. No chat
+  phrase: only the API sends it.
 - `guard` is `follow` that also protects: the body keeps near the player, counts hostile mobs within
   10 blocks of the player as threats as well as the ones near itself, and fights them (creepers and
   skeletons too, bare-handed if it has to; it still backs off below 8 health and from anything that

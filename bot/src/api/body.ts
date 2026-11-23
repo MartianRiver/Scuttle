@@ -2,6 +2,7 @@ import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { isFleeing, noteStop } from "../behaviors/defence";
 import { beginEscort, endEscort } from "../behaviors/escort";
+import { giveItem } from "../behaviors/give";
 import { isGuardFighting } from "../behaviors/guard";
 import { isInHazard } from "../behaviors/survive";
 import { isTaskRunning, requestStop, startTask } from "../behaviors/task";
@@ -56,6 +57,11 @@ export function createBody(bot: Bot): BodyControl {
     },
 
     guard: (player) => beginEscort(player),
+
+    give(player, item, count) {
+      endEscort();
+      return giveItem(bot, player, item, count);
+    },
 
     async runTask(name) {
       endEscort();
