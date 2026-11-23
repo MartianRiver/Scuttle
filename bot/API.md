@@ -98,8 +98,10 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   planks from a log it carries; no sticks to be had means no tools, quietly), keeps 4 cobblestone and stashes the rest.
   It needs a pickaxe in the inventory (any that mines stone), else `no_pickaxe` at once. Each block is dug by hand and
   only when it passes the look-before-you-dig rule: no lava or water against any face, nothing falling (sand, gravel)
-  over it, nothing a player makes (planks, torches, chests, glass, cobblestone...) within 3 blocks, and the body beside
-  it at its level or one below, never above or under. It ends `no_stone` when there is nothing it may dig,
+  over it, nothing a player makes (planks, torches, chests, glass, cobblestone, walls, concrete...) within 3 blocks or
+  up to 12 above it (never under a build), and the body beside it at its level or one below, never above or under.
+  A target it has no walking route to (a pit wall, a ledge) is skipped, and a build it runs into is kept clear of for
+  the rest of that run. It ends `no_stone` when there is nothing it may dig,
   `protected` when the server undoes the digs, `stuck`, `interrupted`, `died`; if it got some stone but not 16 before it
   ran out of places, it finishes with that. Status text: `looking for stone`, `mining stone`, `crafting stone tools`,
   `stashing stone`.
@@ -109,7 +111,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   pickaxe and a sword, less what it already holds as raw iron or ingots), within 64 blocks of home and above y 8. It only
   goes for ore with a face in the open (a surface outcrop, a cave wall), never ore buried in rock, and digs each block by
   hand under the same look-before-you-dig rule as `get_stone` (nothing with lava or water against it, nothing a player
-  made within 3 blocks). It then smelts the raw iron at a home furnace on that coal (a furnace holding anything but
+  made within 3 blocks or above it, no target it has no route to). It then smelts the raw iron at a home furnace on that coal (a furnace holding anything but
   coal in its fuel slot is left alone), makes an iron pickaxe and sword at the home table (sticks as for `get_stone`),
   keeps 4 coal and stashes the rest of the coal and any raw iron. `no_ore` when it got no iron; if iron ran out
   before the tools were covered it makes what it can and finishes. A `stop` mid-smelt closes the furnace and leaves

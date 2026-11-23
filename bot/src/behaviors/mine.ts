@@ -9,7 +9,8 @@ import { dig, inReach, pickUp } from "../lib/collect";
 import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { logger } from "../lib/logger";
-import { isLiquid, isStandHazard, safeToDig, standOk, type NameAt, type Pos } from "./dig-safety";
+import { isLiquid, isStandHazard, madeBlocksNear, safeToDig, standOk, type NameAt, type Pos } from "./dig-safety";
+import { NoDigMap, noteMade } from "./no-dig";
 import { isCandidate, type Cell } from "./ore-plan";
 import { StuckError, walkTo } from "./unstuck";
 
@@ -21,7 +22,9 @@ const log = logger("mine");
 // stuck count.
 const SEARCH_COUNT = 64;
 const ZONE_RADIUS = 12; // around a dig the server undid
-const ZONE_CAP = 3;
+const ZONE_CAP = 3; // undone digs in one run before it gives up as protected
+const PATH_CHECK_MS = 500; // longest it plans a route to a target before choosing it
+const FORGET_REVERTED_MS = 30 * 60_000;
 const STUCK_CAP = 3; // attempts in a row that gained nothing
 const ATTEMPT_MS = 45_000; // one block, walking included
 const ABANDON_MS = 5_000;
@@ -94,10 +97,12 @@ function findStand(bot: Bot, target: Vec3): Vec3 | null {
   return best;
 }
 
-const isTarget = (spec: MineSpec, name: string | null | undefined) => name != null && spec.names.includes(name);
+// Where the server undid a dig is remembered for the bot's life (a later task starts out knowing it); the
+// builds it runs into are only remembered for one run, since a build can be torn down and nothing here
+// would notice.
+const reverted = new NoDigMap();
 
-type Zone = { x: number; z: number };
-const inZone = (zones: Zone[], p: Pos) => zones.some((z) => Math.hypot(z.x - p.x, z.z - p.z) <= ZONE_RADIUS);
+const isTarget = (spec: MineSpec, name: string | null | undefined) => name != null && spec.names.includes(name);
 
 interface Pick {
   pos: Vec3;
@@ -105,19 +110,32 @@ interface Pick {
 }
 
 // nearest first from where the body is now; whatever fails a check is dropped from the list
-function pickTarget(bot: Bot, spec: MineSpec, list: Vec3[], skipped: Set<string>, zones: Zone[]): Pick | null {
+function pickTarget(bot: Bot, spec: MineSpec, list: Vec3[], skipped: Set<string>, builds: NoDigMap): Pick | null {
   const me = bot.entity.position;
   list.sort((a, b) => a.distanceTo(me) - b.distanceTo(me));
   const nameAt = nameAtOf(bot);
   while (list.length) {
     const pos = list.shift() as Vec3;
-    if (skipped.has(keyOf(pos)) || inZone(zones, pos)) continue;
+    if (skipped.has(keyOf(pos)) || reverted.covers(pos) || builds.covers(pos)) continue;
     if (pos.distanceTo(home.craftingTable) > spec.range || pos.y <= spec.minY) continue;
-    if (!isTarget(spec, nameAt(pos)) || !safeToDig(pos, nameAt)) continue;
+    if (!isTarget(spec, nameAt(pos))) continue;
+    if (!safeToDig(pos, nameAt)) {
+      noteMade(builds, madeBlocksNear(pos, nameAt)); // a refusal because of a build teaches the map where it is
+      continue;
+    }
     const stand = findStand(bot, pos);
     if (stand) return { pos, stand };
   }
   return null;
+}
+
+// a target nothing can walk to (a ledge in a pit, the far side of a wall) is dropped here rather than
+// found out by the walk timing out; a plan that runs out of time is given the benefit of the doubt
+function reachable(bot: Bot, pick: Pick): boolean {
+  const goal = new goals.GoalBlock(pick.stand.x, pick.stand.y, pick.stand.z);
+  const { status } = bot.pathfinder.getPathTo(bot.pathfinder.movements, goal, PATH_CHECK_MS);
+  log.debug("route check", { position: pick.pos, status });
+  return status === "success" || status === "timeout";
 }
 
 // walk, look again, dig, pick the drop up. Every wait is bounded; the caller reads the world after
@@ -148,7 +166,9 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
   bot.pathfinder.setMovements(safeMovements(bot));
 
   const skipped = new Set<string>();
-  const zones: Zone[] = [];
+  let reverts = 0;
+  const builds = new NoDigMap();
+  reverted.forget(FORGET_REVERTED_MS);
   let list: Vec3[] = [];
   let fresh = false; // the list came from a search with nothing mined since
   let searches = 0;
@@ -157,7 +177,7 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
 
   while (have() - start < spec.target) {
     await ctx.pause();
-    const pick = pickTarget(bot, spec, list, skipped, zones);
+    const pick = pickTarget(bot, spec, list, skipped, builds);
     if (!pick) {
       if (fresh || searches >= REFRESH_CAP) break;
       list = findTargets(bot, spec);
@@ -166,6 +186,10 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
       continue;
     }
     fresh = false;
+    if (!reachable(bot, pick)) {
+      skipped.add(keyOf(pick.pos));
+      continue;
+    }
     if (!mining) {
       mining = true;
       await setStatus({ task: spec.mining });
@@ -213,9 +237,10 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
     skipped.add(keyOf(pick.pos));
     // a dig happened and the block is back: the server undid it
     if (dug) {
-      zones.push({ x: pick.pos.x, z: pick.pos.z });
-      log.warn("protected zone", { position: pick.pos, radius: ZONE_RADIUS, zones: zones.length });
-      if (zones.length >= ZONE_CAP) throw new Error("protected");
+      reverted.add({ x: pick.pos.x, z: pick.pos.z, r: ZONE_RADIUS, reason: "reverted" });
+      reverts++;
+      log.warn("protected zone", { position: pick.pos, radius: ZONE_RADIUS, reverts });
+      if (reverts >= ZONE_CAP) throw new Error("protected");
       stuck = 0;
       continue;
     }

@@ -237,13 +237,11 @@ const stopped: Scenario = {
   },
 };
 
-// The cave-wall gap in QUIRKS: ore on the wall of a pit it can't climb down, nearer than the outcrop's
-// reachable iron. The right outcome is to skip it and finish on the outcrop's; today it goes for the
-// pit's ore first and ends `stuck`.
+// Ore on the wall of a pit it can't climb down, nearer than the outcrop's reachable iron: the route
+// check drops it and the outcrop's iron is mined.
 const pit: Scenario = {
-  name: "ore: iron on a wall it can't reach is skipped for iron it can (cave wall)",
+  name: "ore: iron on a wall it can't reach is skipped for iron it can",
   timeoutMs: 420_000,
-  knownFailing: "cave-wall targets the pathfinder can't reach end in stuck (QUIRKS)",
   setup: (c) => prepare(c, { ore: "plain", pit: true, give: [...KIT, "coal 8"] }),
   cleanup: restore,
   async act(c) {

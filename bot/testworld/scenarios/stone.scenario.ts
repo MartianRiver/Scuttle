@@ -123,6 +123,32 @@ const lava: Scenario = {
   },
 };
 
+// a plank roof 4 blocks over the east side: the stone under and beside its columns is a build's
+// foundation as far as the body can tell, so none of it may be dug (the west column may or may not be)
+const ROOF = { x1: -3, x2: -1, y: 74, z1: -6, z2: -2 };
+const underBuild: Scenario = {
+  name: "stone: leaves the stone under a build alone",
+  timeoutMs: 360_000,
+  setup: async (c) => {
+    await prepare(c, { outcrop: true, give: ["wooden_pickaxe 1", "stick 4"] });
+    await c.world.run(`fill ${ROOF.x1} ${ROOF.y} ${ROOF.z1} ${ROOF.x2} ${ROOF.y} ${ROOF.z2} oak_planks`);
+    await sleep(1000);
+  },
+  cleanup: async (c) => {
+    await c.world.run(`fill ${ROOF.x1} ${ROOF.y} ${ROOF.z1} ${ROOF.x2} ${ROOF.y} ${ROOF.z2} air`);
+    await restore(c);
+  },
+  async act(c) {
+    const ended = await runToEnd(c, 300_000);
+    c.check(ended?.event === "task_finished" || (ended?.event === "task_failed" && ended.reason === "no_stone"), `ended cleanly (saw ${where(ended)})`);
+  },
+  async verify(c) {
+    const under = await c.world.countBlocks({ x: -4, y: OUT.y1, z: OUT.z1 }, { x: OUT.x2, y: OUT.y2, z: OUT.z2 }, "stone");
+    c.check(under === 60, `all 60 stone blocks under and beside the roof still stand, ${under} do`);
+    c.check((await c.world.deaths(c.bot)) === 0, "no deaths");
+  },
+};
+
 const none: Scenario = {
   name: "stone: no stone in range fails as no_stone",
   timeoutMs: 240_000,
@@ -180,4 +206,4 @@ const stopped: Scenario = {
   },
 };
 
-export default [mines, fromLog, lava, none, bare, stopped];
+export default [mines, fromLog, lava, underBuild, none, bare, stopped];
