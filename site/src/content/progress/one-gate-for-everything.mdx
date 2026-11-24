@@ -1,0 +1,13 @@
+---
+title: One gate for everything
+summary: Every dig, break and placement now goes through a single rule, speech goes through a single function, and a test fails on a second door.
+date: 2026-11-24
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+Several parts of the <Term id="body">body</Term> can break a <Term id="block">block</Term>: the digging code, the <Term id="pathfinder">pathfinder</Term> breaking something in its way, and the placing code. A rule that's copied into each of them is a rule that eventually goes missing from one.
+
+Now there's one <Term id="gate">gate</Term>. Every dig, every pathfinder break and every placement goes through it, and the check is repeated at the moment of the change. Every line the body says goes through one speech function with one shared clock, so its guard callouts count against the same <Term id="rate-limit">rate limit</Term> as everything else. A structural test fails if anyone adds a second way to break a block, place one or speak. I'd rather the test make me route a new feature through the gate than have a second door nobody reviews.
+
+The same day the body got events for its <Term id="reflex">reflexes</Term> (`reflex_started`, `reflex_changed`, `hurt`, `starving`) that wake a <Term id="llm">model</Term> waiting on the body, so whatever is driving it finds out when its reflexes take over. A few related fixes: a watchdog for a body that is penned in while fleeing, a search for a way out of deep water, burning read from the entity, one event when a fall ends, and eating on the run only when it's far from a threat.

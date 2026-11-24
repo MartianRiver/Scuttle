@@ -1,0 +1,16 @@
+---
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const credit = `"${title}" by River James, ${url}, licensed CC BY 4.0.`;
+---
+<aside class="licence" aria-labelledby="licence-h">
+  <h2 id="licence-h">Use this freely</h2>
+  <p>This page is licensed <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>. Copy it, change it, print it, teach from it, including for money. Credit it and say if you changed it.</p>
+  <p>To credit it:</p>
+  <pre><code>{credit}</code></pre>
+  <p><a href="/licence/">What is and isn't covered</a>.</p>
+</aside>

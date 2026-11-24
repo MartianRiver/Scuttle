@@ -1,0 +1,18 @@
+---
+title: Moving to Minecraft 26.3
+summary: The server moved to 26.3, no published mineflayer speaks it, and the body learned to wait its turn.
+date: 2026-11-22
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+The <Term id="server">server</Term> I play on moved to Minecraft 26.3, which broke two things. The <Term id="plugin">plugin</Term> needed its `api-version` and <Term id="paper">Paper</Term> version bumped to build, which was the easy one. The <Term id="body">body</Term> is harder: no published <Term id="mineflayer">mineflayer</Term> release supports 26.3 yet.
+
+So `package.json` <Term id="pin">pins</Term> mineflayer and three of its dependencies to commits from open <Term id="pull-request">pull requests</Term> upstream. After `npm ci` a script downloads the matching 26.3 game data, pinned and hash-checked, and fails loudly if anything is missing. Once those pull requests are released, the pins and the script can go. I also paced the clicks when it crafts.
+
+The rest of the day was making the body behave:
+
+- it exits after a disconnect and restarts with a backoff, 2 seconds doubling to 5 minutes, so it doesn't fight whoever holds the account after a duplicate login,
+- it never digs or builds while it walks,
+- `get wood` only takes <Term id="natural-block">natural logs</Term>, and also breaks natural leaves, with a timeout per log, skipping protected zones,
+- <Term id="chat">chat</Term> commands go through the same dispatcher as the <Term id="api">API</Term>, and `stop` now reaches a dig, a craft or a chest in use.

@@ -1,0 +1,29 @@
+---
+title: How a screenshot and a clip sit in a post
+summary: A draft showing the markup for media. The build leaves drafts out.
+date: 2026-11-25
+draft: true
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+This is a draft with `draft: true`, so the build leaves it out of every page and the feed. It shows the markup I'd use.
+
+A screenshot, from the <Term id="test-world">test world</Term> only, with a caption:
+
+<figure>
+  <img src="/media/sample/test-world-home.jpg" width="1280" height="720" loading="lazy" alt="The body standing beside its crafting table in the test world's grove." />
+  <figcaption>The body next to its crafting table, in the test world.</figcaption>
+</figure>
+
+A short clip, compressed, with a poster frame so nothing downloads until someone presses play:
+
+<figure>
+  <video controls preload="none" playsinline width="1280" height="720" poster="/media/sample/stair-down-poster.jpg">
+    <source src="/media/sample/stair-down.mp4" type="video/mp4" />
+    Your browser can't play this clip.
+  </video>
+  <figcaption>Digging the stair down to stone, about ten seconds.</figcaption>
+</figure>
+
+The files go in `site/public/media/<post>/`, and `site/README.md` has the ffmpeg commands.

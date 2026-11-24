@@ -1,0 +1,29 @@
+---
+import { getCollection, getEntry, render } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import Licence from "../../components/Licence.astro";
+
+export async function getStaticPaths() {
+  const terms = await getCollection("glossary");
+  return terms.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const see = await Promise.all(entry.data.see.map(async (id) => {
+  const e = await getEntry("glossary", id);
+  if (!e) throw new Error(`${entry.id}: unknown see-also term ${id}`);
+  return e;
+}));
+---
+<Base title={entry.data.term} description={entry.data.short}>
+  <p class="meta"><a href="/glossary/">Glossary</a></p>
+  <article class="prose">
+    <h1>{entry.data.term}</h1>
+    <p class="lede">{entry.data.short}</p>
+    <Content />
+    {see.length > 0 && <p>See also: {see.map((s, i) => <><a href={`/glossary/${s.id}/`}>{s.data.term}</a>{i < see.length - 1 ? ", " : ""}</>)}</p>}
+    {entry.data.wiki && <p>More on the <a href={entry.data.wiki}>Minecraft Wiki</a>.</p>}
+  </article>
+  <Licence title={entry.data.term} />
+</Base>
