@@ -7,7 +7,7 @@ export interface TaskDone {
   got?: Got;
   stored?: Got; // a `store`: what went into the stash
   saw?: string; // an `explore`: kinds newly in view, in words
-  detail?: string; // a `dig_down`: where it ended up, in words
+  detail?: string; // a `dig_down`, `tunnel` or short `collect`: where or why it ended, in words
 }
 
 // what a `recipe` answers: the first recipe that fits what it holds, else the simplest, in words
@@ -208,6 +208,7 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
         : i.intent === "explore" ? i.dir
         : i.intent === "store" ? (i.item ?? "all")
         : i.intent === "dig_down" ? (i.to ?? "stone")
+        : i.intent === "tunnel" ? (i.dir ?? "ahead")
         : i.intent === "climb_up" ? "up"
         : i.item;
       return { kind: "accepted", taskId: begin(`${i.intent}:${what}`, true, body.runAction(i, progress)) };

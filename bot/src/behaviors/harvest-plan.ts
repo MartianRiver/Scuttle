@@ -18,6 +18,14 @@ export function collectKind(name: string): Kind | null {
 }
 
 export const MAX_COLLECT = 16;
+
+// Why a `collect` ended with fewer blocks than it was asked for: what was passed over for a build or for the places
+// digs were undone, else simply that nothing more of it was in reach.
+export function shortWords(skipped: { builds: number; undone: number }): string {
+  if (skipped.undone > 0) return "the rest is where digs are undone";
+  if (skipped.builds > 0) return "the rest is under a build";
+  return "no more in reach";
+}
 export const CLUSTER_RADIUS = 5; // blocks of the same kind are taken from this far around the one pointed at
 export const MAX_TRUNK_LOGS = 40;
 

@@ -88,7 +88,7 @@ or down, and a handle to point at it with.
 
 ```
 {"health":20,"food":20,"armor":7?,"time":"day|dusk|night|dawn","weather":"clear|rain|thunder",
- "where":"at home, on the surface|underground|in the Nether...","in":"water|deep_water|lava"?,
+ "where":"at home, on the surface|underground, several blocks down|in the Nether...","in":"water|deep_water|lava"?,
  "held":"iron_pickaxe"|null,
  "inv":{"oak_log":42,"cobblestone":40},            counts per item, biggest first
  "tools":["iron_pickaxe 87%"],                       anything with durability, share left
@@ -123,7 +123,10 @@ or down, and a handle to point at it with.
   `get_stone` and `get_iron`. `d` is the distance to the place's edge (`here` inside it), `dir` the way to its middle.
   Nearby refusals merge into one bigger place. No handle: the body does not go there. Unlike `places` it is trimmed by the budget.
 - `where` is the body's level (`on the surface`, `underground`, `deep underground`, `high up`), with `at home, ` in front
-  within 16 blocks of the bed, or the dimension (`in the Nether`) away from the overworld. How far and which way home is
+  within 16 blocks of the bed, or the dimension (`in the Nether`) away from the overworld. With more than two solid blocks
+  over its head (leaves, logs and a player's build over it do not count) it is `underground` at any height, followed by how far
+  below the open air in words (`underground, several blocks down`: `a block or two`, `a few`, `several`, `a long way`); a cave
+  below y 48 is `underground` by its height alone. How far and which way home is
   comes from `places.home`, on the same scale as everything else.
 - `places` is always listed, in view or not (overworld only; absent elsewhere along with `time`), and never trimmed.
   `home` and `bed` are the same spot.
@@ -172,7 +175,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `task_started` | `taskId`, `kind` |
 | `reflex_ended` | `what` (`mobs`, `lava`, `fire`, `burning`, `drowning`), `ok`, `detail`? One per episode of a reflex (running from or fighting mobs, getting out of a hazard), when it lets go of the body: `ok` true when clear, false when it gave up (`no way out of the water found`; the body then takes orders again). A client refused `in_danger` waits for this |
 | `task_progress` | `taskId`, `step` (the status text: `gathering wood`, `crafting tools`, `mining stone`, `smelting`, `stashing ore`...), `got`? (items gained so far). Only for a `task`, on a change of step and at most one every 15 s, never closer than 2 s: a 2-minute task makes a handful. It is only a commentary: a client that waits for a task's end has no reason to wake for it |
-| `task_finished` | `taskId`, `got`? (items gained in the run, net of what it used, counting what it stashed: `{"oak_log":11}`, the 4 biggest; for a `task` and the long actions below), `stored`? (a `store`: what went into the stash, up to 8 items), `saw`? (an `explore`: kinds newly in view, in words, no digit) |
+| `task_finished` | `taskId`, `got`? (items gained in the run, net of what it used, counting what it stashed: `{"oak_log":11}`, the 4 biggest; for a `task` and the long actions below), `stored`? (a `store`: what went into the stash, up to 8 items), `saw`? (an `explore`: kinds newly in view, in words, no digit; a `tunnel` with `through`: the ore it passed), `detail`? (a `dig_down`, `tunnel` or a `collect` that got fewer than asked: why it ended, in words) |
 | `task_failed` | `taskId`, `reason`, `detail`?, `got`?, `missing`? (a `craft` that was short: item counts, for the whole count). `detail` is a short line of words (no digit, 120 characters at most) about the cause: `three digs undone near the trees, a fair way south-west`, `in deep water while walking to home, no way out found`, `no natural trees it may cut in range`, `no progress while stashing wood`; `got` as for `task_finished`, what it had when it failed. `reason`: `protected` (the server undid the digs three times in the run, or the only trees or ore left are in places where it did; the places are kept, see `refused`), `no_trees`, `no_stone` (a `get_stone` found no natural stone it may dig within 40 blocks of home and above y 30, or none it could take), `no_pickaxe` (a `get_stone` while holding no pickaxe, a `get_iron` while holding none at stone level or better), `no_ore` (a `get_iron` found no iron ore with a face in the open, or none it could take), `no_fuel` (a `get_iron` with no coal to smelt on, held or found), `smelt_failed` (a `get_iron` that found no furnace it may use, or got no ingot out), `none_held` (a `give` with nothing of that item to spare, see Rules), `stale_handle` (a `go_to` whose mob was gone mid-walk), `no_tool` (a `collect` of a block that needs a pickaxe it does not carry; `detail` says which), `refused` (a `collect` of a block that is not natural, has a player's build too near it, is not safe to dig, or sits in a place where digs were undone; `detail` says which), `missing` (a `craft` short of ingredients, `missing` says what), `no_table` (a `craft` needing a table with none in reach and none at home), `no_recipe` (a `craft` of something nothing crafts), `craft_failed`, `none_stashed` (a `take` of what its chests do not hold), `stash_full` (a `store` with no room), `inventory_full` (a `take` with no room), `no_stash` (no stash in this world, or no chest where one should be), `blocked` (an `explore` stopped by water, lava, a cliff or a drop; `detail` says which way), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges, and in water it swims to the nearest bank once and walks on, ending `stuck` with a `detail` saying water if it can't get out or is stuck in water again; also ends a `come_to`, a `go_to` or a `give`, a `get_wood` that got no wood, a `get_stone` whose attempts got no stone, and a `get_iron` whose attempts got no coal or iron), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`; a hazard adds a `detail`: `in lava`, `in fire`, `on fire`, `in deep water, swimming for the bank`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `died` | `place`, `cause`: the body died (idle or not; a running action first ends with `task_failed` `died`) and respawns by itself. `place` is words only, never coordinates: how far and which way from home, surface or underground, the dimension if not the overworld ("a short walk to the north-east of home, on the surface"). `cause` is `mob`, `fall`, `lava`, `fire`, `drowning` or `other`. Nothing is carried over: the task is over, the inventory is what the respawn left, and fetching drops is not automatic |
@@ -229,9 +232,9 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   keeps 4 coal and stashes the rest of the coal and any raw iron. `no_ore` when it got no iron; if iron ran out
   before the tools were covered it makes what it can and finishes. A `stop` mid-smelt closes the furnace and leaves
   what is in it there. Status text: `looking for ore`, `mining ore`, `smelting`, `crafting iron tools`, `stashing ore`.
-- The hands, which a mind uses for what the three tasks do not cover. `craft`, `collect`, `store`, `take` and `explore` run like a
+- The hands, which a mind uses for what the three tasks do not cover. `craft`, `collect`, `store`, `take`, `explore`, `dig_down`, `tunnel` and `climb_up` run like a
   `task`: `busy` while anything runs (even a `follow`), `in_fight`, `in_danger`, `not_in_game`, one at a time, stoppable with
-  `stop`, a `task_progress` line on each change of step (`walking to the crafting table`, `crafting stick`, `digging 2 of 3`, `cutting the tree`,
+  `stop`, a `task_progress` line on each change of step (`walking to the crafting table`, `crafting stick`, `digging two of three`, `cutting the tree`,
   `taking from the stash`, `exploring east`), `task_finished` with `got` (and `stored` or `saw`) or `task_failed` with `detail`, `got`, `missing`. Rejected
   at once: `unknown_item` (`craft`, `take`, `recipe`), `stale_handle` (`collect`), `too_far` (`explore`). All of them keep every dig rule of the tasks: dig-safety,
   the made-block no-dig zones, natural blocks only (nothing a player placed), and the places the server undid digs in.
@@ -266,7 +269,23 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
     `stuck` `no stone within twelve steps`. `task_progress` says `digging down, four steps` (number words, the status text has no digit). The stair is remembered inside the body;
     `observe` then lists `stair` among the `places` (`close north, the stair you dug, down`), `go_to stair` walks to its top, and the stone it stopped at is listed in
     `blocks` as `stone` with a handle so `collect` can take it (the one spot where the body digs the floor it stands on: the last step of its own stair, once, over solid ground).
-  - `climb_up` walks back up that stair to where it started; `task_failed` `no_stair` when it has dug none. If the stair's last floor was taken for stone and it stands in that hole, it jumps and sets a block under itself first (`stuck` when it carries none).
+  - `tunnel {dir?, length?, through?}` digs a branch mine from where it stands: one block wide, two high, at the level of its feet, walking in as it digs.
+    `dir` is `north`, `east`, `south` or `west` (default: the way the stair faces when it stands at the foot of the way it dug, else the way it faces);
+    `length` is a count to 32 or an `explore` band (`near` 8, `a short walk` 16, `a fair way` 24, `far` 32; default 16). Every block goes through the dig rules
+    (the plan is `tunnel-plan.ts`): `refused` on or within 3 blocks of a player's build, or in a place where digs were undone; `blocked` with `detail` when water
+    or lava is in or beside the next cells (`water ahead`, `lava behind the wall`), the floor ahead is a hole or a drop (`a drop ahead`) or liquid (`water below`),
+    sand or gravel is overhead, or the rock cannot be broken; `no_tool` when the block needs a pickaxe it lacks (`it needs a pickaxe`, `it needs a stone pickaxe or
+    better`, for iron ore too: it never breaks an ore it could not pick up). It stops before it would break into anything. After each column it looks at the blocks
+    around the two cells it opened (left, right, over, under, ahead): an ore there has an open face on the tunnel, so it counts as seen (it reads nothing deeper in
+    the rock). By default the tunnel stops at the first ore it sees: `task_finished` with `detail` `iron ore in the wall`, `got` what it dug (cobblestone, dirt).
+    With `through: true` it digs on and `saw` lists them at the end, counts in words (`two coal ore, iron ore`); an ore in its path is dug (and picked up) if it carries
+    the tool for it. A second `tunnel` does not stop at an ore it has already told of. A run that reaches its length ends `task_finished` `detail` `ran out of length`.
+    `task_progress` says `tunnelling, six blocks`. The tunnel is remembered with the stair (a tunnel begun away from any stair is a way of its own, its first cell the
+    top): `observe` lists it as `stair` among the `places`, `go_to stair` and `climb_up` walk back to its top. The ore shows up in `observe` `blocks` with a handle
+    (`iron_ore`) and `collect` takes it, and a vein of the same kind, with the pickaxe tier it needs (`no_tool` for iron with a wooden one); `get_iron` also takes
+    ore the tunnel opened, since it has an open face now. Ore in the floor or the roof of the tunnel is listed but `collect` cannot stand to dig it.
+  - `climb_up` walks back along the tunnel and up the stair to where it started; `task_failed` `no_stair` when it has dug none. If the stair's last floor was taken for stone and it stands in that hole, it jumps and sets a block under itself first (`stuck` when it carries none).
+  - A `collect` that gets fewer blocks than `count` says why in `detail`: `no more in reach`, `the rest is under a build`, `the rest is where digs are undone`.
 - `guard` is `follow` that also protects: the body keeps near the player, counts hostile mobs within
   10 blocks of the player as threats as well as the ones near itself, and fights them (creepers and
   skeletons too, bare-handed if it has to; it still backs off below 8 health and from anything that

@@ -1,5 +1,6 @@
 // Where a death happened, in words. Pure, so the bands are testable; no coordinates ever leave
 // this module (the API has no coordinate field, and a place string with digits would be one).
+import { depthWords } from "./dig-down-plan";
 
 export const AT_HOME = 16; // horizontal blocks from the bed counted as home
 
@@ -35,9 +36,12 @@ export function direction(dx: number, dz: number): string {
   return COMPASS[((Math.round(turns) % 8) + 8) % 8];
 }
 
-function height(y: number): string {
-  if (y < DEEP_BELOW) return "deep underground";
-  if (y < UNDERGROUND_BELOW) return "underground";
+// `depth` is how far below the open air it is, when there is rock over its head (senses/cover.ts): a stair or a tunnel
+// is underground at any height, and a cave is by its height whatever is over it
+function height(y: number, depth?: number): string {
+  const under = depth !== undefined ? `, ${depthWords(depth)}` : "";
+  if (y < DEEP_BELOW) return `deep underground${under}`;
+  if (y < UNDERGROUND_BELOW || depth !== undefined) return `underground${under}`;
   if (y > HIGH_ABOVE) return "high up";
   return "on the surface";
 }
@@ -65,10 +69,10 @@ export function describePlace(at: Point, home: Point, dimension?: string): strin
 }
 
 // the observation's `where`: no distance band, since `places.home` already gives one on the senses scale
-export function describeLevel(at: Point, home: Point, dimension?: string): string {
+export function describeLevel(at: Point, home: Point, dimension?: string, depth?: number): string {
   const elsewhere = dimensionName(dimension);
   if (elsewhere) return elsewhere;
-  const level = height(at.y);
+  const level = height(at.y, depth);
   return Math.hypot(at.x - home.x, at.z - home.z) < AT_HOME ? `at home, ${level}` : level;
 }
 

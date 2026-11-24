@@ -156,7 +156,11 @@ export function facingsFrom(yaw: number): Facing[] {
   return [...FACINGS].sort((a, b) => b.dx * fx + b.dz * fz - (a.dx * fx + a.dz * fz));
 }
 
-const NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const NUMBERS = [
+  "no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+  "seventeen", "eighteen", "nineteen", "twenty", "twenty-one", "twenty-two", "twenty-three", "twenty-four", "twenty-five", "twenty-six", "twenty-seven",
+  "twenty-eight", "twenty-nine", "thirty", "thirty-one", "thirty-two",
+];
 export const numberWords = (n: number): string => NUMBERS[n] ?? "many";
 
 // the status line while digging: a count of steps in words

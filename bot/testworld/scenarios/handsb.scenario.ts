@@ -7,14 +7,14 @@ import { sleep, type BodyEvent, type Ctx, type Observation, type Scenario } from
 
 const at = (x: number, y: number, z: number) => `${x} ${y} ${z}`;
 
-async function observe(c: Ctx): Promise<Observation> {
+export async function observe(c: Ctx): Promise<Observation> {
   const r = await c.body.send({ intent: "observe" });
   if (r.type !== "observation" || !r.observation) throw new Error(`observe answered ${r.type} ${r.reason ?? ""}`);
   return r.observation;
 }
 
 // one action to its end: the reply, and the finish or failure event
-async function go(c: Ctx, intent: object, ms = 120_000, every?: () => Promise<void>) {
+export async function go(c: Ctx, intent: object, ms = 120_000, every?: () => Promise<void>) {
   const from = c.body.mark();
   const r = await c.body.send(intent);
   if (r.type !== "accepted") return { reply: r.type === "rejected" ? `rejected ${r.reason}` : r.type, end: null as BodyEvent | null, events: [] as BodyEvent[] };
@@ -31,7 +31,7 @@ async function go(c: Ctx, intent: object, ms = 120_000, every?: () => Promise<vo
   return { reply: "accepted", end: end ?? null, events: c.body.events.slice(from) };
 }
 
-const said = (e: BodyEvent | null) => `${e?.event ?? "no end"} ${e?.reason ?? ""} ${e?.detail ?? ""}`.trim();
+export const said = (e: BodyEvent | null) => `${e?.event ?? "no end"} ${e?.reason ?? ""} ${e?.detail ?? ""}`.trim();
 
 // the arena with the body set up for a calm run: fed, healed, nothing carried
 async function calm(c: Ctx) {
@@ -299,11 +299,11 @@ const school: Scenario = {
 
 // The stair is dug inside the grove region, the only place the test body may dig (the world is build:deny elsewhere,
 // and a dig there is undone: see the last scenario of this group). Ground there is grass at y 67, dirt 62 to 66.
-const X0 = 0, X1 = 22, Z0 = -6, Z1 = 6;
-const SX = 16, SZ = 0;
-const GROUND = 67;
+export const X0 = 0, X1 = 22, Z0 = -6, Z1 = 6;
+export const SX = 16, SZ = 0;
+export const GROUND = 67;
 
-async function calmHome(c: Ctx) {
+export async function calmHome(c: Ctx) {
   await c.body.send({ intent: "stop" });
   await sleep(1500);
   const w = c.world;
@@ -318,7 +318,7 @@ async function calmHome(c: Ctx) {
 }
 
 // stone from y 62 to 63 under dirt, grass on top at `top`; air over it
-async function strata(c: Ctx, top = GROUND) {
+export async function strata(c: Ctx, top = GROUND) {
   const w = c.world;
   await w.run(`fill ${X0} 68 ${Z0} ${X1} 100 ${Z1} air`);
   await w.run(`fill ${X0} 62 ${Z0} ${X1} 63 ${Z1} stone`);
@@ -328,7 +328,7 @@ async function strata(c: Ctx, top = GROUND) {
 }
 
 // the grove ground as build_home.py leaves it, and its trees grown back
-async function restoreGround(c: Ctx) {
+export async function restoreGround(c: Ctx) {
   const w = c.world;
   await w.run(`fill ${X0} 62 ${Z0} ${X1} 66 ${Z1} dirt`);
   await w.run(`fill ${X0} 67 ${Z0} ${X1} 67 ${Z1} grass_block`);
@@ -338,7 +338,7 @@ async function restoreGround(c: Ctx) {
 }
 
 // facing west (yaw 90), so a long stair has ground to run through
-const stand = (c: Ctx, top = GROUND) => c.world.run(`tp ${c.bot} ${SX}.5 ${top + 1} ${SZ}.5 90 0`);
+export const stand = (c: Ctx, top = GROUND) => c.world.run(`tp ${c.bot} ${SX}.5 ${top + 1} ${SZ}.5 90 0`);
 
 const stair: Scenario = (() => {
   let end: BodyEvent | null = null;

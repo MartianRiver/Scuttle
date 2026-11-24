@@ -6,7 +6,7 @@
 import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
-import { safeToDig } from "../behaviors/dig-safety";
+import { isMade, safeToDig } from "../behaviors/dig-safety";
 import { describeLevel } from "../behaviors/place";
 import { nearestRefused, refusedNow, reverted } from "../behaviors/refused";
 import { STONE_MIN_Y, STONE_RANGE } from "../behaviors/stone-plan";
@@ -18,6 +18,7 @@ import { isPlainLogName } from "../lib/movement";
 import { durabilityLeft, mobHealthBand, timeWords, weatherWords } from "./bands";
 import { compose, type Observation, type RawBlock, type RawEntity, type RawSense } from "./compose";
 import { HandleTable, PLACES, type Place } from "./handles";
+import { coverDepth, COVER_SCAN, type Over } from "./cover";
 import { blockKind, PER_KIND, PER_LIQUID, SIGHT_BLOCKS, SIGHT_ENTITIES } from "./notable";
 import { blockVisible, entityVisible, hasOpenFace, type Opaque } from "./sight";
 import { bodyStanding } from "./standing";
@@ -108,7 +109,7 @@ function gather(v: View): RawSense {
     armor: armourPoints(worn),
     time: overworld && typeof bot.time.timeOfDay === "number" ? timeWords(bot.time.timeOfDay) : null,
     weather: weatherWords((bot as unknown as { rainState: number }).rainState ?? 0, bot.thunderState),
-    where: describeLevel(feet, home.bed[0], bot.game.dimension),
+    where: describeLevel(feet, home.bed[0], bot.game.dimension, overworld ? coverOver(bot, feet) : undefined),
     held: bot.heldItem?.name ?? null,
     items,
     tools,
@@ -119,6 +120,22 @@ function gather(v: View): RawSense {
     refused: nearestRefused(refusedNow(), feet).map((z) => ({ dx: z.x - feet.x, dz: z.z - feet.z, r: z.r })),
     places: overworld ? seenPlaces(v) : null,
   };
+}
+
+// how far below open air the body is, when there is rock over its head (cover.ts); the cells above are read as the
+// world has them, up to the scan's top, and an unloaded cell ends the column
+function coverOver(bot: Bot, feet: Vec3): number | undefined {
+  const column: Over[] = [];
+  const x = Math.floor(feet.x);
+  const z = Math.floor(feet.z);
+  for (let y = Math.floor(feet.y) + 2; y < Math.floor(feet.y) + 2 + COVER_SCAN; y++) {
+    const b = bot.blockAt(new Vec3(x, y, z), false);
+    if (!b) break;
+    if (b.boundingBox !== "block") column.push("open");
+    else if (/_(leaves|log|wood)$/.test(b.name)) column.push("foliage");
+    else column.push(isMade(b.name) ? "made" : "rock");
+  }
+  return coverDepth(column) ?? undefined;
 }
 
 // the known places with where they are, the stair only once there is one
