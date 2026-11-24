@@ -1,5 +1,6 @@
 // Everything a client may send. Strict on purpose: unknown fields are an error, and there is
 // no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
+import { CARDINALS, isLengthBand, TUNNEL_MAX, type Cardinal } from "../behaviors/tunnel-plan";
 import { BLOCK_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
 
 export const TASKS = ["get_wood", "get_stone", "get_iron"] as const;
@@ -27,6 +28,7 @@ export type Intent =
   | { intent: "stash" }
   | { intent: "explore"; dir: CompassPoint; far?: ExploreBand }
   | { intent: "dig_down"; to?: DigTarget }
+  | { intent: "tunnel"; dir?: Cardinal; length?: number | ExploreBand; through?: boolean }
   | { intent: "climb_up" }
   | { intent: "say"; text: string }
   | { intent: "stop" }
@@ -34,8 +36,8 @@ export type Intent =
   | { intent: "observe" };
 
 // the actions that run like a task: one at a time, with task events
-export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "climb_up" }>;
-export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "climb_up"] as const;
+export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" }>;
+export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up"] as const;
 
 export type ClientMsg =
   | { type: "auth"; token: string; since?: number; epoch?: string }
@@ -133,6 +135,12 @@ export function parseFrame(raw: string): Parsed {
     case "dig_down":
       if (!onlyKeys(m, ["type", "id", "intent", "to"])) return bad;
       if (m.to !== undefined && !(DIG_TARGETS as readonly unknown[]).includes(m.to)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "tunnel":
+      if (!onlyKeys(m, ["type", "id", "intent", "dir", "length", "through"])) return bad;
+      if (m.dir !== undefined && !(CARDINALS as readonly unknown[]).includes(m.dir)) return bad;
+      if (m.length !== undefined && !countIn(m.length, TUNNEL_MAX) && !isLengthBand(m.length)) return bad;
+      if (m.through !== undefined && typeof m.through !== "boolean") return bad;
       return { ok: true, msg: m as ClientMsg };
     case "say":
       if (!onlyKeys(m, ["type", "id", "intent", "text"])) return bad;

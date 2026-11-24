@@ -10,7 +10,8 @@ import { gatherMovements, isNaturalLog, safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { madeBlocksNear, safeToDig, type Pos } from "./dig-safety";
 import { TaskError } from "./fail";
-import { collectKind, MAX_COLLECT, sameKindRun, toolWords, trunkLogs } from "./harvest-plan";
+import { collectKind, MAX_COLLECT, sameKindRun, shortWords, toolWords, trunkLogs } from "./harvest-plan";
+import { numberWords } from "./dig-down-plan";
 import { findStand, mineBlock, nameAtOf, reachable, type MineCtx, type MineSpec } from "./mine";
 import { NoDigMap, noteMade } from "./no-dig";
 import { noteRefused, refusedNow, reverted, undoneWords } from "./refused";
@@ -39,7 +40,7 @@ function dropsOf(bot: Bot, name: string): string[] {
 }
 
 // null when some tool it carries can take the block, else what it would need
-function missingTool(bot: Bot, name: string): string | null {
+export function missingTool(bot: Bot, name: string): string | null {
   const block = bot.registry.blocksByName[name];
   const harvest = block?.harvestTools as Record<string, boolean> | undefined;
   if (!harvest) return null; // by hand
@@ -48,8 +49,9 @@ function missingTool(bot: Bot, name: string): string | null {
   return toolWords(Object.keys(harvest).map((id) => bot.registry.items[Number(id)]?.name ?? ""));
 }
 
-// Throws its reason as the message: stale_handle, refused, no_tool, protected, stuck.
-export async function collect(bot: Bot, ctx: MineCtx, target: BlockTarget, count = 1): Promise<void> {
+// Throws its reason as the message: stale_handle, refused, no_tool, protected, stuck. A run that ends short of `count`
+// says why in `detail`.
+export async function collect(bot: Bot, ctx: MineCtx, target: BlockTarget, count = 1): Promise<{ detail?: string } | void> {
   const live = bot.blockAt(target.pos);
   if (!live || live.name !== target.name) throw new TaskError("stale_handle");
   const kind = collectKind(live.name);
@@ -62,7 +64,7 @@ export async function collect(bot: Bot, ctx: MineCtx, target: BlockTarget, count
   return collectBlocks(bot, ctx, target, Math.min(Math.max(1, count), MAX_COLLECT));
 }
 
-async function collectBlocks(bot: Bot, ctx: MineCtx, target: BlockTarget, count: number): Promise<void> {
+async function collectBlocks(bot: Bot, ctx: MineCtx, target: BlockTarget, count: number): Promise<{ detail?: string } | void> {
   const nameAt = nameAtOf(bot);
   if (!safeToDig(target.pos, nameAt)) {
     throw new TaskError("refused", madeBlocksNear(target.pos, nameAt).length > 0 ? "something a player built is too close to it" : "it is not safe to dig: liquid or falling blocks next to it");
@@ -85,7 +87,8 @@ async function collectBlocks(bot: Bot, ctx: MineCtx, target: BlockTarget, count:
   bot.pathfinder.setMovements(safeMovements(bot));
   let dug = 0;
   let stuck = 0;
-  let refused = 0;
+  let nearBuild = 0; // passed over because of a build
+  let undone = 0; // passed over where the server undid a dig
 
   while (dug < count) {
     await ctx.pause();
@@ -93,15 +96,20 @@ async function collectBlocks(bot: Bot, ctx: MineCtx, target: BlockTarget, count:
     const todo = run.filter((p) => !skipped.has(key(p)) && bot.blockAt(p)?.name === target.name).sort((a, b) => a.distanceTo(me) - b.distanceTo(me));
     const pos = todo[0];
     if (!pos) break;
-    if (reverted.covers(pos) || builds.covers(pos)) {
+    if (reverted.covers(pos)) {
       skipped.add(key(pos));
-      refused++;
+      undone++;
+      continue;
+    }
+    if (builds.covers(pos)) {
+      skipped.add(key(pos));
+      nearBuild++;
       continue;
     }
     if (!safeToDig(pos, nameAt)) {
       noteMade(builds, madeBlocksNear(pos, nameAt));
       skipped.add(key(pos));
-      refused++;
+      nearBuild++;
       continue;
     }
     const stand = findStand(bot, pos);
@@ -111,7 +119,7 @@ async function collectBlocks(bot: Bot, ctx: MineCtx, target: BlockTarget, count:
       continue;
     }
 
-    await setStatus({ task: count > 1 ? `digging ${dug + 1} of ${Math.min(count, run.length)}` : spec.mining });
+    await setStatus({ task: count > 1 ? `digging ${numberWords(dug + 1)} of ${numberWords(Math.min(count, run.length))}` : spec.mining });
     let dugIt = false;
     const mark = (b: { position: { equals(o: unknown): boolean } }) => {
       if (b.position.equals(pos)) dugIt = true; // undone only if the block is back afterwards
@@ -132,14 +140,15 @@ async function collectBlocks(bot: Bot, ctx: MineCtx, target: BlockTarget, count:
     if (dugIt) {
       noteRefused(pos.x, pos.z);
       if (dug === 0) throw new TaskError("protected", undoneWords(1, label(target.name), bot.entity.position, refusedNow()));
+      undone++;
       break;
     }
     if (++stuck >= STUCK_CAP) break;
   }
 
   log.info("collected", { name: target.name, dug, asked: count });
-  if (dug > 0) return;
-  if (refused > 0) throw new TaskError("refused", "something a player built is too close to it");
+  if (dug > 0) return dug < count ? { detail: shortWords({ builds: nearBuild, undone }) } : undefined;
+  if (nearBuild > 0) throw new TaskError("refused", "something a player built is too close to it");
   throw new TaskError("stuck", `no way to dig the ${label(target.name)}`);
 }
 

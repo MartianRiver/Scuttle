@@ -1,4 +1,5 @@
 import { COMPASS_POINTS, EXPLORE_BANDS, TASKS, type TaskName } from "../api/protocol";
+import { CARDINALS, isLengthBand, TUNNEL_DEFAULT, TUNNEL_MAX } from "../behaviors/tunnel-plan";
 
 // What the mind is told it can do, kept by hand next to the API. test/mcp-skills.test.ts fails when
 // a task in TASKS has no entry here. To add an action: one entry in ACTIONS, its argument names in
@@ -14,10 +15,14 @@ export interface ActArgs {
   dir?: string;
   far?: string;
   to?: string;
+  length?: number | string;
+  through?: boolean;
 }
 
 // where each act argument goes on the wire
-const WIRE: Record<keyof ActArgs, string> = { player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to" };
+const WIRE: Record<keyof ActArgs, string> = {
+  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through",
+};
 
 export interface ActionDef {
   does: string;
@@ -53,7 +58,7 @@ export const ACTIONS: Record<string, ActionDef> = {
     ends: "Never finishes on its own. Ends with stop, a newer order, task_failed lost_ward (player out of view or over 48 blocks for 15 s), died, disconnected. Reflexes (fleeing, fighting) pause it without ending it. Accepted even when mobs are near.",
   },
   go_to: {
-    does: "Walk to what a handle from observe points at (a mob, a player, a block), or to a place by name: home, table, stash, furnace, bed, and stair (the one dug with dig_down, once there is one).",
+    does: "Walk to what a handle from observe points at (a mob, a player, a block), or to a place by name: home, table, stash, furnace, bed, and stair (the one dug with dig_down or tunnel, once there is one).",
     required: ["handle"],
     optional: [],
     rejects: ["busy", "in_fight", "in_danger", "not_in_game", "stale_handle"],
@@ -85,7 +90,7 @@ export const ACTIONS: Record<string, ActionDef> = {
     required: ["handle"],
     optional: ["count"],
     rejects: [...ACT_REJECTS, "stale_handle"],
-    ends: "task_finished with got= what it picked up; task_failed no_tool (detail says which pickaxe it needs), refused (not a natural block, a player's build too near, or a place where digs were undone; detail says which), protected (the server undid the dig), stale_handle (the block is gone), stuck (no way to reach it), interrupted, died, disconnected. Like a task: busy while anything runs.",
+    ends: "task_finished with got= what it picked up, and detail= why when it got fewer than count (no more in reach, the rest is under a build, the rest is where digs are undone); task_failed no_tool (detail says which pickaxe it needs), refused (not a natural block, a player's build too near, or a place where digs were undone; detail says which), protected (the server undid the dig), stale_handle (the block is gone), stuck (no way to reach it), interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
   equip: {
     does: "Put an item it carries on: armour goes to its slot, a shield to the off hand, anything else into the hand. One swap, taken at once.",
@@ -116,14 +121,21 @@ export const ACTIONS: Record<string, ActionDef> = {
     ends: "task_finished with saw= kinds newly in view on the way, in words (trees, stone, iron ore, water, lava, doors, players; no handles: call observe next); task_failed blocked or stuck with detail= what is in the way (a cliff to the north, the sea to the east), interrupted, died, disconnected. Rejected too_far at once if the end point would be past the leash from home. Like a task: busy while anything runs.",
   },
   dig_down: {
-    does: "Cut a one-block-wide staircase down from where it stands, toward natural stone (to: stone, the only target and the default), facing whichever way is clear. It stops on stone, at most twelve steps down, and remembers the stair. observe then lists that stair among the places (go_to stair walks to its top, climb_up goes there) and the stone it stopped at as a block with a handle, so collect or get_stone can take it. Refuses at once on or beside anything a player built, in a place where digs were undone, or with water or lava beside the way; stops before sand or gravel overhead. Never digs where it would let water or lava in.",
+    does: "Cut a one-block-wide staircase down from where it stands, toward natural stone (to: stone, the only target and the default), facing whichever way is clear. It stops on stone, at most twelve steps down, and remembers the stair. observe then lists that stair among the places (go_to stair walks to its top, climb_up goes there) and the stone it stopped at as a block with a handle, so collect or get_stone can take it; tunnel then digs sideways from its foot. Refuses at once on or beside anything a player built, in a place where digs were undone, or with water or lava beside the way; stops before sand or gravel overhead. Never digs where it would let water or lava in.",
     required: [],
     optional: ["to"],
     rejects: ACT_REJECTS,
     ends: "task_finished with detail= where it stopped (stone ahead, a few blocks down); task_progress digging down, N steps in words; task_failed refused or blocked with detail= why, protected (the server undid a dig), stuck (no stone within twelve steps, or could not step down), interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
+  tunnel: {
+    does: `Dig a branch mine as a player does: a tunnel one block wide and two high at the level of its feet, in a compass direction (dir: ${CARDINALS.join(", ")}; default the way the stair it stands at the foot of faces, else the way it faces), up to length blocks (a count to ${TUNNEL_MAX}, or ${EXPLORE_BANDS.join(", ")}; default ${TUNNEL_DEFAULT}), walking in as it digs. It needs a pickaxe for stone. It looks at the walls as they open: it stops at the first ore it sees (coal, iron, copper, gold, redstone, lapis, diamond, emerald), so you can observe (the ore is listed with a handle) and collect it with the right pickaxe; call tunnel again to go on, or pass through: true to dig on past ore and have the kinds listed at the end. It takes what it digs (cobblestone, dirt). The tunnel is remembered with the stair: observe lists it among the places as the stair (go_to stair or climb_up walks back to its top, tunnel and stair). Refuses at once on or beside anything a player built, in a place where digs were undone; stops before water or lava (it never breaks into them), a drop or hole ahead, or sand or gravel overhead.`,
+    required: [],
+    optional: ["dir", "length", "through"],
+    rejects: ACT_REJECTS,
+    ends: "task_finished with detail= why it stopped (ran out of length, or iron ore in the wall) and got= what it dug up; with through, saw= the ore it passed (two coal ore, iron ore). task_progress tunnelling, six blocks (in words). task_failed blocked (detail: water ahead, lava behind the wall, a drop ahead, sand or gravel overhead, rock it cannot break), refused (a build in the way or too close, or digs undone there), no_tool (detail says the pickaxe it lacks), protected (the server undid a dig), stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
   climb_up: {
-    does: "Walk back up the stair dig_down cut, to the cell it started from.",
+    does: "Walk back up the stair dig_down cut, to the cell it started from; after a tunnel, back along it and up the stair.",
     required: [],
     optional: [],
     rejects: ACT_REJECTS,
@@ -217,6 +229,13 @@ export function buildIntent(action: string, args: ActArgs): Built {
   for (const k of def.required) if (args[k] === undefined) return { ok: false, detail: `${action} needs ${k}` };
   if (action === "task" && !(TASKS as readonly string[]).includes(args.task ?? "")) {
     return { ok: false, detail: `task must be one of ${TASKS.join(", ")}` };
+  }
+  if (action === "tunnel") {
+    if (args.dir !== undefined && !(CARDINALS as readonly string[]).includes(args.dir)) return { ok: false, detail: `tunnel dir is one of ${CARDINALS.join(", ")}` };
+    const len = args.length;
+    if (len !== undefined && !(typeof len === "number" ? Number.isInteger(len) && len >= 1 && len <= TUNNEL_MAX : isLengthBand(len))) {
+      return { ok: false, detail: `tunnel length is a count from 1 to ${TUNNEL_MAX}, or one of ${EXPLORE_BANDS.join(", ")}` };
+    }
   }
   const fields: Record<string, unknown> = { intent: action };
   for (const k of allowed) if (args[k] !== undefined) fields[WIRE[k]] = args[k];

@@ -8,6 +8,7 @@ import { destination, goTo } from "../behaviors/goto";
 import { isGuardFighting } from "../behaviors/guard";
 import { craft, recipeAnswer } from "../behaviors/craft";
 import { climbUp, digDown } from "../behaviors/dig-down";
+import { tunnel } from "../behaviors/tunnel";
 import { equipItem, equipSlot } from "../behaviors/equip";
 import { pinHand } from "../behaviors/idle-hand";
 import { canExplore, explore } from "../behaviors/explore";
@@ -122,6 +123,8 @@ export function createBody(bot: Bot): BodyControl {
           return run("explore", () => explore(bot, ctx, a.dir, a.far, lookAround));
         case "dig_down":
           return run("dig_down", () => digDown(bot, ctx));
+        case "tunnel":
+          return run("tunnel", () => tunnel(bot, ctx, { dir: a.dir, length: a.length, through: a.through }));
         case "climb_up":
           return run("climb_up", () => climbUp(bot, ctx));
         case "collect": {

@@ -1,6 +1,7 @@
 // `dig_down`: a staircase cut down toward stone, one step at a time, and `climb_up`, the way back out. The planning is
 // dig-down-plan.ts; this walks it: each block checked by dig-safety just before it is dug, every wait bounded.
 import type { Bot } from "mineflayer";
+import type { Block } from "prismarine-block";
 import { goals } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
 import "mineflayer-tool"; // types for bot.tool
@@ -24,22 +25,22 @@ const CLIMB_MS = 60_000;
 const RUN_MS = 5 * 60_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const grid = (bot: Bot): Grid => ({
+export const grid = (bot: Bot): Grid => ({
   name: nameAtOf(bot),
   solid: (p) => bot.blockAt(new Vec3(p.x, p.y, p.z))?.boundingBox === "block",
 });
 
 // the game's own word on whether a block can be broken at all (bedrock, barriers and the like cannot)
-const canBreak = (bot: Bot) => (name: string) => bot.registry.blocksByName[name]?.diggable !== false;
+export const canBreak = (bot: Bot) => (name: string) => bot.registry.blocksByName[name]?.diggable !== false;
 
-const same = (a: Pos, b: Pos) => a.x === b.x && a.y === b.y && a.z === b.z;
-const cellOf = (bot: Bot): Pos => {
+export const same = (a: Pos, b: Pos) => a.x === b.x && a.y === b.y && a.z === b.z;
+export const cellOf = (bot: Bot): Pos => {
   const p = bot.entity.position.floored();
   return { x: p.x, y: p.y, z: p.z };
 };
 
 // breaks one block, twice at most: a block that is back after the dig is a place the server protects
-async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos): Promise<void> {
+export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest = false): Promise<void> {
   const at = new Vec3(p.x, p.y, p.z);
   let completed = false;
   const mark = (b: { position: { equals(o: unknown): boolean } }) => {
@@ -51,7 +52,7 @@ async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos): Promise<void> {
       const block = bot.blockAt(at);
       if (!block || block.boundingBox !== "block") return;
       try {
-        await bot.tool.equipForBlock(block, { requireHarvest: false });
+        await bot.tool.equipForBlock(block, { requireHarvest });
       } catch {
         // bare hands then
       }
@@ -123,22 +124,33 @@ export async function digDown(bot: Bot, ctx: MineCtx): Promise<{ detail: string 
 const FILL = ["dirt", "stone", "netherrack", "cobbled_deepslate", "cobblestone"];
 
 // A hole one under the foot of the stair (a floor taken for stone) is a rise of two to the first step: jump and
-// set a block under itself, as a player does, until it stands in the foot again.
+// set a block under itself, as a player does, until it stands in the foot again. The look down is made on the ground,
+// and the block is placed on the first physics tick the feet are clear of the pit's top: a look turned in the air, or a
+// poll that lands a tick late, put the packet in after the body had started to fall back into the cell, and the server
+// refused it ("the block is still air").
 async function fillPit(bot: Bot, ctx: MineCtx, foot: Pos): Promise<void> {
   const items = bot.inventory.items();
   const item = FILL.map((name) => items.find((i) => i.name === name)).find((i) => i !== undefined);
   if (!item) throw new TaskError("stuck", "it is in a hole with nothing to fill it");
   await bot.equip(item, "hand");
   const below = new Vec3(foot.x, foot.y - 2, foot.z); // the pit floor
+  const place = (bot as unknown as { _placeBlockWithOptions(ref: Block, face: Vec3, o: object): Promise<void> })._placeBlockWithOptions;
+  const tick = () => new Promise<void>((r) => bot.once("physicsTick", () => r()));
   for (let attempt = 0; attempt < 4 && cellOf(bot).y < foot.y; attempt++) {
     ctx.checkStop();
     const floor = bot.blockAt(below);
     if (!floor) return;
+    await bot.lookAt(floor.position.offset(0.5, 1, 0.5), true);
     bot.setControlState("jump", true);
     const start = Date.now();
-    while (Date.now() - start < 1200 && bot.entity.position.y < foot.y - 1 + 1.02) await sleep(25);
+    while (Date.now() - start < 1200 && bot.entity.position.y < foot.y + 0.05) await tick();
     bot.setControlState("jump", false);
-    await bot.placeBlock(floor, new Vec3(0, 1, 0)).catch((err: Error) => log.warn("place failed", { message: err.message }));
+    const y = bot.entity.position.y;
+    const placed = await place.call(bot, floor, new Vec3(0, 1, 0), { swingArm: "right", forceLook: "ignore" }).then(() => true, (err: Error) => {
+      log.warn("place failed", { message: err.message, feetY: y, footY: foot.y, attempt });
+      return false;
+    });
+    if (placed) log.info("pit filled", { attempt, feetY: y, footY: foot.y });
     await sleep(400);
   }
 }
