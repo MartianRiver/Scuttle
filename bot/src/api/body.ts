@@ -1,6 +1,7 @@
 import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
+import { yieldToOrder } from "../behaviors/bedtime";
 import { isFleeing, mobsNearWords, noteStop } from "../behaviors/defence";
 import { beginEscort, endEscort } from "../behaviors/escort";
 import { giveItem } from "../behaviors/give";
@@ -45,6 +46,8 @@ export function createBody(bot: Bot): BodyControl {
   // explore looks around at every stop; its own table, so the handles a mind holds are not pushed out
   const lookAround = createObserver(bot, new HandleTable());
 
+  let orders = 0; // bumped by anything that takes the body, so a follow still waiting for it to wake can tell
+
   const vitalOrNull = (n: number | undefined) => (typeof n === "number" ? n : null);
 
   return {
@@ -59,6 +62,7 @@ export function createBody(bot: Bot): BodyControl {
 
     async comeTo(player) {
       endEscort();
+      await yieldToOrder(bot);
       const target = bot.players[player]?.entity;
       if (!target) throw new Error("lost sight of them");
       const { x, y, z } = target.position;
@@ -77,26 +81,33 @@ export function createBody(bot: Bot): BodyControl {
       endEscort();
       const target = bot.players[player]?.entity;
       if (!target) return;
-      void setStatus({ task: `following ${player}` });
-      bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), true);
+      const asked = ++orders;
+      void yieldToOrder(bot).then(() => {
+        if (asked !== orders) return; // a stop or a newer order came in while it got up
+        void setStatus({ task: `following ${player}` });
+        bot.pathfinder.setGoal(new goals.GoalFollow(target, 2), true);
+      });
     },
 
     guard: (player) => beginEscort(player),
 
-    goTo(handle) {
+    async goTo(handle) {
       endEscort();
+      await yieldToOrder(bot);
       return goTo(bot, handles, handle);
     },
     handleLabel: (handle) => destination(bot, handles, handle)?.label ?? null,
     observe,
 
-    give(player, item, count) {
+    async give(player, item, count) {
       endEscort();
+      await yieldToOrder(bot);
       return giveItem(bot, player, item, count);
     },
 
     async runTask(name, near, report) {
       endEscort();
+      await yieldToOrder(bot);
       let aim: Vec3 | undefined;
       if (near) {
         aim = destination(bot, handles, near)?.at() ?? undefined;
@@ -109,6 +120,7 @@ export function createBody(bot: Bot): BodyControl {
 
     async runAction(a: ActionIntent, report) {
       endEscort();
+      await yieldToOrder(bot);
       const run = (name: string, work: () => Promise<{ stored?: Record<string, number>; saw?: string; detail?: string } | void>) =>
         runAction(bot, name, work, { onProgress: report }).then(outcomeOf);
       const ctx = actionCtx(bot);
@@ -148,6 +160,8 @@ export function createBody(bot: Bot): BodyControl {
 
     stop() {
       endEscort();
+      orders++;
+      void yieldToOrder(bot);
       noteStop();
       requestStop(bot);
       bot.pathfinder.setGoal(null);
@@ -155,6 +169,8 @@ export function createBody(bot: Bot): BodyControl {
     },
 
     interrupt() {
+      orders++;
+      void yieldToOrder(bot);
       requestStop(bot);
       bot.pathfinder.setGoal(null);
     },
