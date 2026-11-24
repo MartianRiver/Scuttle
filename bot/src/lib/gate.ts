@@ -6,14 +6,22 @@ import type { Block } from "prismarine-block";
 import { Vec3 } from "vec3";
 import { TaskError } from "../behaviors/fail";
 import { refusedNow, reverted } from "../behaviors/refused";
+import { journal, record } from "./journal";
 import { check, GrantStore, memoNames, PlaceBudget, type CheckOpts, type Op, type Refusal, type Verdict, type World } from "./policy";
 import type { NameAt, Pos } from "./block-rules";
 
 export const grants = new GrantStore();
 export const placeBudget = new PlaceBudget();
 
-// the journal plugs in here: true when the body placed this block and it is still what it placed
-export const hooks = { isOwn: (_p: Pos, _blockNow: string): boolean => false };
+// the journal's word that the body placed this block and it is still what it placed; the one seam a test replaces
+export const hooks = { isOwn: (p: Pos, blockNow: string): boolean => journal.ownAt(p, blockNow) };
+
+// after a door changed the world: the journal line. A dig the server undid, or a place that did not take, changed
+// nothing, so it is not written (an own table the server put back stays own)
+export function done(op: Op, before: string, after: string, now: number = Date.now()): void {
+  if (before === after) return;
+  record({ t: now, op: op.kind, pos: { x: op.pos.x, y: op.pos.y, z: op.pos.z }, before, after, job: op.job, own: op.kind === "place" });
+}
 
 export type Refused = Extract<Verdict, { ok: false }>;
 

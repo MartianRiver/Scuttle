@@ -39,6 +39,10 @@ Client → bot:
 {"type":"intent","id":"d5","intent":"store"}                       or "item":"oak_log","count":20
 {"type":"intent","id":"d6","intent":"take","item":"oak_log","count":8}
 {"type":"intent","id":"d7","intent":"stash"}
+{"type":"intent","id":"p1","intent":"place","item":"crafting_table","where":"here"}   where: here | ahead | wall | on b17kq (or on table)
+{"type":"intent","id":"p2","intent":"pick_up","handle":"b17kq"}
+{"type":"intent","id":"p3","intent":"make_base"}
+{"type":"intent","id":"p4","intent":"store","item":"oak_log","chest":"b17kq"}      `chest` also on take
 {"type":"intent","id":"d8","intent":"explore","dir":"north-east","far":"a fair way"}
 ```
 
@@ -48,7 +52,7 @@ by name (`home`, `table`, `stash`, `furnace`, `bed`); anything else is `bad_inte
 A task's optional `near` is a block handle or a known place by name (not a mob's handle, which moves: `bad_intent`),
 see Rules.
 `item` is a Minecraft item name (`^[a-z_]{1,48}$`, no namespace) and `count` an integer 1 to 64, optional (`collect`: 1 to 16, and its
-`handle` must be a block handle, `b` and a number, never a mob or a place). `dir` is one of the eight compass points (`north`,
+`handle` must be a block handle, `b` and a number, never a mob or a place). `place`'s `where` is a word (`here`, `ahead`, `wall`, or `on` and a block handle or place name), never a position; `pick_up`'s `handle` and `store`/`take`'s `chest` are a block handle or a place name. `dir` is one of the eight compass points (`north`,
 `north-east`... `north-west`) and `far` one of `near`, `a short walk` (the default), `a fair way`, `far`. `store` takes a `count` only with an `item`.
 There is no coordinate or command field anywhere, and there won't be one. `say` is the one
 free-text field (so the consumer can talk through the body): one public chat
@@ -67,7 +71,7 @@ Bot → client:
 {"type":"rejected","id":"c1","reason":"busy"}            (`detail`? in words for in_danger: `a zombie is close`, `in deep water, swimming out`, `in lava`, `on fire`)
                                                          busy | in_fight | not_in_game |
                                                          unknown_player | in_danger | bad_intent | rate_limited |
-                                                         stale_handle | unknown_item | none_held | too_far
+                                                         stale_handle | unknown_item | none_held | not_enabled | too_far
 {"type":"status","id":"c5","snapshot":{…}}               reply to `status`
 {"type":"observation","id":"c8","observation":{…}}       reply to `observe`
 {"type":"recipe","id":"d1","recipe":{…}}                 reply to `recipe`
@@ -182,7 +186,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `starving` | `food`. Critical hunger (food 6 or less), once per episode (until food is back at 15), whether or not it carries food. Wakes `wait`. A meal while running from mobs needs food 6 or less and the nearest threat 14 or more blocks off, never mid-fight |
 | `task_progress` | `taskId`, `step` (the status text: `gathering wood`, `crafting tools`, `mining stone`, `smelting`, `stashing ore`...), `got`? (items gained so far). Only for a `task`, on a change of step and at most one every 15 s, never closer than 2 s: a 2-minute task makes a handful. It is only a commentary: a client that waits for a task's end has no reason to wake for it |
 | `task_finished` | `taskId`, `got`? (items gained in the run, net of what it used, counting what it stashed: `{"oak_log":11}`, the 4 biggest; for a `task` and the long actions below), `stored`? (a `store`: what went into the stash, up to 8 items), `saw`? (an `explore`: kinds newly in view, in words, no digit; a `tunnel` with `through`: the ore it passed), `detail`? (a `dig_down`, `tunnel` or a `collect` that got fewer than asked: why it ended, in words) |
-| `task_failed` | `taskId`, `reason`, `detail`?, `got`?, `missing`? (a `craft` that was short: item counts, for the whole count). `detail` is a short line of words (no digit, 120 characters at most) about the cause: `three digs undone near the trees, a fair way south-west`, `in deep water while walking to home, no way out found`, `no natural trees it may cut in range`, `no progress while stashing wood`; `got` as for `task_finished`, what it had when it failed. `reason`: `protected` (the server undid the digs three times in the run, or the only trees or ore left are in places where it did; the places are kept, see `refused`), `no_trees`, `no_stone` (a `get_stone` found no natural stone it may dig within 40 blocks of home and above y 30, or none it could take), `no_pickaxe` (a `get_stone` while holding no pickaxe, a `get_iron` while holding none at stone level or better), `no_ore` (a `get_iron` found no iron ore with a face in the open, or none it could take), `no_fuel` (a `get_iron` with no coal to smelt on, held or found), `smelt_failed` (a `get_iron` that found no furnace it may use, or got no ingot out), `none_held` (a `give` with nothing of that item to spare, see Rules), `stale_handle` (a `go_to` whose mob was gone mid-walk), `no_tool` (a `collect` of a block that needs a pickaxe it does not carry; `detail` says which), `refused` (a `collect` of a block that is not natural, has a player's build too near it, is not safe to dig, or sits in a place where digs were undone; `detail` says which), `missing` (a `craft` short of ingredients, `missing` says what), `no_table` (a `craft` needing a table with none in reach and none at home), `no_recipe` (a `craft` of something nothing crafts), `craft_failed`, `none_stashed` (a `take` of what its chests do not hold), `stash_full` (a `store` with no room), `inventory_full` (a `take` with no room), `no_stash` (no stash in this world, or no chest where one should be), `blocked` (an `explore` stopped by water, lava, a cliff or a drop; `detail` says which way), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges, and in water it swims to the nearest bank once and walks on, ending `stuck` with a `detail` saying water if it can't get out or is stuck in water again; also ends a `come_to`, a `go_to` or a `give`, a `get_wood` that got no wood, a `get_stone` whose attempts got no stone, and a `get_iron` whose attempts got no coal or iron), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`; a hazard adds a `detail`: `in lava`, `in fire`, `on fire`, `in deep water, swimming for the bank`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
+| `task_failed` | `taskId`, `reason`, `detail`?, `got`?, `missing`? (a `craft` that was short: item counts, for the whole count). `detail` is a short line of words (no digit, 120 characters at most) about the cause: `three digs undone near the trees, a fair way south-west`, `in deep water while walking to home, no way out found`, `no natural trees it may cut in range`, `no progress while stashing wood`; `got` as for `task_finished`, what it had when it failed. `reason`: `protected` (the server undid the digs three times in the run, or the only trees or ore left are in places where it did; the places are kept, see `refused`), `no_trees`, `no_stone` (a `get_stone` found no natural stone it may dig within 40 blocks of home and above y 30, or none it could take), `no_pickaxe` (a `get_stone` while holding no pickaxe, a `get_iron` while holding none at stone level or better), `no_ore` (a `get_iron` found no iron ore with a face in the open, or none it could take), `no_fuel` (a `get_iron` with no coal to smelt on, held or found), `smelt_failed` (a `get_iron` that found no furnace it may use, or got no ingot out), `none_held` (a `give` with nothing of that item to spare, see Rules), `stale_handle` (a `go_to` whose mob was gone mid-walk), `no_tool` (a `collect` of a block that needs a pickaxe it does not carry; `detail` says which), `refused` (a `collect` of a block that is not natural, has a player's build too near it, is not safe to dig, or sits in a place where digs were undone; `detail` says which), `missing` (a `craft` short of ingredients, `missing` says what), `no_table` (a `craft` needing a table with none in reach, none carried to set down and none at its base), `no_recipe` (a `craft` of something nothing crafts), `craft_failed`, `none_stashed` (a `take` of what its chests do not hold), `stash_full` (a `store` with no room), `inventory_full` (a `take` with no room), `not_allowed` / `no_room` / `not_yours` / `not_empty` / `not_ready` (`place`, `pick_up`, `make_base`; see their lines), `no_stash` (no stash in this world, or no chest where one should be), `blocked` (an `explore` stopped by water, lava, a cliff or a drop; `detail` says which way), `stuck` (a walk made no progress: under a block in 8 s, even after two nudges, and in water it swims to the nearest bank once and walks on, ending `stuck` with a `detail` saying water if it can't get out or is stuck in water again; also ends a `come_to`, a `go_to` or a `give`, a `get_wood` that got no wood, a `get_stone` whose attempts got no stone, and a `get_iron` whose attempts got no coal or iron), `interrupted` (hostile mobs, a hazard or a fall took the body; never for a `guard`; a hazard adds a `detail`: `in lava`, `in fire`, `on fire`, `in deep water, swimming for the bank`), `lost_ward` (a `guard` whose player was out of view or over 48 blocks away for 15 s), `disconnected`, `died`, or a short message |
 | `task_stopped` | `taskId` |
 | `sleeping` | the body is in its bed |
 | `woke` | it got up: morning, an order, damage, a reflex |
@@ -249,7 +253,8 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   the made-block no-dig zones, natural blocks only (nothing a player placed), and the places the server undid digs in.
   - `craft {item, count?}` makes `count` of the item (default 1, max 64, rounded up to whole recipe batches) with `recipe`'s choice of recipe.
     It checks the whole count first (`missing`, before any walking) and again at the table. A recipe that fits 2x2 is made in the
-    inventory; otherwise at a crafting table: the nearest within 16 blocks, else the home table (not past 160 blocks), else `no_table`. It never
+    inventory; otherwise at a crafting table: the nearest within 16 blocks, else one it carries (only where placing is on: it sets the table down beside
+    itself, crafts, and picks it up again; a table it did not set down is never taken), else the base's table (not past 160 blocks), else `no_table`. It never
     makes ingredients for another craft: planks from logs, sticks from planks are separate calls. Clicks are paced (see QUIRKS).
   - `collect {handle, count?}` digs what a block handle points at, with the best tool carried, and picks up the drops. A tree handle (the base log)
     takes the logs of that trunk, bottom first, those within reach (a 2 by 2 trunk is one tree; a post or wall touching the trunk is not part of it).
@@ -259,11 +264,28 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   - `equip {item}`: armour to its slot, a shield to the off hand, anything else to the hand. Taken at once and accepted with no `taskId` (like `say`; not a
     task), `none_held` if it carries none, `busy` while a task or action runs. The swap is made a moment later. Nothing idle takes it back (a meal puts back
     the item held before it, which is this one); a fight chooses its own weapon.
-  - `store {item?, count?}` walks to its own stash chests and puts items in. No item: everything except what it works with: tools, weapons and armour it
+  - `store {item?, count?, chest?}` walks to one of its own chests and puts items in: a chest it set down itself or the base's stash chests, never anyone else's.
+    `chest` (a block handle, `your chest` in `blocks`, or the place `stash`) names one, `not_yours` for any other chest; without it the own chests within 16 blocks
+    (nearest first), else the base's stash. No item: everything except what it works with: tools, weapons and armour it
     carries, food up to 16 (the best first), 4 cobblestone and 4 coal. With an item it stores that, up to `count` (all by default), a tool too. Ends
     `task_finished` with `stored`; `none_held` when there is nothing to put, `stash_full` when nothing fit.
-  - `take {item, count?}` takes up to `count` (default a stack) from the chests that may hold it. Ends `task_finished` with `got` (maybe less than asked), or
-    `none_stashed`, `inventory_full`.
+  - `take {item, count?, chest?}` takes up to `count` (default a stack) from the chests that may hold it (its own chests nearest first, then the base's stash; or only
+    `chest`, `not_yours` if that is not its own). Ends `task_finished` with `got` (maybe less than asked), or `none_stashed`, `inventory_full`.
+  - `place {item, where?}` sets a block it carries down. `item`: `crafting_table`, `furnace`, `chest`, `torch`, any bed, or `dirt`, `cobblestone`,
+    `cobbled_deepslate`, `netherrack`; anything else is `not_allowed`, an item it does not hold `none_held`. `where` (default `here`): `here` the ground beside it (the
+    way it faces first), `ahead` the cell in front, `wall` a torch on a wall within reach, `on <handle>` on top of that block. The body picks the exact cell: free, with
+    something solid to set it on, nobody standing in it, a bed with two clear cells in line away from it, two chests never side by side; and the gate's rules for a place
+    from the hands, which count the made radius and the places the server undid work as for a dig (`refused`, `detail` "something a player built is too close", try
+    somewhere else). A place the server undoes ends `protected` and the place is remembered like an undone dig. Ends `task_finished` with `detail` saying what and where in
+    words (`a crafting table beside it`, `a torch on the wall`), `no_room` (nothing free or in reach; `detail` says which), `stale_handle`. What it sets down is journalled
+    as its own and `observe` lists it in `blocks` as `your crafting table`, `your chest` (a chest also carries `has`, what it last saw in it), `your furnace` or `your bed`,
+    with a handle. `rejected` `not_enabled` unless the body runs with `PLACEMENT=on` (the test world's `bot.env` only).
+  - `pick_up {handle}` breaks a block the journal says it set down (and that is still that block) and picks the drop up: `not_yours` for anything else, `not_empty` for a
+    chest or furnace with things in it, `no_tool` for a furnace without a pickaxe, `stale_handle`. Same `not_enabled`.
+  - `make_base` makes where it stands the base: refused `not_ready` (`detail` names what is missing) unless its own bed, crafting table and a chest, all set down by it,
+    are within 8 blocks, `refused` beside a build or `protected` in a place where its work was undone. The base (bed, table, up to two own furnaces and three own chests
+    near them) is written beside the journal and replaces home for `get_wood`/`get_stone`/`get_iron`, `store`, `craft`'s table, bedtime, the 160-block leash and
+    `observe`'s places (`home` then reads `your base`). Without one, home is the fixed place it started at. Same `not_enabled`.
   - `explore {dir, far?}` walks in a compass direction from where it stands, in legs of up to 14 blocks toward a point just inside the band's upper edge
     (`near` 16, `a short walk` 32, `a fair way` 48, `far` 128 blocks), turned aside by 45 or 90 degrees when a leg is stuck, with the swim rescue of any walk.
     It never goes past 160 blocks (flat) from the bed: an end point past it is `rejected` `too_far` before anything moves (and so is any `explore` outside the

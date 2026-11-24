@@ -2,6 +2,8 @@ import mineflayer from "mineflayer";
 import { pathfinder } from "mineflayer-pathfinder";
 import { plugin as collectBlockPlugin } from "mineflayer-collectblock";
 import { config } from "./lib/config";
+import { openBase } from "./lib/base";
+import { openJournal } from "./lib/journal";
 import { logger } from "./lib/logger";
 import { getStatus, setStatus } from "./lib/status";
 import { safeMovements } from "./lib/movement";
@@ -21,6 +23,10 @@ import { exitDelayMs, isDuplicateLogin } from "./lib/restart";
 import path from "node:path";
 
 const log = logger("bot");
+
+// what it changed and where it lives, per bot name, kept across restarts
+openJournal(config.profilesFolder, config.username);
+openBase(config.profilesFolder, config.username);
 
 function describeLocation(bot: import("mineflayer").Bot): string {
   const { x, y, z } = bot.entity.position;

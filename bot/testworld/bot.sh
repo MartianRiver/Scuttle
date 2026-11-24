@@ -15,6 +15,7 @@ MC_AUTH=offline
 API_HOST=127.0.0.1
 API_PORT=$API_PORT
 API_TOKENS=local:$(openssl rand -hex 24)
+PLACEMENT=on
 ENV
 fi
 cd "$here/.."

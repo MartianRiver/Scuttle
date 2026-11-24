@@ -21,6 +21,10 @@ export const config = {
   // rather than the OS-wide default mineflayer/prismarine-auth otherwise picks
   profilesFolder: path.join(__dirname, "..", "..", ".auth-cache"),
 
+  // the hands that set blocks down (place, pick_up, make_base): off unless PLACEMENT=on, which only the test world's
+  // bot.env sets. Off, they answer rejected not_enabled and craft and smelt behave as before.
+  placement: process.env.PLACEMENT === "on",
+
   // pushes embodiment status to the plugin's /scuttle embodiment command — the bot and the
   // plugin run on different machines (a separate box vs. the game host), so RCON is the seam, not a
   // shared file. Optional: left unset, status.ts just logs once and stops trying.

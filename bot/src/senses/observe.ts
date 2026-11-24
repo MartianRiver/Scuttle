@@ -13,7 +13,9 @@ import { STONE_MIN_Y, STONE_RANGE } from "../behaviors/stone-plan";
 import { STONE_STOP } from "../behaviors/dig-down-plan";
 import { isStairStep, stairFacing, stairLeads, stairTop } from "../behaviors/stair";
 import { armourPoints } from "../behaviors/stance";
-import { home } from "../lib/home";
+import { base } from "../lib/base";
+import { journal } from "../lib/journal";
+import { spotKey, stashMemory, stashSummary } from "../behaviors/stash-plan";
 import { isPlainLogName } from "../lib/movement";
 import { durabilityLeft, mobHealthBand, timeWords, weatherWords } from "./bands";
 import { compose, type Observation, type RawBlock, type RawEntity, type RawSense } from "./compose";
@@ -35,7 +37,8 @@ export function placeSpot(p: Place): Vec3 | null {
     const top = stairTop();
     return top ? new Vec3(top.x, top.y, top.z) : null;
   }
-  return p === "table" ? home.craftingTable : p === "stash" ? home.stashChests[0] : p === "furnace" ? home.furnaces[0] : home.bed[0];
+  // a base made in the field may have no furnace or chest yet
+  return (p === "table" ? base.craftingTable : p === "stash" ? base.stashChests[0] : p === "furnace" ? base.furnaces[0] : base.bed[0]) ?? null;
 }
 
 const centre = (p: Vec3) => p.offset(0.5, 0.5, 0.5);
@@ -109,7 +112,7 @@ function gather(v: View): RawSense {
     armor: armourPoints(worn),
     time: overworld && typeof bot.time.timeOfDay === "number" ? timeWords(bot.time.timeOfDay) : null,
     weather: weatherWords((bot as unknown as { rainState: number }).rainState ?? 0, bot.thunderState),
-    where: describeLevel(feet, home.bed[0], bot.game.dimension, overworld ? coverOver(bot, feet) : undefined),
+    where: describeLevel(feet, base.bed[0], bot.game.dimension, overworld ? coverOver(bot, feet) : undefined),
     held: bot.heldItem?.name ?? null,
     items,
     tools,
@@ -144,7 +147,7 @@ function seenPlaces(v: View): NonNullable<RawSense["places"]> {
   for (const name of PLACES) {
     const spot = placeSpot(name);
     if (!spot) continue;
-    out.push({ name, ...v.rel(centre(spot)), ...(name === "stair" && { leads: stairLeads(v.feet) }) });
+    out.push({ name, ...v.rel(centre(spot)), ...(name === "stair" && { leads: stairLeads(v.feet) }), ...(name === "home" && base.made && { yours: true }) });
   }
   return out;
 }
@@ -192,7 +195,7 @@ function seenBlocks({ bot, handles, opaque, feet, eye, rel }: View): RawBlock[] 
     if (id !== undefined) found.push(...bot.findBlocks({ matching: id, maxDistance: SIGHT_BLOCKS, count: 30 }));
   }
   // a known place that is also in view is listed once, under its place handle
-  const spots = new Set([...PLACES.filter((p) => p !== "home" && p !== "stair").map(placeSpot), home.bed[1]].map((v) => (v as Vec3).toString()));
+  const spots = new Set([...PLACES.filter((p) => p !== "home" && p !== "stair").map(placeSpot), base.bed[1]].filter((v): v is Vec3 => v !== null).map((v) => v.toString()));
 
   const listed = new Map<string, number>();
   const tested = new Map<string, number>();
@@ -208,7 +211,10 @@ function seenBlocks({ bot, handles, opaque, feet, eye, rel }: View): RawBlock[] 
     if (!blockVisible(eye, pos, opaque)) continue;
     listed.set(kind, (listed.get(kind) ?? 0) + 1);
     const handle = handles.mint({ kind: "block", x: pos.x, y: pos.y, z: pos.z, name: block.name });
-    out.push({ handle, what: block.name, ...rel(centre(pos)) });
+    // what it set down itself says so: a chest of its own also says what it last saw in it
+    const own = journal.ownAt(pos, block.name);
+    const has = own && kind === "chest" ? stashSummary(stashMemory.lookAt(spotKey(pos))) : null;
+    out.push({ handle, what: own ? `your ${block.name.replace(/_/g, " ")}` : block.name, ...(has && { has }), ...rel(centre(pos)) });
   }
   return out;
 }
@@ -240,7 +246,7 @@ function seenStone({ bot, opaque, feet, eye, rel }: View): { rel: { dx: number; 
   const nameAt = (p: { x: number; y: number; z: number }) => bot.blockAt(new Vec3(p.x, p.y, p.z), false)?.name ?? null;
   let tested = 0;
   for (const pos of bot.findBlocks({ matching: id, maxDistance: SIGHT_BLOCKS, count: 64 }).sort((a, b) => a.distanceTo(feet) - b.distanceTo(feet))) {
-    if (pos.y <= STONE_MIN_Y || pos.distanceTo(home.craftingTable) > STONE_RANGE || reverted.covers(pos)) continue;
+    if (pos.y <= STONE_MIN_Y || pos.distanceTo(base.craftingTable) > STONE_RANGE || reverted.covers(pos)) continue;
     if (!hasOpenFace(pos, opaque)) continue;
     if (++tested > 20) break;
     if (blockVisible(eye, pos, opaque) && safeToDig(pos, nameAt)) return { rel: rel(centre(pos)), at: pos, name: "stone" };

@@ -5,4 +5,6 @@ set -euo pipefail
 source "$(dirname "$0")/slot.sh"
 if nc -z 127.0.0.1 "$MC_PORT" 2>/dev/null; then echo "server is running, stop it first" >&2; exit 1; fi
 rm -rf "$RUN_DIR"/world "$RUN_DIR"/world_nether "$RUN_DIR"/world_the_end "$RUN_DIR"/plugins/WorldGuard/worlds
+# what the bot remembers of the old world: its journal of changes and the base it made
+rm -f "$ROOT/bot/.auth-cache/journal-$BOT_NAME.jsonl" "$ROOT/bot/.auth-cache/journal-$BOT_NAME.jsonl.1" "$ROOT/bot/.auth-cache/base-$BOT_NAME.json"
 echo "worlds removed"

@@ -1,6 +1,6 @@
 import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
-import { home } from "../lib/home";
+import { base } from "../lib/base";
 import { craftItem, inventoryReply, itemCount } from "../lib/inventory";
 import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
@@ -62,9 +62,9 @@ async function craftIronTools(bot: Bot, ctx: MineCtx, plan: IronPlan, ingots: nu
     return;
   }
   await setStatus({ task: "crafting iron tools" });
-  await walkTo(bot, new goals.GoalNear(home.craftingTable.x, home.craftingTable.y, home.craftingTable.z, 2));
+  await walkTo(bot, new goals.GoalNear(base.craftingTable.x, base.craftingTable.y, base.craftingTable.z, 2));
   ctx.checkStop();
-  const table = bot.blockAt(home.craftingTable);
+  const table = bot.blockAt(base.craftingTable);
   if (!table) throw new Error("crafting table isn't where I expected it");
 
   if (!(await ensureSticks(bot, (makePick ? 2 : 0) + (makeSword ? 1 : 0), ctx.stopping))) {

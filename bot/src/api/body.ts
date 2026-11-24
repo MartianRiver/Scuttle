@@ -13,11 +13,13 @@ import { tunnel } from "../behaviors/tunnel";
 import { equipItem, equipSlot } from "../behaviors/equip";
 import { pinHand } from "../behaviors/idle-hand";
 import { canExplore, explore } from "../behaviors/explore";
+import { makeBase, pickUpBlock, put, type WhereWord } from "../behaviors/put";
 import { collect } from "../behaviors/harvest";
-import { stashMemory, stashPlaces, store, take } from "../behaviors/stash";
+import { stashCount, stashMemory, store, take } from "../behaviors/stash";
 import { hazardWords, isInHazard } from "../behaviors/survive";
 import { actionCtx, isTaskRunning, requestStop, runAction, startTask, type TaskResult } from "../behaviors/task";
 import { StuckError, walkTo } from "../behaviors/unstuck";
+import { config } from "../lib/config";
 import { speak } from "../lib/speech";
 import { setStatus } from "../lib/status";
 import { HandleTable } from "../senses/handles";
@@ -46,6 +48,17 @@ export function createBody(bot: Bot): BodyControl {
   const observe = createObserver(bot, handles);
   // explore looks around at every stop; its own table, so the handles a mind holds are not pushed out
   const lookAround = createObserver(bot, new HandleTable());
+
+  // the position a block handle or a place name points at, inside the body only
+  const posOf = (handle: string): Vec3 => {
+    const at = destination(bot, handles, handle)?.at();
+    if (!at) throw new Error("stale_handle");
+    return at;
+  };
+  const whereOf = (where: string | undefined): WhereWord => {
+    if (!where || where === "here" || where === "ahead" || where === "wall") return { word: (where ?? "here") as "here" | "ahead" | "wall" };
+    return { word: "on", target: posOf(where.slice(3)) };
+  };
 
   let orders = 0; // bumped by anything that takes the body, so a follow still waiting for it to wake can tell
 
@@ -129,9 +142,15 @@ export function createBody(bot: Bot): BodyControl {
         case "craft":
           return run("craft", () => craft(bot, ctx, a.item, a.count));
         case "store":
-          return run("store", () => store(bot, ctx, a.item, a.count));
+          return run("store", () => store(bot, ctx, a.item, a.count, a.chest ? posOf(a.chest) : undefined));
         case "take":
-          return run("take", () => take(bot, ctx, a.item, a.count));
+          return run("take", () => take(bot, ctx, a.item, a.count, a.chest ? posOf(a.chest) : undefined));
+        case "place":
+          return run("place", async () => ({ detail: (await put(bot, ctx, a.item, whereOf(a.where))).detail }));
+        case "pick_up":
+          return run("pick_up", () => pickUpBlock(bot, ctx, posOf(a.handle)));
+        case "make_base":
+          return run("make_base", () => makeBase(bot, ctx));
         case "explore":
           return run("explore", () => explore(bot, ctx, a.dir, a.far, lookAround));
         case "dig_down":
@@ -149,12 +168,13 @@ export function createBody(bot: Bot): BodyControl {
     },
     knowsItem: (item) => Boolean(bot.registry.itemsByName[item]),
     recipe: (item) => recipeAnswer(bot, item),
-    stash: () => stashMemory.answer(stashPlaces.length),
+    stash: () => stashMemory.answer(stashCount()),
     equip(item) {
       const held = equipItem(bot, item);
       if (held && equipSlot(item) === "hand") pinHand(item);
       return held;
     },
+    placementOn: () => config.placement,
     canExplore: (dir, far) => canExplore(bot, dir as CompassPoint, far as ExploreBand | undefined),
 
     say: (text) => speak(bot, text, "say"),

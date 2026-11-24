@@ -60,3 +60,7 @@ test("the doors call the gate", () => {
   assert.match(text("lib/place-block.ts"), /check\(/);
   assert.match(text("lib/speech.ts"), /sayable\(/);
 });
+
+test("the journal is written only through the gate: record( is called in lib/gate.ts and defined in lib/journal.ts", () => {
+  assert.deepEqual(where(/\brecord\(/), ["lib/gate.ts", "lib/journal.ts"]);
+});

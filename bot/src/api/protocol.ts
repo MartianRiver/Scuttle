@@ -26,8 +26,11 @@ export type Intent =
   | { intent: "craft"; item: string; count?: number }
   | { intent: "collect"; handle: string; count?: number }
   | { intent: "equip"; item: string }
-  | { intent: "store"; item?: string; count?: number }
-  | { intent: "take"; item: string; count?: number }
+  | { intent: "store"; item?: string; count?: number; chest?: string }
+  | { intent: "take"; item: string; count?: number; chest?: string }
+  | { intent: "place"; item: string; where?: string }
+  | { intent: "pick_up"; handle: string }
+  | { intent: "make_base" }
   | { intent: "stash" }
   | { intent: "explore"; dir: CompassPoint; far?: ExploreBand }
   | { intent: "dig_down"; to?: DigTarget }
@@ -39,8 +42,13 @@ export type Intent =
   | { intent: "observe" };
 
 // the actions that run like a task: one at a time, with task events
-export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" }>;
-export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up"] as const;
+export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "place" | "pick_up" | "make_base" }>;
+export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "place", "pick_up", "make_base"] as const;
+// the intents that change the world with the hands; off unless the body's placement switch is on
+export const PLACING_INTENTS = ["place", "pick_up", "make_base"] as const;
+
+// where a `place` goes, in words: never a position
+export const WHERE_SHAPE = /^(?:here|ahead|wall|on (?:b[0-9]{1,9}[a-z]{2}|table|stash|furnace|bed))$/;
 
 export type ClientMsg =
   | { type: "auth"; token: string; since?: number; epoch?: string }
@@ -108,12 +116,26 @@ export function parseFrame(raw: string): Parsed {
       if (typeof m.item !== "string" || !ITEM.test(m.item)) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "craft":
-    case "take":
       if (!onlyKeys(m, ["type", "id", "intent", "item", "count"])) return bad;
       if (typeof m.item !== "string" || !ITEM.test(m.item) || !countIn(m.count, 64)) return bad;
       return { ok: true, msg: m as ClientMsg };
+    case "take":
+      if (!onlyKeys(m, ["type", "id", "intent", "item", "count", "chest"])) return bad;
+      if (typeof m.item !== "string" || !ITEM.test(m.item) || !countIn(m.count, 64)) return bad;
+      if (m.chest !== undefined && (typeof m.chest !== "string" || !NEAR_SHAPE.test(m.chest))) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "place":
+      if (!onlyKeys(m, ["type", "id", "intent", "item", "where"])) return bad;
+      if (typeof m.item !== "string" || !ITEM.test(m.item)) return bad;
+      if (m.where !== undefined && (typeof m.where !== "string" || !WHERE_SHAPE.test(m.where))) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "pick_up":
+      if (!onlyKeys(m, ["type", "id", "intent", "handle"])) return bad;
+      if (typeof m.handle !== "string" || !NEAR_SHAPE.test(m.handle)) return bad;
+      return { ok: true, msg: m as ClientMsg };
     case "store":
-      if (!onlyKeys(m, ["type", "id", "intent", "item", "count"])) return bad;
+      if (!onlyKeys(m, ["type", "id", "intent", "item", "count", "chest"])) return bad;
+      if (m.chest !== undefined && (typeof m.chest !== "string" || !NEAR_SHAPE.test(m.chest))) return bad;
       if (m.item !== undefined && (typeof m.item !== "string" || !ITEM.test(m.item))) return bad;
       if (!countIn(m.count, 64) || (m.count !== undefined && m.item === undefined)) return bad;
       return { ok: true, msg: m as ClientMsg };
@@ -145,6 +167,7 @@ export function parseFrame(raw: string): Parsed {
     case "observe":
     case "stash":
     case "climb_up":
+    case "make_base":
       if (!onlyKeys(m, ["type", "id", "intent"])) return bad;
       return { ok: true, msg: m as ClientMsg };
     default:

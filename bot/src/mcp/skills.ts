@@ -17,11 +17,13 @@ export interface ActArgs {
   to?: string;
   length?: number | string;
   through?: boolean;
+  where?: string;
+  chest?: string;
 }
 
 // where each act argument goes on the wire
 const WIRE: Record<keyof ActArgs, string> = {
-  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through",
+  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through", where: "where", chest: "chest",
 };
 
 export interface ActionDef {
@@ -79,11 +81,11 @@ export const ACTIONS: Record<string, ActionDef> = {
     ends: "task_finished (got= what it gained, counting what it stashed), or task_failed with a reason from that task's list, a detail= in words about why (e.g. three digs undone near the trees, a fair way south-west) and got= what it had gathered before. Anything running makes a task busy: stop first.",
   },
   craft: {
-    does: "Craft an item from the recipes the server has: count is how many you want made (default 1, max 64; the body rounds up to whole batches). Made in the inventory when the recipe fits a 2x2 grid, otherwise at a crafting table: one in reach or within about 16 blocks, else the home table. It does not make ingredients for you: planks come from logs (craft oak_planks), sticks from planks (craft stick), a pickaxe from planks and sticks; chain them yourself. Use the recipe tool first to see what an item takes.",
+    does: "Craft an item from the recipes the server has: count is how many you want made (default 1, max 64; the body rounds up to whole batches). Made in the inventory when the recipe fits a 2x2 grid, otherwise at a crafting table: one in reach or within about 16 blocks; failing that, one it carries (it sets it down beside itself, crafts, and picks it up again; only where placing is on); failing that, the table at its base. It does not make ingredients for you: planks come from logs (craft oak_planks), sticks from planks (craft stick), a pickaxe from planks and sticks; chain them yourself. Use the recipe tool first to see what an item takes.",
     required: ["item"],
     optional: ["count"],
     rejects: [...ACT_REJECTS, "unknown_item"],
-    ends: "task_finished with got= what it made; task_failed missing (missing= what it lacks, in total for the count), no_table (no table in reach and none at home), no_recipe (nothing crafts it: mined, found or smelted), craft_failed, stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+    ends: "task_finished with got= what it made; task_failed missing (missing= what it lacks, in total for the count), no_table (no table in reach, none carried to set down, and none at its base), refused or protected (a carried table had nowhere it may be set down: detail says why), no_recipe (nothing crafts it: mined, found or smelted), craft_failed, stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
   collect: {
     does: "Dig the block a handle from observe points at, with the right tool from its inventory, and pick up the drops. A tree handle (the base log) takes that tree's logs within reach; a stone or ore handle takes that block, or up to count (default 1, max 16) of the same kind touching it. Natural blocks only (logs, stone, ores, dirt, sand, gravel), never under or beside what a player built, never where the server undid its digs. Aiming it: observe lists trees, ores and the nearest stone with handles.",
@@ -100,18 +102,18 @@ export const ACTIONS: Record<string, ActionDef> = {
     ends: "Accepted with no taskId; the swap happens a moment later (observe held and armor show it). Rejected none_held if it carries none. Refused busy while a task or action runs, since those choose their own tools.",
   },
   store: {
-    does: "Walk to its own stash chests at home and put items in. With item (and optionally count) it stores that. With no item it stores everything except tools, weapons and armour it carries, food up to 16, and 4 cobblestone and 4 coal. Only its own stash, never anyone else's chest.",
+    does: "Walk to one of its own chests and put items in: a chest it set down itself (place chest) or the stash chests at its base, never anyone else's. chest (optional) is a handle from observe of one of those (your chest in blocks) or the place stash; without it, a chest of its own within about 16 blocks, else the base's stash. With item (and optionally count) it stores that. With no item it stores everything except tools, weapons and armour it carries, food up to 16, and 4 cobblestone and 4 coal.",
     required: [],
-    optional: ["item", "count"],
-    rejects: ACT_REJECTS,
-    ends: "task_finished with stored= what went in; task_failed none_held (nothing to spare), stash_full (no room), no_stash (not in the overworld, or no chest where expected), stuck, interrupted, died, disconnected. Like a task: busy while anything runs. The stash tool lists what the chests held when last seen.",
+    optional: ["item", "count", "chest"],
+    rejects: [...ACT_REJECTS, "stale_handle"],
+    ends: "task_finished with stored= what went in; task_failed none_held (nothing to spare), stash_full (no room), no_stash (not in the overworld, or no chest where expected), not_yours (the chest handle is a chest that is not its own), stuck, interrupted, died, disconnected. Like a task: busy while anything runs. The stash tool lists what its chests held when last seen.",
   },
   take: {
-    does: "Walk to its own stash chests and take an item out: up to count (default a stack, max 64). Opens the chests that may hold it.",
+    does: "Walk to its own chests and take an item out: up to count (default a stack, max 64). chest (optional) names one of its own chests as store does; without it, it opens the chests that may hold it: its own nearby ones first, then the base's stash.",
     required: ["item"],
-    optional: ["count"],
-    rejects: [...ACT_REJECTS, "unknown_item"],
-    ends: "task_finished with got= what it took (it may be less than asked); task_failed none_stashed (none of it in its chests), inventory_full, no_stash, stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+    optional: ["count", "chest"],
+    rejects: [...ACT_REJECTS, "unknown_item", "stale_handle"],
+    ends: "task_finished with got= what it took (it may be less than asked); task_failed none_stashed (none of it in its chests), inventory_full, no_stash, not_yours (the chest is not its own), stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
   explore: {
     does: `Walk in a compass direction (${COMPASS_POINTS.join(", ")}) for a distance band far (${EXPLORE_BANDS.join(", ")}; default a short walk: near ends about 8 to 16 blocks away, a short walk 16 to 32, a fair way 32 to 48, far 48 to 128), from where it stands, never past 160 blocks from home. It goes round water and cliffs when it can. Use it when nothing useful is in view.`,
@@ -119,6 +121,27 @@ export const ACTIONS: Record<string, ActionDef> = {
     optional: ["far"],
     rejects: [...ACT_REJECTS, "too_far"],
     ends: "task_finished with saw= kinds newly in view on the way, in words (trees, stone, iron ore, water, lava, doors, players; no handles: call observe next); task_failed blocked or stuck with detail= what is in the way (a cliff to the north, the sea to the east), interrupted, died, disconnected. Rejected too_far at once if the end point would be past the leash from home. Like a task: busy while anything runs.",
+  },
+  place: {
+    does: "Set a block it carries down, as a player does. item: crafting_table, furnace, chest, torch, any bed, or dirt, cobblestone, cobbled_deepslate, netherrack (scaffolding); nothing else, and never a fluid, fire, TNT, sign or redstone. where is a word, never a position: here (default: on the ground beside it), ahead (the cell in front of it), wall (a torch on a wall within reach) or on <handle> (on top of that block: on b17kq, or on table). The body chooses the exact cell: free, with something solid to set it on, nobody standing there, and not near anything a player built or where the server undid its work. A bed takes two cells in line away from it. What it sets down is its own: observe then lists it in blocks as your crafting table, your chest, your furnace or your bed, with a handle, so go_to, pick_up, store and take can use it. A crafting table and a furnace it carries are also set down for it by craft and by a smelt when none is near.",
+    required: ["item"],
+    optional: ["where"],
+    rejects: [...ACT_REJECTS, "unknown_item", "stale_handle", "not_enabled"],
+    ends: "task_finished with detail= what and where in words (a crafting table beside it); task_failed none_held (it carries none), not_allowed (not on the list of what it sets down), no_room (no free ground, wall or top within reach; detail says which), refused (something a player built is too close; detail says so, try somewhere else), protected (the server undid it, so it may not build near there; that place is remembered), stale_handle, stuck, interrupted, died, disconnected. Like a task: busy while anything runs. not_enabled: placing is switched off in this world.",
+  },
+  pick_up: {
+    does: "Break a block it set down itself and take it back into its pack: handle is a block handle from observe (your crafting table, your furnace, your chest, your bed, a torch) or a place name (table, furnace, stash, bed) that points at one. It never takes up anything it did not place, and never a block that has been replaced with a different kind since. A chest or furnace with things in it is refused so they do not spill: empty it first. A furnace needs a pickaxe.",
+    required: ["handle"],
+    optional: [],
+    rejects: [...ACT_REJECTS, "stale_handle", "not_enabled"],
+    ends: "task_finished with got= the block back in its pack and detail=; task_failed not_yours (it did not place that, or not that block), not_empty (it still holds things), no_tool (a furnace needs a pickaxe), stale_handle (the block is gone), refused or protected (the gate or the server said no), stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
+  make_base: {
+    does: "Make where it stands its base: home for everything it does from now on (get_wood, get_stone and get_iron walk back to its table, chest and furnace here; it sleeps in its bed here; the leash for explore is measured from here; observe shows it as home, your base). It needs its own bed, crafting table and a chest set down (place) within a few blocks of where it stands, and refuses on a place where the server undid its work or beside what a player built. A furnace of its own near them is added. It keeps the base across restarts. Without making one, home stays the fixed place it began at.",
+    required: [],
+    optional: [],
+    rejects: [...ACT_REJECTS, "not_enabled"],
+    ends: "task_finished with detail= this is its base now; task_failed not_ready (detail names what it lacks: a bed, a crafting table, a chest within a few blocks), refused (something a player built is too close, or not in the overworld), protected (a place where its digs were undone), interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
   dig_down: {
     does: "Cut a one-block-wide staircase down from where it stands, toward natural stone (to: stone, the only target and the default), facing whichever way is clear. It stops on stone, at most twelve steps down, and remembers the stair. observe then lists that stair among the places (go_to stair walks to its top, climb_up goes there) and the stone it stopped at as a block with a handle, so collect or get_stone can take it; tunnel then digs sideways from its foot. Refuses at once on or beside anything a player built, in a place where digs were undone, or with water or lava beside the way; stops before sand or gravel overhead. Never digs where it would let water or lava in.",
@@ -157,11 +180,12 @@ export const REJECTS: Record<string, string> = {
   not_in_game: "the body is not connected to the game server",
   unknown_item: "the game has no item by that name (lowercase_with_underscores, no namespace, like oak_planks)",
   none_held: "it does not carry that item",
+  not_enabled: "placing is switched off in this world: place, pick_up and make_base are not taken here",
   too_far: "the end point would be more than 160 blocks from home",
   stale_handle: "the body no longer has that handle (expired after 10 min unseen, from before a restart, the mob is gone, the block was mined); observe again for fresh ones",
   unknown_player: "that player is not in the body's loaded view (name wrong, offline or far away)",
   rate_limited: "too many requests (10 per 10 s) or chat too fast (one line per 2 s, 12 a minute, guard callouts included); slow down",
-  bad_intent: "the body refused the request as malformed (player: 1 to 17 of letters digits _ . ; item: lowercase_with_underscores; handle: from observe or a place name; near: a block handle or a place name, not a mob)",
+  bad_intent: "the body refused the request as malformed (player: 1 to 17 of letters digits _ . ; item: lowercase_with_underscores; handle: from observe or a place name; near: a block handle or a place name, not a mob; where: here, ahead, wall or on <handle>)",
   bad_args: "wrong or missing arguments for that action",
   api_offline: "the adapter has no connection to the body API; it keeps retrying",
   no_reply: "the request went out but no answer came; check status before repeating it",

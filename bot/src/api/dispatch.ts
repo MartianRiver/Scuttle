@@ -1,7 +1,7 @@
 import type { SpeechResult } from "../lib/speech";
 import { endFields, wordsOnly, type EndInfo, type EventLog } from "./events";
 import type { Observation } from "../senses/compose";
-import { ACTION_INTENTS, type ActionIntent, type Intent, type TaskName } from "./protocol";
+import { ACTION_INTENTS, PLACING_INTENTS, type ActionIntent, type Intent, type TaskName } from "./protocol";
 
 export type Got = Record<string, number>;
 export interface TaskDone {
@@ -61,6 +61,7 @@ export interface BodyControl {
   recipe(item: string): RecipeAnswer | null;
   stash(): StashAnswer;
   equip(item: string): boolean; // false: it holds none. The swap itself happens by itself, a moment later
+  placementOn(): boolean; // false: place, pick_up and make_base are refused `not_enabled` (only the test world switches them on)
   canExplore(dir: string, far: string | undefined): boolean; // false: the target is past the leash from home
   say(text: string): SpeechResult; // one public chat line, through lib/speech.ts: the one clock and the one text check
   stop(): void; // the API's stop
@@ -77,6 +78,7 @@ export type Reject =
   | "stale_handle"
   | "unknown_item"
   | "none_held"
+  | "not_enabled"
   | "too_far";
 export type Outcome =
   | { kind: "accepted"; taskId?: string }
@@ -199,10 +201,15 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     if (isAction(i)) {
       if (current || body.busy()) return { kind: "rejected", reason: "busy" };
       if ((i.intent === "craft" || i.intent === "take") && !body.knowsItem(i.item)) return { kind: "rejected", reason: "unknown_item" };
-      if (i.intent === "collect" && !body.handleLabel(i.handle)) return { kind: "rejected", reason: "stale_handle" };
+      if ((PLACING_INTENTS as readonly string[]).includes(i.intent) && !body.placementOn()) return { kind: "rejected", reason: "not_enabled" };
+      if (i.intent === "place" && !body.knowsItem(i.item)) return { kind: "rejected", reason: "unknown_item" };
+      // every handle an order names has to be live now: the block it points at, the block it goes on, the chest
+      const named = i.intent === "collect" || i.intent === "pick_up" ? i.handle : i.intent === "place" && i.where?.startsWith("on ") ? i.where.slice(3) : i.intent === "store" || i.intent === "take" ? i.chest : undefined;
+      if (named !== undefined && !body.handleLabel(named)) return { kind: "rejected", reason: "stale_handle" };
       if (i.intent === "explore" && !body.canExplore(i.dir, i.far)) return { kind: "rejected", reason: "too_far" };
       const what =
-        i.intent === "collect" ? i.handle
+        i.intent === "collect" || i.intent === "pick_up" ? i.handle
+        : i.intent === "make_base" ? "base"
         : i.intent === "explore" ? i.dir
         : i.intent === "store" ? (i.item ?? "all")
         : i.intent === "dig_down" ? (i.to ?? "stone")

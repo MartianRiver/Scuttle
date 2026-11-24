@@ -4,7 +4,7 @@ import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
 import type { CompassPoint, ExploreBand } from "../api/protocol";
-import { home } from "../lib/home";
+import { base } from "../lib/base";
 import { logger } from "../lib/logger";
 import { dryMovements, safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
@@ -38,7 +38,7 @@ const sight = (look: Observation) => kindsIn({ blocks: look.blocks as Array<{ wh
 export function canExplore(bot: Bot, dir: CompassPoint, far: ExploreBand = DEFAULT_BAND): boolean {
   if (!isOverworld(bot)) return false;
   const p = bot.entity.position;
-  return !tooFar(aimPoint(p, dir, far), home.bed[0]);
+  return !tooFar(aimPoint(p, dir, far), base.bed[0]);
 }
 
 const dir4 = (dir: CompassPoint): Spot => {
@@ -96,7 +96,7 @@ export async function explore(bot: Bot, ctx: MineCtx, dir: CompassPoint, far: Ex
   const band = far ?? DEFAULT_BAND;
   const start = bot.entity.position;
   const goal = aimPoint(start, dir, band);
-  if (!isOverworld(bot) || tooFar(goal, home.bed[0])) throw new TaskError("too_far", "that is past how far from home it goes");
+  if (!isOverworld(bot) || tooFar(goal, base.bed[0])) throw new TaskError("too_far", "that is past how far from home it goes");
 
   const first = sight(look());
   let seen = first;
@@ -129,7 +129,7 @@ export async function explore(bot: Bot, ctx: MineCtx, dir: CompassPoint, far: Ex
       // a leg whose line (and a few columns past its end) crosses deep water or lava is not walked: the next turn is
       const angle = detour < 0 ? 0 : DETOURS[detour];
       const to = legTo(here, goal, angle);
-      if (tooFar(to, home.bed[0])) break; // the leash ends the walk where it is
+      if (tooFar(to, base.bed[0])) break; // the leash ends the walk where it is
       if (firstHazard(columnsAlong(bot, here, to, LOOK_PAST))) {
         detour++;
         noGain++;

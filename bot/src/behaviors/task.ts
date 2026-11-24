@@ -1,7 +1,7 @@
 import type { Bot } from "mineflayer";
 import { goals, type Movements } from "mineflayer-pathfinder";
 import type { Vec3 } from "vec3";
-import { home } from "../lib/home";
+import { base } from "../lib/base";
 import { itemCount, craftItem } from "../lib/inventory";
 import { collectLog } from "../lib/collect";
 import { gatherMovements, isNaturalLog, isPlainLogName, safeMovements } from "../lib/movement";
@@ -272,9 +272,9 @@ async function gatherLogs(bot: Bot, aim?: Vec3): Promise<void> {
 
 async function craftBasics(bot: Bot): Promise<void> {
   await setStatus({ task: "crafting tools" });
-  await walkTo(bot, new goals.GoalNear(home.craftingTable.x, home.craftingTable.y, home.craftingTable.z, 2));
+  await walkTo(bot, new goals.GoalNear(base.craftingTable.x, base.craftingTable.y, base.craftingTable.z, 2));
   checkStop();
-  const table = bot.blockAt(home.craftingTable);
+  const table = bot.blockAt(base.craftingTable);
   if (!table) throw new Error("crafting table isn't where I expected it");
 
   const logName = pickLogVariant(bot);
@@ -309,7 +309,7 @@ async function craftBasics(bot: Bot): Promise<void> {
 
 async function depositSurplus(bot: Bot): Promise<void> {
   await setStatus({ task: "stashing wood" });
-  const chestPos = home.stashChests[0];
+  const chestPos = base.stashChests[0];
   await walkTo(bot, new goals.GoalNear(chestPos.x, chestPos.y, chestPos.z, 2));
   checkStop();
   const block = bot.blockAt(chestPos);
@@ -347,7 +347,7 @@ async function depositSurplus(bot: Bot): Promise<void> {
       }
     }
   } finally {
-    noteLook(0, chest);
+    noteLook(chestPos, chest);
     chest.close();
   }
 }
