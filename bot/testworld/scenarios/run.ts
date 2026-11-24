@@ -2,8 +2,8 @@
 // Needs the test server (start.sh, build_home.py --member) and the bot (bot.sh) running.
 // Run from bot/: npx tsx testworld/scenarios/run.ts [name-filter] [--file=stem] [--checks] [--watch] [--verbose]
 //   --file=danger runs only danger.scenario.ts (many scenarios have no common name prefix); the count is printed
-//   --watch announces each scenario in chat, puts the player named by WATCHER (default MartianRiver)
-//   beside it and pauses a few seconds first. Creative mode recommended.
+//   --watch announces each scenario in chat and pauses a few seconds first; with WATCHER=<your name> set it
+//   also teleports that player beside each scenario. Creative mode recommended.
 //   --checks also runs the older check_*.ts scripts, each as one pass/fail line.
 // Scenarios assert world facts read from the server, never how the bot got there.
 import { execFile } from "node:child_process";
@@ -12,7 +12,7 @@ import path from "node:path";
 import { botName as BOT } from "../slot";
 import { Body, Rcon, sleep, World, type Ctx, type Scenario } from "./lib";
 
-const WATCHER = process.env.WATCHER ?? "MartianRiver";
+const WATCHER = process.env.WATCHER;
 const OLD_CHECKS = ["check_movement.ts", "check_craft.ts", "check_body.ts"];
 const out = (s: string) => process.stdout.write(s + "\n");
 
@@ -86,7 +86,7 @@ function runCheckScript(file: string): Promise<boolean> {
     };
     if (watch) {
       await ctx.say(`next: ${s.name}`);
-      if (s.view) await world.run(`tp ${WATCHER} ${s.view.x} ${s.view.y} ${s.view.z}`);
+      if (s.view && WATCHER) await world.run(`tp ${WATCHER} ${s.view.x} ${s.view.y} ${s.view.z}`);
       await sleep(4000);
     }
     const t0 = Date.now();
