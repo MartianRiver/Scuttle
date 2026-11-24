@@ -160,7 +160,7 @@ export const REJECTS: Record<string, string> = {
   too_far: "the end point would be more than 160 blocks from home",
   stale_handle: "the body no longer has that handle (expired after 10 min unseen, from before a restart, the mob is gone, the block was mined); observe again for fresh ones",
   unknown_player: "that player is not in the body's loaded view (name wrong, offline or far away)",
-  rate_limited: "too many requests (10 per 10 s) or more than one chat line per 2 s; slow down",
+  rate_limited: "too many requests (10 per 10 s) or chat too fast (one line per 2 s, 12 a minute, guard callouts included); slow down",
   bad_intent: "the body refused the request as malformed (player: 1 to 17 of letters digits _ . ; item: lowercase_with_underscores; handle: from observe or a place name; near: a block handle or a place name, not a mob)",
   bad_args: "wrong or missing arguments for that action",
   api_offline: "the adapter has no connection to the body API; it keeps retrying",
@@ -185,7 +185,7 @@ export const TASK_SKILLS: Record<TaskName, TaskDef> = {
     does: "Chops trees near home, crafts a wooden pickaxe and axe at the home crafting table, stashes the surplus logs in the home chest.",
     needs: "nothing",
     fails: {
-      no_trees: "no trees it may cut in range (detail says if every tree left is in a place where its digs were undone)",
+      no_trees: "no trees it may cut in range (detail says if every tree left is in a place where its digs were undone, or has something a player built beside it)",
       protected: "the server undid the digs (a protected area); the places are remembered for 30 minutes and shown in observe refused, so aim near a tree elsewhere or somewhere else",
       ...COMMON_FAILS,
     },
@@ -259,7 +259,7 @@ export function skillsTable() {
     tasks,
     actions,
     other: {
-      say: "say(text): one public chat line, up to 100 printable ASCII characters, one per 2 s.",
+      say: "say(text): one public chat line, up to 100 printable ASCII characters, one per 2 s, 12 a minute.",
       recipe: "recipe(item): what crafting an item takes, answered at once: makes, needs, whether it needs a table, what it holds of that (have) and what is missing for one craft. A named kind of planks or logs fits only what it holds; with none it says planks for any wood.",
       stash: "stash(): what its own stash chests held when it last looked, counts per item, fresh (every chest looked at within 10 minutes), looked (just now, minutes ago, a while ago, never), unseen (chests it never opened). Answered from memory at once.",
       reasons: REJECTS,

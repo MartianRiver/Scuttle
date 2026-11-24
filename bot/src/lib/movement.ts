@@ -1,6 +1,7 @@
 import type { Bot } from "mineflayer";
 import type { Block } from "prismarine-block";
 import { Movements } from "mineflayer-pathfinder";
+import { breakGate } from "./gate";
 
 // plain logs only: stripped ones are something a player made
 export const isPlainLogName = (name: string): boolean => /^(?!stripped_)\w+_log$/.test(name);
@@ -51,21 +52,22 @@ export function dryMovements(bot: Bot): Movements {
 }
 
 // For the wood gathering step only: it may break natural logs and the natural leaves around them,
-// nothing else. A canopy is a wall to the pathfinder otherwise. collectLog asks safeToBreak before
-// every dig, so this is also the gate for the dig itself. Made per task, so the memo never outlives
-// the trees it describes.
+// nothing else, and nothing the policy refuses (a tree beside a build stays). A canopy is a wall to the
+// pathfinder otherwise. collectLog asks safeToBreak before every dig and dig() asks the gate again, so this is
+// also the gate for the dig itself. Made per task, so the memos never outlive the trees they describe.
 export function gatherMovements(bot: Bot): Movements {
   const m = safeMovements(bot);
   m.canDig = true;
+  const gate = breakGate(bot, "gather");
   const memo = new Map<string, boolean>();
   m.safeToBreak = (block) => {
     const b = block as Block;
-    if (b.name.endsWith("_leaves")) return b.getProperties().persistent === false;
+    if (b.name.endsWith("_leaves")) return b.getProperties().persistent === false && gate(b);
     if (!isPlainLogName(b.name)) return false;
     const key = b.position.toString();
     let ok = memo.get(key);
     if (ok === undefined) {
-      ok = isNaturalLog(bot, b);
+      ok = isNaturalLog(bot, b) && gate(b);
       memo.set(key, ok);
     }
     return ok;

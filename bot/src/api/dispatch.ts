@@ -1,3 +1,4 @@
+import type { SpeechResult } from "../lib/speech";
 import { endFields, type EndInfo, type EventLog } from "./events";
 import type { Observation } from "../senses/compose";
 import { ACTION_INTENTS, type ActionIntent, type Intent, type TaskName } from "./protocol";
@@ -61,7 +62,7 @@ export interface BodyControl {
   stash(): StashAnswer;
   equip(item: string): boolean; // false: it holds none. The swap itself happens by itself, a moment later
   canExplore(dir: string, far: string | undefined): boolean; // false: the target is past the leash from home
-  say(text: string): void; // one public chat line, already validated
+  say(text: string): SpeechResult; // one public chat line, through lib/speech.ts: the one clock and the one text check
   stop(): void; // the API's stop
   interrupt(): void; // the same cleanup, for the body's own reflexes taking over
 }
@@ -100,15 +101,12 @@ interface Current {
   keepOnReflex?: boolean; // a reflex taking the body does not end it (guard)
 }
 
-// Owns "one action at a time" and turns each action's life into events.
-export const SAY_GAP_MS = 2000;
-
 const isAction = (i: Intent): i is ActionIntent => (ACTION_INTENTS as readonly string[]).includes(i.intent);
 
+// Owns "one action at a time" and turns each action's life into events.
 export function createDispatcher(body: BodyControl, log: EventLog, now: () => number = Date.now) {
   let current: Current | null = null;
   let counter = 0;
-  let lastSay = -Infinity;
 
   const snapshot = (): Snapshot => ({
     inGame: body.inGame(),
@@ -177,10 +175,10 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     if (i.intent === "say") {
       // talking never touches the running action, even mid-fight
       if (!body.inGame()) return { kind: "rejected", reason: "not_in_game" };
-      const t = now();
-      if (t - lastSay < SAY_GAP_MS) return { kind: "rejected", reason: "rate_limited" };
-      lastSay = t;
-      body.say(i.text);
+      const said = body.say(i.text);
+      if (said === "rate_limited") return { kind: "rejected", reason: "rate_limited" };
+      // a screen that turned the line down; the API has no reason of its own for it
+      if (said === "rejected_text") return { kind: "rejected", reason: "rate_limited", detail: "that line was not sent" };
       return { kind: "accepted" };
     }
 

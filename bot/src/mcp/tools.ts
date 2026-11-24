@@ -230,7 +230,7 @@ export const TOOLS: ToolDef[] = [
   tool({
     name: "say",
     description:
-      "Say one line in public game chat as the body. Up to 100 printable ASCII characters, no leading slash, at most one line per 2 seconds (rate_limited otherwise). Accepted at once and does not interrupt what the body is doing. Refused with not_in_game when the body is offline. Everyone on the server reads it.",
+      "Say one line in public game chat as the body. Up to 100 printable ASCII characters, no leading slash, at most one line per 2 seconds and 12 a minute, counting the body's own guard callouts (rate_limited otherwise). Accepted at once and does not interrupt what the body is doing. Refused with not_in_game when the body is offline. Everyone on the server reads it.",
     shape: { text: z.string().min(1).max(100) },
     async run({ client }, a: { text: string }) {
       const r = await client.send({ intent: "say", text: a.text });

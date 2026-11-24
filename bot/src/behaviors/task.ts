@@ -1,5 +1,5 @@
 import type { Bot } from "mineflayer";
-import { goals } from "mineflayer-pathfinder";
+import { goals, type Movements } from "mineflayer-pathfinder";
 import type { Vec3 } from "vec3";
 import { home } from "../lib/home";
 import { itemCount, craftItem } from "../lib/inventory";
@@ -165,14 +165,16 @@ function hasTool(bot: Bot, name: string): boolean {
 
 const keyOf = (p: { x: number; y: number; z: number }) => `${p.x},${p.y},${p.z}`;
 
-// the nearest natural log to `centre` that is not skipped, and not in a place the server refused
-function nearestNaturalLog(bot: Bot, skipped: Set<string>, centre: Vec3): { block: ReturnType<Bot["blockAt"]>; refused: number } {
+// the nearest natural log to `centre` that is not skipped, not in a place the server refused and not by something a
+// player built (those are left out of the search for good, and counted in `built`)
+function nearestNaturalLog(bot: Bot, movements: Movements, skipped: Set<string>, centre: Vec3): { block: ReturnType<Bot["blockAt"]>; refused: number; built: number } {
   const ids = Object.values(bot.registry.blocksByName)
     .filter((b) => isPlainLogName(b.name))
     .map((b) => b.id);
   // a log cabin next to the bot can fill the nearest few, so look at plenty
   const positions = bot.findBlocks({ matching: ids, point: centre, maxDistance: SEARCH_RADIUS, count: 256 });
   let refused = 0;
+  let built = 0;
   for (const pos of positions) {
     if (skipped.has(keyOf(pos))) continue;
     if (reverted.covers(pos)) {
@@ -180,9 +182,15 @@ function nearestNaturalLog(bot: Bot, skipped: Set<string>, centre: Vec3): { bloc
       continue;
     }
     const block = bot.blockAt(pos);
-    if (block && isNaturalLog(bot, block)) return { block, refused };
+    if (!block || !isNaturalLog(bot, block)) continue;
+    if (!movements.safeToBreak(block as never)) {
+      skipped.add(keyOf(pos));
+      built++;
+      continue;
+    }
+    return { block, refused, built };
   }
-  return { block: null, refused };
+  return { block: null, refused, built };
 }
 
 async function gatherLogs(bot: Bot, aim?: Vec3): Promise<void> {
@@ -193,12 +201,15 @@ async function gatherLogs(bot: Bot, aim?: Vec3): Promise<void> {
     const skipped = new Set<string>();
     let reverts = 0; // undone digs in this run; the places themselves are remembered for the bot's life (refused.ts)
     let stuck = 0;
+    let nearBuild = 0; // trees left alone for a build beside them
     while (totalLogs(bot) < LOG_TARGET) {
       await pause(bot);
-      const { block, refused } = nearestNaturalLog(bot, skipped, aim ?? bot.entity.position);
+      const { block, refused, built } = nearestNaturalLog(bot, movements, skipped, aim ?? bot.entity.position);
+      nearBuild += built;
       if (!block) {
         // trees left only where digs were undone: nothing else is cuttable, which is `protected` to anyone watching
         if (reverts > 0) throw new TaskError("protected", undoneWords(reverts, "trees", bot.entity.position, refusedNow()));
+        if (refused === 0 && nearBuild > 0) throw new TaskError("no_trees", "every tree in range has something a player built beside it");
         throw new TaskError("no_trees", refused > 0 ? "every tree in range is where its digs were undone" : "no natural trees it may cut in range");
       }
       log.info("collecting log", { name: block.name, position: block.position });

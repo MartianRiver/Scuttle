@@ -97,7 +97,7 @@ function stubBody(calls: string[]): BodyControl {
     handleLabel: () => null,
     observe: () => ({ health: 20, food: 20, weather: "clear", where: "", held: null, inv: {}, near: [], blocks: [] }),
     runTask: () => new Promise(() => {}),
-    say: () => {},
+    say: () => "sent",
     stop: () => void calls.push("stop"),
     interrupt: () => void calls.push("interrupt"),
   };

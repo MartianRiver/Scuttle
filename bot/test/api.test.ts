@@ -4,6 +4,7 @@ import { WebSocket, type WebSocketServer } from "ws";
 import { createDispatcher, type BodyControl } from "../src/api/dispatch";
 import { EventLog } from "../src/api/events";
 import { parseFrame } from "../src/api/protocol";
+import { createSpeaker } from "../src/lib/speech";
 import { startApiServer } from "../src/api/server";
 
 function stubBody(over: Partial<BodyControl> = {}) {
@@ -37,7 +38,10 @@ function stubBody(over: Partial<BodyControl> = {}) {
     handleLabel: (h) => (h === "e1ab" || h === "b3ab" || h === "home" ? "the cow" : null),
     observe: () => ({ health: 20, food: 18, weather: "clear", where: "at home, on the surface", held: null, inv: {}, near: [], blocks: [] }),
     runTask: () => new Promise((res, rej) => ((finishWalk = res), (failWalk = rej))),
-    say: (t) => void calls.push(`say:${t}`),
+    say: (t) => {
+      calls.push(`say:${t}`);
+      return "sent";
+    },
     stop: () => void calls.push("stop"),
     interrupt: () => void calls.push("interrupt"),
     ...over,
@@ -329,9 +333,19 @@ test("say: plain text only, own rate limit, never touches the running action", (
   assert.ok(!ok(42));
   assert.ok(!parseFrame(JSON.stringify({ type: "intent", id: "1", intent: "say", text: "hi", extra: 1 })).ok);
 
+  // the clock lives in lib/speech.ts; the dispatcher maps its verdict
   let t = 1000;
   let fighting = false;
-  const s = stubBody({ fighting: () => fighting });
+  const talk = createSpeaker(() => t);
+  const sentLines: string[] = [];
+  const s = stubBody({
+    fighting: () => fighting,
+    say: (text) => {
+      const r = talk.speak({ chat: () => {} }, text, "say");
+      if (r === "sent") sentLines.push(text);
+      return r;
+    },
+  });
   const d = createDispatcher(s.body, new EventLog(), () => t);
   d.handle({ intent: "follow", player: "Sam" });
   fighting = true;
@@ -339,7 +353,7 @@ test("say: plain text only, own rate limit, never touches the running action", (
   assert.deepEqual(d.handle({ intent: "say", text: "again" }), { kind: "rejected", reason: "rate_limited" });
   t += 2000;
   assert.deepEqual(d.handle({ intent: "say", text: "now" }), { kind: "accepted" });
-  assert.deepEqual(s.calls, ["follow:Sam", "say:behind you!", "say:now"]);
+  assert.deepEqual(sentLines, ["behind you!", "now"]);
   assert.equal(d.snapshot().task, "follow:Sam"); // still following
 
   const out = createDispatcher(stubBody({ inGame: () => false }).body, new EventLog());

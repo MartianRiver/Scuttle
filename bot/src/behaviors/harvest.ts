@@ -162,6 +162,7 @@ async function collectTree(bot: Bot, ctx: MineCtx, target: BlockTarget): Promise
   const start = itemCount(bot, target.name);
   let stuck = 0;
   let cut = 0;
+  let nearBuild = 0;
   try {
     for (;;) {
       await ctx.pause();
@@ -176,6 +177,11 @@ async function collectTree(bot: Bot, ctx: MineCtx, target: BlockTarget): Promise
       if (reverted.covers(next)) {
         if (cut === 0) throw new TaskError("refused", "that tree is where its digs were undone");
         break;
+      }
+      if (!movements.safeToBreak(block as never)) {
+        skipped.add(key(next)); // a build beside it: the tree stays
+        nearBuild++;
+        continue;
       }
 
       await setStatus({ task: "cutting the tree" });
@@ -207,5 +213,6 @@ async function collectTree(bot: Bot, ctx: MineCtx, target: BlockTarget): Promise
     bot.pathfinder.setMovements(safeMovements(bot));
   }
   log.info("tree done", { cut, logs: logs.length, gained: itemCount(bot, target.name) - start });
+  if (cut === 0 && nearBuild > 0) throw new TaskError("refused", "something a player built is too close to it");
   if (cut === 0) throw new TaskError(logs.length === 0 ? "stale_handle" : "stuck", logs.length === 0 ? undefined : "none of that tree's logs were within reach");
 }

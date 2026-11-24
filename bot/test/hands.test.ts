@@ -81,7 +81,7 @@ function stub(over: Partial<BodyControl> = {}) {
       return i !== "air";
     },
     canExplore: (dir) => dir !== "south",
-    say: () => {},
+    say: () => "sent",
     stop: () => {},
     interrupt: () => {},
     ...over,

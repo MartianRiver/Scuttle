@@ -53,7 +53,8 @@ see Rules.
 There is no coordinate or command field anywhere, and there won't be one. `say` is the one
 free-text field (so the consumer can talk through the body): one public chat
 line, 1 to 100 characters, printable ASCII only (so no newline, control or format character, no section sign `§`, which the server kicks a client for, no look-alike letters), no leading `/`, at most one line per
-2 s (`rate_limited` otherwise). It is accepted at once with no `taskId`, is allowed mid-fight, and
+2 s and 12 a minute (`rate_limited` otherwise). Every line the body says goes through one speech function (`src/lib/speech.ts`) with one
+clock, so the body's own guard callouts count too; a callout is dropped, never queued, within 4 s of any other line. It is accepted at once with no `taskId`, is allowed mid-fight, and
 never touches the running action. Rejected with `not_in_game` when the body is offline.
 
 Bot → client:
@@ -111,7 +112,8 @@ or down, and a handle to point at it with.
 - `blocks` lists the nearest 3 of each kind (2 of water and lava): chests, barrels, crafting tables, furnaces, beds, doors,
   ores, water, lava, spawners, and trees. A tree is one entry, its base log (`what` is the log, `oak_log`), and only
   one `get_wood` would cut: a plain log with natural leaves near it, so a log cabin or a trunk under placed leaves is not
-  one. A thick trunk (2 by 2) is one tree. Aim a task at one with `near`. A block that is a known place's spot (the table, the first stash chest and furnace, the
+  one. A tree within 3 blocks of something a player built (or under one) is left standing: `get_wood` skips it and, when
+  every tree in range is like that, ends `no_trees` with `detail` saying so; `collect` on it ends `refused`. A thick trunk (2 by 2) is one tree. Aim a task at one with `near`. A block that is a known place's spot (the table, the first stash chest and furnace, the
   bed) is left out, since it is in `places`.
 - `in` is there only when the body stands in something other than plain ground: `water` (feet in water), `deep_water`
   (head under too: 2 or more deep, no way to touch the bottom and breathe) or `lava`.

@@ -3,6 +3,7 @@ import type { Entity } from "prismarine-entity";
 import { goals, type Movements } from "mineflayer-pathfinder";
 import { logger } from "../lib/logger";
 import { safeMovements } from "../lib/movement";
+import { speak } from "../lib/speech";
 import { setStatus } from "../lib/status";
 import { CalloutLimiter } from "./callouts";
 import { watchWard } from "./escort-policy";
@@ -73,11 +74,8 @@ export function callout(bot: Bot, near: Array<{ id?: number; name: string }>): v
   if (!escort) return;
   const line = escort.callouts.next(Date.now(), near, escort.player);
   if (!line) return;
-  try {
-    bot.chat(line);
-  } catch (err) {
-    log.warn("callout failed", { message: (err as Error).message });
-  }
+  // dropped, not queued, when something was said a moment ago; the limiter then tries it again later
+  if (speak(bot, line, "callout") !== "sent") escort.callouts.unsay();
 }
 
 // `reflexActive` says something else has the body (fleeing or fighting mobs, a hazard, a fall, the
