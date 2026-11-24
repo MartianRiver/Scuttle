@@ -153,7 +153,7 @@ export const ACTIONS: Record<string, ActionDef> = {
 export const REJECTS: Record<string, string> = {
   busy: "a task is running, or the body is still winding one down; stop first, or wait",
   in_fight: "the body is in a fight; only stop and status are taken",
-  in_danger: "a reflex has the body (mobs close, or a hazard like deep water, lava or fire); detail says which. Only stop, status and guard are taken. Wait for it: wait wakes on a reflex_ended event",
+  in_danger: "a reflex has the body (mobs close, or a hazard like deep water, lava or fire); detail says which. Only stop, status and guard are taken. Wait for it: wait wakes on reflex_started, hurt (what hurt it, in words), starving and reflex_ended; a reflex that finds itself cornered says so (cornered, fighting a zombie / no way to get clear)",
   not_in_game: "the body is not connected to the game server",
   unknown_item: "the game has no item by that name (lowercase_with_underscores, no namespace, like oak_planks)",
   none_held: "it does not carry that item",

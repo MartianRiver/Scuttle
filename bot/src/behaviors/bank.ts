@@ -137,8 +137,11 @@ export function waypoint(route: Route, at: Pos): Pos {
   route.path.forEach((p, i) => {
     if (dist(p) <= dist(route.path[here])) here = i;
   });
-  for (const p of route.path.slice(here + 1)) {
+  const rest = route.path.slice(here + 1);
+  for (const p of rest) {
     if (Math.hypot(p.x + 0.5 - at.x, p.z + 0.5 - at.z) > 1.2) return p;
   }
-  return route.bank;
+  // under the foot of a shaft: the cell above is a step sideways, and walking at the bank would press on the roof
+  const off = rest.find((p) => p !== route.bank && Math.hypot(p.x + 0.5 - at.x, p.z + 0.5 - at.z) > 0.3);
+  return off ?? route.bank;
 }

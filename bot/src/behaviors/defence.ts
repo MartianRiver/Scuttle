@@ -11,9 +11,9 @@ import { callout, followWard, wardName, wardPosition } from "./escort";
 import { mergeThreats, wardThreats } from "./escort-policy";
 import { isFalling } from "./fall";
 import { isInHazard } from "./survive";
-import { mobsWords, type ReflexEnd } from "./reflex-words";
-import { calm, fleeTarget, LEASH, step, threatening, type DangerState, type Mob, type Self } from "./danger";
-import { armourPoints, bestWeapon, chooseStance, cooldownMs, GUARD, isBystander, POLICY, weaponFor, type Ward } from "./stance";
+import { mobsWords, noHooks, stanceWords, type ReflexHooks } from "./reflex-words";
+import { calm, fleeTarget, LEASH, nearest, step, threatening, watchFlee, type DangerState, type FleeWatch, type Mob, type Self } from "./danger";
+import { armourPoints, bestWeapon, chooseStance, cooldownMs, corneredStance, GUARD, isBystander, POLICY, weaponFor, type Stance, type Ward } from "./stance";
 
 const log = logger("defence");
 
@@ -32,9 +32,17 @@ let anchorUntil = 0;
 let chasing: number | null = null; // id of the mob the pathfinder follows
 let nextSwing = 0;
 let equipping = false;
+let watch: FleeWatch | null = null; // the flee watchdog's view of this run
+let cornered = false; // the watchdog tripped: the run is a forced fight, or ends, for the rest of the episode
+let holdOffUntil = 0; // after giving up as cornered the reflex stays out of the way for a while
+let clearance: number | null = null; // how far the nearest threat is while running, null when not
+
+const HOLD_OFF_MS = 20_000;
 
 // true while mobs have the body, fighting or running
 export const isFleeing = (): boolean => state.fleeing;
+// blocks to the nearest threat while running from it (not while fighting), else null
+export const fleeClearance = (): number | null => (state.fleeing && mode === "flee" ? clearance : null);
 
 let threatNames: string[] = []; // the kinds of the mobs that last counted as threats
 export const mobsNearWords = (): string => mobsWords(threatNames);
@@ -48,6 +56,9 @@ function reset(keepAnchor = false): void {
   mode = null;
   lastTarget = null;
   chasing = null;
+  watch = null;
+  cornered = false;
+  clearance = null;
   if (keepAnchor) anchorUntil = Date.now() + ANCHOR_MS;
   else anchor = null;
 }
@@ -94,8 +105,9 @@ async function equip(bot: Bot, weapon: string | null): Promise<void> {
   }
 }
 
-// `ended` hears when a run of fleeing or fighting ends because the mobs are gone (not when `stop` cut it short)
-export function startDefence(bot: Bot, interrupt: () => void, ended: (e: ReflexEnd) => void = () => {}): () => void {
+// `hooks` hear a run begin, change (running turns into a fight) and end because the mobs are gone or it gave up as
+// cornered (not when `stop` cut it short)
+export function startDefence(bot: Bot, interrupt: () => void, hooks: ReflexHooks = noHooks): () => void {
   let movements: Movements | null = null;
 
   const flee = (self: Self, threats: Mob[]): void => {
@@ -148,8 +160,33 @@ export function startDefence(bot: Bot, interrupt: () => void, ended: (e: ReflexE
     nextSwing = Date.now() + cooldownMs(bot.heldItem?.name ?? null);
   };
 
+  const giveUp = (): void => {
+    bot.pathfinder.setGoal(null);
+    log.warn("cornered and not able to fight, letting go", { health: bot.health });
+    reset(true);
+    holdOffUntil = Date.now() + HOLD_OFF_MS;
+    void setStatus({ task: wardName() ? `guarding ${wardName()}` : "idle" });
+    hooks.ended({ what: "mobs", ok: false, detail: "cornered, no way to get clear" });
+  };
+
+  // running that gets no further from a threat on top of the body ends in a fight or in letting go
+  const checkCornered = (me: ReturnType<typeof fighter>, self: Self, threats: Mob[], stance: Stance): Stance | null => {
+    if (stance.act === "fight") {
+      watch = null;
+      return stance;
+    }
+    if (!cornered) {
+      const w = watchFlee(watch, nearest(self, threats), me.health, self, Date.now());
+      watch = w.watch;
+      if (!w.cornered) return stance;
+      cornered = true;
+    }
+    return corneredStance(me, threats);
+  };
+
   const tick = (): void => {
     if (!bot.entity || bot.health <= 0 || isGuardFighting() || isInHazard() || isFalling()) return;
+    if (Date.now() < holdOffUntil) return;
     const self = { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z };
     const ward = wardPosition(bot);
     const mobs: Mob[] = Object.values(bot.entities)
@@ -171,14 +208,14 @@ export function startDefence(bot: Bot, interrupt: () => void, ended: (e: ReflexE
         log.info("clear of danger", { was: mode });
         reset(true);
         void setStatus({ task: wardName() ? `guarding ${wardName()}` : "idle" });
-        ended({ what: "mobs", ok: true });
+        hooks.ended({ what: "mobs", ok: true });
       }
       return;
     }
     if (threats.length > 0) threatNames = threats.map((t) => t.name);
 
     const me = fighter(bot);
-    const stance = chooseStance(me, threats, mode === "fight", ward ?? undefined);
+    let stance = chooseStance(me, threats, mode === "fight", ward ?? undefined);
     if (ward) {
       // guarding: the leash is round the ward wherever it walks
       anchor = { x: ward.x, z: ward.z };
@@ -190,6 +227,16 @@ export function startDefence(bot: Bot, interrupt: () => void, ended: (e: ReflexE
       if (!ward && (Date.now() > anchorUntil || away > LEASH)) anchor = { x: self.x, z: self.z };
       interrupt();
     }
+    // no threat in view this tick (it lingers a moment after one drops out of sight) is not a clear run: Math.min() of nothing is Infinity
+    clearance = threats.length > 0 ? nearest(self, threats) : null;
+    if (!ward) {
+      const forced = checkCornered(me, self, threats, stance);
+      if (!forced) {
+        giveUp();
+        return;
+      }
+      stance = forced;
+    }
     const now = stance.act;
     if (now !== mode) {
       log.warn(now === "fight" ? "fighting" : "fleeing", {
@@ -199,11 +246,15 @@ export function startDefence(bot: Bot, interrupt: () => void, ended: (e: ReflexE
         ...(stance.act === "flee" ? { why: stance.why } : { target: stance.target.name }),
       });
       if (now === "fight") nextSwing = 0;
+      const first = mode === null;
       mode = now;
       lastTarget = null;
       chasing = null;
       const fighting = stance.act === "fight" ? (ward ? `fighting for ${wardName()}` : `fighting ${stance.target.name}`) : "fleeing";
       void setStatus({ task: fighting });
+      const words = stanceWords(now, threats.map((t) => t.name), stance.act === "flee" ? stance.why : undefined, ward ? "guarding" : cornered ? "cornered" : undefined);
+      if (first) hooks.started({ what: "mobs", why: words });
+      else hooks.changed({ what: "mobs", why: words });
     }
     if (stance.act === "fight") fight(stance.target, ward);
     else flee(self, threats);

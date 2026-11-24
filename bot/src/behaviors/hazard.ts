@@ -199,3 +199,25 @@ export function findLanding(g: Grid, from: Pos, fallen: number, vy: number, radi
   }
   return best;
 }
+
+// Whether a way out is getting any closer: false until `window` ms pass without the distance having fallen
+// by `step`. The first sample after a reset starts the clock.
+export class Closing {
+  private best = Infinity;
+  private since = 0;
+
+  constructor(private window = 3000, private step = 0.5) {}
+
+  reset(): void {
+    this.best = Infinity;
+  }
+
+  stalled(distance: number, now: number): boolean {
+    if (distance <= this.best - this.step) {
+      this.best = distance;
+      this.since = now;
+      return false;
+    }
+    return now - this.since >= this.window;
+  }
+}

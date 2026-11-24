@@ -1,10 +1,11 @@
 import type { Bot } from "mineflayer";
 import { logger } from "../lib/logger";
 import { getStatus, setStatus } from "../lib/status";
-import { isFleeing } from "./defence";
+import { fleeClearance, isFleeing } from "./defence";
 import { isFalling } from "./fall";
-import { chooseFood, noFoodStep, shouldEat, type Carried, type FoodTable } from "./food";
+import { chooseFood, mayEatWhileFleeing, noFoodStep, shouldEat, starvingStep, type Carried, type FoodTable } from "./food";
 import { isGuardFighting } from "./guard";
+import { noHooks, type ReflexHooks } from "./reflex-words";
 import { isInHazard } from "./survive";
 
 const log = logger("survival");
@@ -15,6 +16,8 @@ const CONSUME_MS = 5000; // a meal takes 1.6 s; a consume that never ends must n
 let eating = false;
 export const isEating = (): boolean => eating;
 let reported = false; // `no_food` already sent for this hunger episode
+let starving = false; // `starving` already sent for this one
+let hooks: ReflexHooks = noHooks;
 
 export function foodTable(bot: Bot): FoodTable {
   const table: FoodTable = {};
@@ -26,7 +29,7 @@ export const carriedItems = (bot: Bot): Carried[] => bot.inventory.items().map((
 
 // no reflex has the body and nothing is mid-dig or in an open window
 function calm(bot: Bot): boolean {
-  return !isFleeing() && !isInHazard() && !isFalling() && !isGuardFighting() && !bot.targetDigBlock && !bot.currentWindow && !bot.isSleeping;
+  return (!isFleeing() || mayEatWhileFleeing(fleeClearance(), bot.food)) && !isInHazard() && !isFalling() && !isGuardFighting() && !bot.targetDigBlock && !bot.currentWindow && !bot.isSleeping;
 }
 
 async function consumeBounded(bot: Bot): Promise<void> {
@@ -58,32 +61,37 @@ export async function eatIfSafe(bot: Bot): Promise<void> {
   eating = true;
   const held = bot.heldItem?.type ?? null;
   const task = getStatus().task;
+  const meal = `eating ${item.name}`;
+  let ok = false;
   try {
     log.info("eating", { item: item.name, food: bot.food, health: bot.health });
-    await setStatus({ task: `eating ${item.name}` });
+    hooks.started({ what: "eating", why: meal.replace(/_/g, " ") });
+    await setStatus({ task: meal });
     await bot.equip(item, "hand");
     if (calm(bot)) {
       await consumeBounded(bot);
       reported = false;
+      ok = true;
     }
   } catch (err) {
     log.warn("couldn't eat", { item: item.name, message: (err as Error).message });
   } finally {
     eating = false;
+    hooks.ended({ what: "eating", ok });
     // a reflex that took the body mid-meal has already chosen what to hold and what the status says
-    if (calm(bot)) {
-      if (held !== null && bot.heldItem?.type !== held && bot.inventory.items().some((i) => i.type === held)) {
-        await bot.equip(held, "hand").catch(() => {});
-      }
-      await setStatus({ task });
+    if (calm(bot) && held !== null && bot.heldItem?.type !== held && bot.inventory.items().some((i) => i.type === held)) {
+      await bot.equip(held, "hand").catch(() => {});
     }
+    if (getStatus().task === meal) await setStatus({ task });
   }
 }
 
 // Reactive, not LLM-driven: survival runs on plain code so it costs nothing and can't be talked out
 // of eating by a jailbroken prompt. `busy` is true while a task runs: it eats at its own pauses.
-// `onNoFood` hears about each hunger episode with nothing to eat, once.
-export function startSurvival(bot: Bot, busy: () => boolean, onNoFood: (food: number) => void): () => void {
+// `onNoFood` hears about each hunger episode with nothing to eat, once; `onStarving` about each one that reaches
+// critical hunger, once. `reflex` hears each meal begin and end.
+export function startSurvival(bot: Bot, busy: () => boolean, onNoFood: (food: number) => void, onStarving: (food: number) => void = () => {}, reflex: ReflexHooks = noHooks): () => void {
+  hooks = reflex;
   const tick = async (): Promise<void> => {
     if (!bot.entity || bot.health <= 0) return;
     const canEat = chooseFood(carriedItems(bot), foodTable(bot), bot.food, bot.health) !== null;
@@ -93,6 +101,12 @@ export function startSurvival(bot: Bot, busy: () => boolean, onNoFood: (food: nu
       log.warn("hungry with nothing to eat", { food: bot.food });
       onNoFood(bot.food);
     }
+    const critical = starvingStep(starving, bot.food);
+    starving = critical.next;
+    if (critical.emit) {
+      log.warn("starving", { food: bot.food });
+      onStarving(bot.food);
+    }
     if (!busy()) await eatIfSafe(bot);
   };
   const timer = setInterval(() => {
@@ -100,6 +114,7 @@ export function startSurvival(bot: Bot, busy: () => boolean, onNoFood: (food: nu
   }, CHECK_INTERVAL_MS);
   bot.on("death", () => {
     reported = false;
+    starving = false;
   });
   return () => clearInterval(timer);
 }

@@ -110,3 +110,19 @@ export function noFoodStep(reported: boolean, food: number, canEat: boolean): { 
   if (food >= HUNGRY_BELOW || canEat) return { emit: false, next: false };
   return { emit: !reported, next: true };
 }
+
+// Critical hunger: the sprint is gone and health will start to go. Said once per episode, even when it carries
+// food (it may be unable to reach it, mid-run), and again only after food was back at HUNGRY_BELOW.
+export const STARVING_AT = 6;
+
+export function starvingStep(reported: boolean, food: number): { emit: boolean; next: boolean } {
+  if (food >= HUNGRY_BELOW) return { emit: false, next: false };
+  if (food > STARVING_AT) return { emit: false, next: reported };
+  return { emit: !reported, next: true };
+}
+
+// A meal while running: only when really hungry and the nearest threat is this far off, never mid-melee
+// (a fight has no clearance). It slows the run for a second and a half.
+export const EAT_CLEARANCE = 14;
+export const mayEatWhileFleeing = (clearance: number | null, food: number): boolean =>
+  clearance !== null && clearance >= EAT_CLEARANCE && food <= STARVING_AT;

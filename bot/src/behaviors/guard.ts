@@ -2,6 +2,7 @@ import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { logger } from "../lib/logger";
 import { setStatus } from "../lib/status";
+import { noHooks, type ReflexHooks } from "./reflex-words";
 import { rconConfigured, sendRcon } from "../lib/rcon";
 
 const log = logger("guard");
@@ -24,12 +25,14 @@ let chaseEntityId: number | null = null;
 let lastConfirmedAt = 0;
 let pollInFlight = false;
 let attackInFlight = false;
+let hooks: ReflexHooks = noHooks;
 
 export function isGuardFighting(): boolean {
   return currentTarget !== null;
 }
 
-export function startGuard(bot: Bot): () => void {
+export function startGuard(bot: Bot, reflex: ReflexHooks = noHooks): () => void {
+  hooks = reflex;
   if (!rconConfigured()) {
     log.warn("RCON not configured — guard duty combat stays off, nothing to poll fightstate from");
     return () => {};
@@ -78,6 +81,7 @@ function startFighting(bot: Bot, username: string): void {
   currentTarget = username;
   log.info("engaging", { username });
   setStatus({ task: `fighting ${username}` });
+  hooks.started({ what: "fight", why: "fighting a player the server named" });
 
   equipWeapon(bot).catch((err) =>
     log.error("couldn't equip a weapon", { message: (err as Error).message })
@@ -96,6 +100,7 @@ function stopFighting(bot: Bot): void {
   attackInFlight = false;
   clearChase(bot);
   setStatus({ task: "idle" });
+  hooks.ended({ what: "fight", ok: true });
 }
 
 function attackTick(bot: Bot): void {
