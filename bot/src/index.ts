@@ -12,6 +12,7 @@ import { startIdleHand } from "./behaviors/idle-hand";
 import { isTaskRunning } from "./behaviors/task";
 import { isFalling, startFall } from "./behaviors/fall";
 import { isInHazard, startSurvive } from "./behaviors/survive";
+import { watchHurt } from "./behaviors/hurt-watch";
 import { startBedtime } from "./behaviors/bedtime";
 import { isGuardFighting, startGuard } from "./behaviors/guard";
 import { startBodyApi } from "./api";
@@ -54,6 +55,8 @@ function leave(reason: string, duplicate = false): void {
   setTimeout(() => process.exit(1), wait);
 }
 
+// every reflex and watcher listens for death on its own
+bot.setMaxListeners(20);
 bot.loadPlugin(pathfinder);
 bot.loadPlugin(collectBlockPlugin);
 const api = startBodyApi(bot);
@@ -70,11 +73,12 @@ bot.once("spawn", () => {
 
   setStatus({ task: "idle", location: describeLocation(bot) });
   stopTimers.push(
-    startSurvival(bot, isTaskRunning, api.noFood),
-    startGuard(bot),
-    startDefence(bot, api.interrupt, api.reflexEnded),
-    startSurvive(bot, api.interrupt, api.reflexEnded),
-    startFall(bot, api.interrupt),
+    startSurvival(bot, isTaskRunning, api.noFood, api.starving, api.reflex),
+    watchHurt(bot, api.emit),
+    startGuard(bot, api.reflex),
+    startDefence(bot, api.interrupt, api.reflex),
+    startSurvive(bot, api.interrupt, api.reflex),
+    startFall(bot, api.interrupt, api.reflex),
     startBedtime(bot, api),
     startEscort(bot, () => isFleeing() || isInHazard() || isFalling() || isGuardFighting()),
     startIdleHand(bot, () => getStatus().task === "idle" && !isTaskRunning() && !isEating() && !isFleeing() && !isInHazard() && !isFalling() && !isGuardFighting() && !isGuarding())

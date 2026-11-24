@@ -1,6 +1,6 @@
 import type { Bot } from "mineflayer";
 import { watchDeath } from "../behaviors/death";
-import type { ReflexEnd } from "../behaviors/reflex-words";
+import type { ReflexHooks } from "../behaviors/reflex-words";
 import { config } from "../lib/config";
 import { logger } from "../lib/logger";
 import { createBody } from "./body";
@@ -15,8 +15,9 @@ const log = logger("api");
 export interface BodyApi {
   dispatch(intent: Intent): Outcome;
   interrupt(detail?: string): void;
-  reflexEnded(e: ReflexEnd): void;
+  reflex: ReflexHooks;
   noFood(food: number): void;
+  starving(food: number): void;
   idle(): boolean;
   emit(event: string, fields?: Record<string, unknown>): void;
   close(): void;
@@ -29,7 +30,12 @@ export function startBodyApi(bot: Bot): BodyApi {
   const events = new EventLog();
   const dispatcher = createDispatcher(createBody(bot), events);
   const noFood = (food: number) => void events.emit("no_food", { food });
-  const reflexEnded = (e: ReflexEnd) => dispatcher.reflexEnded(e.what, e.ok, e.detail);
+  const starving = (food: number) => void events.emit("starving", { food });
+  const reflex: ReflexHooks = {
+    started: (e) => dispatcher.reflexStarted(e.what, e.why),
+    changed: (e) => dispatcher.reflexChanged(e.what, e.why),
+    ended: (e) => dispatcher.reflexEnded(e.what, e.ok, e.detail),
+  };
 
   bot.once("spawn", () => dispatcher.bodyConnected());
   bot.on("end", (reason) => dispatcher.bodyDisconnected(String(reason)));
@@ -44,15 +50,16 @@ export function startBodyApi(bot: Bot): BodyApi {
 
   if (!port || tokens.size === 0) {
     log.info("body API server off (API_PORT / API_TOKENS not set)");
-    return { dispatch: dispatcher.handle, interrupt: dispatcher.interrupted, reflexEnded, noFood, idle, emit, close() {} };
+    return { dispatch: dispatcher.handle, interrupt: dispatcher.interrupted, reflex, noFood, starving, idle, emit, close() {} };
   }
 
   const server = startApiServer({ host, port, tokens }, dispatcher, events);
   return {
     dispatch: dispatcher.handle,
     interrupt: dispatcher.interrupted,
-    reflexEnded,
+    reflex,
     noFood,
+    starving,
     idle,
     emit,
     close() {

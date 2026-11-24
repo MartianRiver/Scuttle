@@ -1,5 +1,5 @@
 import type { SpeechResult } from "../lib/speech";
-import { endFields, type EndInfo, type EventLog } from "./events";
+import { endFields, wordsOnly, type EndInfo, type EventLog } from "./events";
 import type { Observation } from "../senses/compose";
 import { ACTION_INTENTS, type ActionIntent, type Intent, type TaskName } from "./protocol";
 
@@ -252,6 +252,13 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     },
     died(place: string, cause: string) {
       log.emit("died", { place, cause });
+    },
+    // a reflex took the body (after interrupted(), so a waiter hears the task end first), or changed what it is doing
+    reflexStarted(what: string, why: string) {
+      log.emit("reflex_started", { what, why: wordsOnly(why) });
+    },
+    reflexChanged(what: string, why: string) {
+      log.emit("reflex_changed", { what, why: wordsOnly(why) });
     },
     // a run of a reflex (mobs, a hazard) is over: `ok` false when it gave up. A mind refused in_danger waits on this
     reflexEnded(what: string, ok: boolean, detail?: string) {

@@ -178,3 +178,10 @@ export function guardTarget(self: Fighter, threats: Mob[], ward: Ward): Mob {
   const rank = (m: Mob) => wardDist(ward, m) - (m.name === "creeper" ? GUARD.creeperFirst : 0);
   return [...threats].sort((a, b) => rank(a) - rank(b) || dist(self, a) - dist(self, b))[0];
 }
+
+// Cornered (the flee watchdog tripped: no way to run): hitting back beats standing there, so it fights plain melee mobs
+// whatever the odds; with a creeper, a skeleton or anything odd among the threats it lets go and the mind decides.
+export function corneredStance(self: Fighter, threats: Mob[]): Stance | null {
+  if (threats.length === 0 || threats.some((m) => !MELEE.has(m.name))) return null;
+  return { act: "fight", target: [...threats].sort((a, b) => dist(self, a) - dist(self, b))[0] };
+}

@@ -1,6 +1,7 @@
 // Scenario runner: set up, act, verify, one pass/fail line per scenario, exit 1 if any failed.
 // Needs the test server (start.sh, build_home.py --member) and the bot (bot.sh) running.
-// Run from bot/: npx tsx testworld/scenarios/run.ts [name-filter] [--checks] [--watch] [--verbose]
+// Run from bot/: npx tsx testworld/scenarios/run.ts [name-filter] [--file=stem] [--checks] [--watch] [--verbose]
+//   --file=danger runs only danger.scenario.ts (many scenarios have no common name prefix); the count is printed
 //   --watch announces each scenario in chat, puts the player named by WATCHER (default MartianRiver)
 //   beside it and pauses a few seconds first. Creative mode recommended.
 //   --checks also runs the older check_*.ts scripts, each as one pass/fail line.
@@ -15,9 +16,9 @@ const WATCHER = process.env.WATCHER ?? "MartianRiver";
 const OLD_CHECKS = ["check_movement.ts", "check_craft.ts", "check_body.ts"];
 const out = (s: string) => process.stdout.write(s + "\n");
 
-async function load(): Promise<Scenario[]> {
+async function load(stem?: string): Promise<Scenario[]> {
   const found: Scenario[] = [];
-  for (const file of readdirSync(__dirname).filter((f) => f.endsWith(".scenario.ts")).sort()) {
+  for (const file of readdirSync(__dirname).filter((f) => f.endsWith(".scenario.ts") && (!stem || f === `${stem}.scenario.ts`)).sort()) {
     const mod = await import(path.join(__dirname, file));
     found.push(...[mod.default].flat());
   }
@@ -60,7 +61,9 @@ function runCheckScript(file: string): Promise<boolean> {
   const filter = args.find((a) => !a.startsWith("--"));
   const watch = args.includes("--watch");
   const verbose = args.includes("--verbose");
-  const scenarios = (await load()).filter((s) => !filter || s.name.includes(filter));
+  const stem = args.find((a) => a.startsWith("--file="))?.slice("--file=".length);
+  const scenarios = (await load(stem)).filter((s) => !filter || s.name.includes(filter));
+  out(`${scenarios.length} scenario${scenarios.length === 1 ? "" : "s"}`);
 
   const rcon = new Rcon();
   await rcon.connect();

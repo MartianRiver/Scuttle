@@ -100,3 +100,30 @@ export function step<T>(
   const ready = now - since >= delay;
   return { state: { since, delay, fleeing: ready }, flee: ready };
 }
+
+// The flee watchdog: a run that gains no distance from a threat on top of the body, and goes nowhere itself, is
+// not working (a sealed room, a pit, a blocked path). `mark` is the farthest the nearest threat has been, `markAt`
+// when it last got a block further and `reach` how far the body has been from where it stood then. Running that
+// does cover ground (a chase round the leash circle) is left alone: it works, and giving it up would not help.
+export const GAIN = 1; // blocks of extra distance that count as getting away
+export const STALL_MS = 5_000;
+export const PRESSED = 6; // blocks: a threat this close is on the body
+export const PENNED = 6; // blocks: a body that has not got further than this from where it was is going nowhere
+
+export interface FleeWatch {
+  mark: number;
+  markAt: number;
+  markHealth: number;
+  from: Point;
+  reach: number;
+}
+
+export const nearest = (self: Self, threats: Mob[]): number => Math.min(...threats.map((m) => dist(self, m)));
+
+export function watchFlee(w: FleeWatch | null, near: number, health: number, at: Point, now: number): { watch: FleeWatch; cornered: boolean } {
+  let next = w ?? { mark: near, markAt: now, markHealth: health, from: at, reach: 0 };
+  if (near >= next.mark + GAIN) next = { mark: near, markAt: now, markHealth: health, from: at, reach: 0 };
+  next = { ...next, reach: Math.max(next.reach, Math.hypot(at.x - next.from.x, at.z - next.from.z)) };
+  const stalled = now - next.markAt >= STALL_MS && (near <= PRESSED || health < next.markHealth);
+  return { watch: next, cornered: stalled && next.reach < PENNED };
+}

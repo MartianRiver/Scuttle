@@ -4,7 +4,7 @@ export const DETAIL_MAX = 120;
 export const GOT_MAX_ITEMS = 4;
 export const STORED_MAX_ITEMS = 8;
 
-const wordsOnly = (s: string) => s.replace(/\d+/g, "").replace(/\s+/g, " ").trim().slice(0, DETAIL_MAX);
+export const wordsOnly = (s: string) => s.replace(/\d+/g, "").replace(/\s+/g, " ").trim().slice(0, DETAIL_MAX);
 
 // item counts, the biggest few; nothing but lowercase names and whole numbers gets through
 function counts(v: unknown, max: number): Record<string, number> | undefined {

@@ -3,7 +3,8 @@ import { Vec3 } from "vec3";
 import { logger } from "../lib/logger";
 import { pacing } from "../lib/pacing";
 import { setStatus } from "../lib/status";
-import { findLanding, type Pos } from "./hazard";
+import { findLanding, SAFE_DROP, type Pos } from "./hazard";
+import { fallWords, noHooks, type ReflexHooks } from "./reflex-words";
 import { cellAt, isInHazard } from "./survive";
 
 const log = logger("fall");
@@ -17,14 +18,30 @@ let steering: Pos | null = null;
 export const isFalling = (): boolean => steering !== null;
 
 const LOOK_MS = 100; // between searches for a landing while none is in reach
+const DAMAGE_LAG_MS = 500; // the health update comes a moment after the landing
 
-export function startFall(bot: Bot, interrupt: () => void): () => void {
+// `hooks` hear a steered fall begin, and every fall of more than SAFE_DROP blocks end, in words
+export function startFall(bot: Bot, interrupt: () => void, hooks: ReflexHooks = noHooks): () => void {
   let top: number | null = null; // the highest point of this time off the ground
   let topAt = 0;
+  let topHealth = 20; // health when the fall began
   let lookedAt = 0;
 
+  const report = (fell: number): void => {
+    if (fell <= SAFE_DROP || bot.health <= 0 || isInHazard()) return;
+    const grid = cellAt(bot);
+    const p = bot.entity.position;
+    const wet = (bot.entity as { isInWater?: boolean }).isInWater === true;
+    const kind = grid(Math.floor(p.x), Math.floor(p.y) - 1, Math.floor(p.z)).fall;
+    const onto = wet ? "water" : kind === "soft" || kind === "cushion" ? "soft" : "hard";
+    const before = topHealth; // the next time off the ground starts over from the hurt body
+    setTimeout(() => hooks.ended({ what: "fall", ok: true, detail: fallWords(onto, before - bot.health) }), DAMAGE_LAG_MS);
+  };
+
   const land = (): void => {
+    const fell = top === null ? 0 : top - bot.entity.position.y;
     top = null;
+    report(fell);
     if (!steering) return;
     steering = null;
     bot.setControlState("forward", false);
@@ -38,6 +55,7 @@ export function startFall(bot: Bot, interrupt: () => void): () => void {
     if (e.onGround || (e as { isInWater?: boolean }).isInWater || isInHazard()) return land();
     const pos = e.position;
     if (top === null || pos.y >= top) {
+      if (top === null) topHealth = bot.health;
       top = pos.y;
       topAt = Date.now();
       return;
@@ -52,6 +70,7 @@ export function startFall(bot: Bot, interrupt: () => void): () => void {
       steering = cell;
       log.warn("falling, steering for a soft landing", { from: top, at: pos.y, to: cell });
       interrupt();
+      hooks.started({ what: "fall", why: "falling, steering for a soft landing" });
       bot.pathfinder.setGoal(null);
       void setStatus({ task: "falling" });
     }
