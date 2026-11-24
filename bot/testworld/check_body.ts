@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import mineflayer from "mineflayer";
 import { Vec3 } from "vec3";
 import { itemCount } from "../src/lib/inventory";
+import { botName, mcPort } from "./slot";
 
 const say = (...parts: unknown[]) => process.stdout.write(format(...parts) + "\n");
 
@@ -17,7 +18,7 @@ const rcon = (cmd: string) =>
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let done = false;
-const bot = mineflayer.createBot({ host: "127.0.0.1", port: 25566, username: NAME, auth: "offline" });
+const bot = mineflayer.createBot({ host: "127.0.0.1", port: mcPort, username: NAME, auth: "offline" });
 const fail = (msg: string) => {
   say("FAIL", msg);
   cleanup();
@@ -133,9 +134,9 @@ bot.once("spawn", async () => {
   await teleport("on join", `tp ${NAME} ~ ~ ~`);
   await sleep(1000);
   await teleport("up 2", `execute as ${NAME} at @s run tp @s ~ ~2 ~`);
-  await teleport("to ScuttleTest", `tp ${NAME} ScuttleTest`);
+  await teleport(`to ${botName}`, `tp ${NAME} ${botName}`);
   await teleport("far", `spreadplayers 1200 1200 0 20 false ${NAME}`);
-  await teleport("back", `tp ${NAME} ScuttleTest`);
+  await teleport("back", `tp ${NAME} ${botName}`);
   await checkEating();
   // well away from home, so nothing the mobs do lands there
   await teleport("far again", `spreadplayers -1200 1200 0 20 false ${NAME}`);

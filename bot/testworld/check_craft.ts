@@ -5,6 +5,7 @@ import { format } from "node:util";
 import { execFileSync } from "node:child_process";
 import mineflayer from "mineflayer";
 import { craftItem, itemCount } from "../src/lib/inventory";
+import { botName, mcPort } from "./slot";
 
 const say = (...parts: unknown[]) => process.stdout.write(format(...parts) + "\n");
 
@@ -25,7 +26,7 @@ function serverCount(item: string): number {
 const grid = () =>
   `grid ${JSON.stringify([1, 2, 3, 4].map((s) => bot.inventory.slots[s]?.name ?? null))} cursor ${bot.inventory.selectedItem?.name ?? null}`;
 
-const bot = mineflayer.createBot({ host: "127.0.0.1", port: 25566, username: NAME, auth: "offline" });
+const bot = mineflayer.createBot({ host: "127.0.0.1", port: mcPort, username: NAME, auth: "offline" });
 const fail = (msg: string) => {
   say("FAIL", msg);
   process.exit(1);

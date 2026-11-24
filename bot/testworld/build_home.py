@@ -5,8 +5,7 @@
 # with the bot as a member instead (members of __global__ itself don't unlock its deny flags here).
 import hashlib, sys, uuid
 from rcon import Rcon, RUN
-
-BOT = "ScuttleTest"
+from slot import BOT
 
 
 def offline_uuid(name):

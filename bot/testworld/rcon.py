@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # Minimal RCON client for the test world. CLI: rcon.py "command" ... ; also imported by the other scripts.
 import socket, struct, sys
-from pathlib import Path
 
-RUN = Path(__file__).resolve().parents[2] / "run"
-PORT = 25576
+from slot import RCON_PORT as PORT, RUN
 
 
 def _send(sock, req_id, kind, body):
