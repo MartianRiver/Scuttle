@@ -20,9 +20,14 @@ import { isGuardFighting, startGuard } from "./behaviors/guard";
 import { startBodyApi } from "./api";
 import { chatIntent } from "./api/chat";
 import { exitDelayMs, isDuplicateLogin } from "./lib/restart";
+import fs from "node:fs";
 import path from "node:path";
 
 const log = logger("bot");
+
+// holds the login cache too, so only this user reads it
+fs.mkdirSync(config.profilesFolder, { recursive: true, mode: 0o700 });
+fs.chmodSync(config.profilesFolder, 0o700);
 
 // what it changed and where it lives, per bot name, kept across restarts
 openJournal(config.profilesFolder, config.username);

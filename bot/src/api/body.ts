@@ -76,11 +76,14 @@ export function createBody(bot: Bot): BodyControl {
 
     async comeTo(player) {
       endEscort();
+      const asked = orders;
       await yieldToOrder(bot);
       const target = bot.players[player]?.entity;
       if (!target) throw new Error("lost sight of them");
       const { x, y, z } = target.position;
       await setStatus({ task: `walking to ${player}` });
+      // a stop during either wait (the status goes out over RCON) must not be followed by a walk
+      if (asked !== orders) throw new Error("cancelled");
       try {
         await walkTo(bot, new goals.GoalNear(x, y, z, 1));
       } catch (err) {

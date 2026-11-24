@@ -50,6 +50,7 @@ public final class ScuttleConfig {
     public final boolean nameMentionEnabled;
     public final List<String> triggerNames;
     public final int minMessageLength;
+    public final List<String> ignoredPlayers;
     public final int followOnSeconds;
     public final boolean followOnClassify;
 
@@ -152,6 +153,9 @@ public final class ScuttleConfig {
                 .map(s -> s.toLowerCase(Locale.ROOT))
                 .toList();
         this.minMessageLength = c.getInt("trigger.min-message-length", 4);
+        this.ignoredPlayers = c.getStringList("trigger.ignore-players").stream()
+                .map(s -> s.toLowerCase(Locale.ROOT))
+                .toList();
         this.followOnSeconds = c.getInt("trigger.follow-on-seconds", 45);
         this.followOnClassify = c.getBoolean("trigger.follow-on-classify", true);
 

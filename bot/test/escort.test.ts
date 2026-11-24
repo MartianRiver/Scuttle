@@ -39,7 +39,7 @@ test("lost ward: 15 s out of view or past 48 blocks, any sight of it starts over
 test("callouts are fixed phrases with the player's name", () => {
   assert.equal(warnLine("zombie", "Sam"), "Zombie near you, Sam!");
   assert.equal(warnLine("husk", "Sam"), "Zombie near you, Sam!");
-  assert.equal(warnLine("creeper", "Sam"), "Creeper near you, Sam, I've got it!");
+  assert.equal(warnLine("creeper", "Sam"), "Creeper near you, Sam!");
   assert.equal(warnLine("ravager", "Sam"), "Something nasty near you, Sam!");
   assert.equal(clearLine("Sam"), "All clear, Sam.");
 });
@@ -58,7 +58,7 @@ test("callouts: once per mob, one line every 5 s", () => {
 
 test("callouts: a creeper is called before the zombie next to it", () => {
   const l = new CalloutLimiter();
-  assert.equal(l.next(0, [{ id: 1, name: "zombie" }, { id: 2, name: "creeper" }], "Sam"), "Creeper near you, Sam, I've got it!");
+  assert.equal(l.next(0, [{ id: 1, name: "zombie" }, { id: 2, name: "creeper" }], "Sam"), "Creeper near you, Sam!");
 });
 
 test("callouts: one all-clear after a fight, after it has been quiet, waiting for the gap", () => {
