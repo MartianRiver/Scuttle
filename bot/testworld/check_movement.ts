@@ -11,6 +11,7 @@ import type { Block } from "prismarine-block";
 import { goals, Movements, pathfinder } from "mineflayer-pathfinder";
 import { plugin as collectBlock } from "mineflayer-collectblock";
 import { gatherMovements, isNaturalLog, isPlainLogName, safeMovements } from "../src/lib/movement";
+import { botName, mcPort } from "./slot";
 
 const say = (...parts: unknown[]) => process.stdout.write(format(...parts) + "\n");
 const NAME = "MoveCheck";
@@ -20,7 +21,7 @@ const at = (cmd: string) => rcon(`execute at ${NAME} run ${cmd}`);
 const canBreak = (m: Movements, b: Block) => m.safeToBreak(b as never);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const bot = mineflayer.createBot({ host: "127.0.0.1", port: 25566, username: NAME, auth: "offline" });
+const bot = mineflayer.createBot({ host: "127.0.0.1", port: mcPort, username: NAME, auth: "offline" });
 bot.loadPlugin(pathfinder);
 bot.loadPlugin(collectBlock);
 const fail = (msg: string) => {

@@ -4,6 +4,7 @@
 // inventory and iron armour on; equipping the weapon is its own job. The Ward is in survival and not
 // buffed: a guard that fails here really does lose it.
 import mineflayer from "mineflayer";
+import { mcPort } from "../slot";
 import { arena, C, leave, rel } from "./arena";
 import { sleep, type Ctx, type Scenario } from "./lib";
 
@@ -15,7 +16,7 @@ class WardBot {
   private bot: mineflayer.Bot | null = null;
 
   async join(): Promise<void> {
-    const bot = mineflayer.createBot({ host: "127.0.0.1", port: 25566, username: WARD, auth: "offline" });
+    const bot = mineflayer.createBot({ host: "127.0.0.1", port: mcPort, username: WARD, auth: "offline" });
     this.bot = bot; // kept before spawn, so a join that times out is still quit by cleanup
     bot.on("error", () => {});
     bot.on("kicked", () => {});

@@ -1,6 +1,7 @@
 // A second offline player for scenarios that need someone else in the world. quit() is safe to call
 // any number of times, and from cleanup after a failed join.
 import mineflayer from "mineflayer";
+import { mcPort } from "../slot";
 import { sleep } from "./lib";
 
 export class WardBot {
@@ -9,7 +10,7 @@ export class WardBot {
   constructor(readonly name = "Ward") {}
 
   async join(): Promise<void> {
-    const bot = mineflayer.createBot({ host: "127.0.0.1", port: 25566, username: this.name, auth: "offline" });
+    const bot = mineflayer.createBot({ host: "127.0.0.1", port: mcPort, username: this.name, auth: "offline" });
     this.bot = bot; // kept before spawn, so a join that times out is still quit by cleanup
     bot.on("error", () => {});
     bot.on("kicked", () => {});

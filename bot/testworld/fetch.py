@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# Downloads the pinned server jars into ../../run, checking each hash. 26.3: the version the live server moves to.
+# Downloads the pinned server jars into the slot's run directory, checking each hash. 26.3: the version the live server moves to.
 import hashlib, json, sys, urllib.request
 from pathlib import Path
 
-RUN = Path(__file__).resolve().parents[2] / "run"
+from slot import RUN
 UA = {"User-Agent": "generic-client"}
 
 PAPER = ("paper-26.3-257.jar", "64a5bd44910cb982b2648e9a35036cc95a6de4d561e15812aecf5411f84f7b01",

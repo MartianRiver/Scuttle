@@ -5,6 +5,7 @@ import { format } from "node:util";
 import { readFileSync, writeFileSync } from "node:fs";
 import mineflayer from "mineflayer";
 import { Vec3 } from "vec3";
+import { mcPort } from "./slot";
 
 const say = (...parts: unknown[]) => process.stdout.write(format(...parts) + "\n");
 
@@ -12,7 +13,7 @@ const BOX = { x: [-20, 28], y: [60, 100], z: [-34, 12] };
 const [mode, file] = process.argv.slice(2);
 if (!file || !["save", "diff"].includes(mode)) throw new Error("usage: blocks.ts save|diff <file>");
 
-const bot = mineflayer.createBot({ host: "127.0.0.1", port: 25566, username: "Watcher", auth: "offline" });
+const bot = mineflayer.createBot({ host: "127.0.0.1", port: mcPort, username: "Watcher", auth: "offline" });
 
 function snapshot(): Record<string, string> {
   const blocks: Record<string, string> = {};

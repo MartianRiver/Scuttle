@@ -6,6 +6,7 @@ import { BodyClient } from "../../src/mcp/client";
 import { TOOLS } from "../../src/mcp/tools";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { apiPort, runDir } from "../slot";
 import { arena, C, tidy } from "./arena";
 import { growNaturalTrees } from "./get_wood.scenario";
 import { restartBot, sleep, type Ctx, type Observation, type Scenario } from "./lib";
@@ -162,9 +163,9 @@ const progress: Scenario = {
     await sleep(1500);
   },
   async act(c) {
-    const env = readFileSync(path.join(__dirname, "..", "..", "..", "run", "bot.env"), "utf8");
+    const env = readFileSync(path.join(runDir, "bot.env"), "utf8");
     const token = env.match(/^API_TOKENS=[^:]+:(\S+)/m)?.[1] ?? "";
-    const port = env.match(/^API_PORT=(\d+)/m)?.[1] ?? "8787";
+    const port = env.match(/^API_PORT=(\d+)/m)?.[1] ?? String(apiPort);
     const client = new BodyClient({ url: `ws://127.0.0.1:${port}`, token });
     client.start();
     try {

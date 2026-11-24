@@ -13,14 +13,15 @@ import { pathfinder } from "mineflayer-pathfinder";
 import { plugin as collectBlock } from "mineflayer-collectblock";
 import { collectLog } from "../src/lib/collect";
 import { gatherMovements } from "../src/lib/movement";
+import { botName, mcPort } from "./slot";
 
 const say = (...parts: unknown[]) => process.stdout.write(format(...parts) + "\n");
-const NAME = "ScuttleTest";
+const NAME = botName;
 const rcon = (cmd: string) => execFileSync("python3", ["testworld/rcon.py", cmd], { encoding: "utf8" }).trim();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const [X, Y, Z] = [8, 68, 1]; // inside scuttle-grove, away from the scenario trees and decoys
 
-const bot = mineflayer.createBot({ host: "127.0.0.1", port: 25566, username: NAME, auth: "offline" });
+const bot = mineflayer.createBot({ host: "127.0.0.1", port: mcPort, username: NAME, auth: "offline" });
 bot.loadPlugin(pathfinder);
 bot.loadPlugin(collectBlock);
 const fail = (msg: string) => {

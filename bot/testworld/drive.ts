@@ -2,14 +2,16 @@
 // Run from bot/: npx tsx testworld/drive.ts task get_wood | come_to <player> | stop | status
 import { format } from "node:util";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import WebSocket from "ws";
+import { apiPort, runDir } from "./slot";
 
 const say = (...parts: unknown[]) => process.stdout.write(format(...parts) + "\n");
 
-const env = readFileSync("../run/bot.env", "utf8");
+const env = readFileSync(path.join(runDir, "bot.env"), "utf8");
 const token = env.match(/^API_TOKENS=[^:]+:(\S+)/m)?.[1];
-const port = env.match(/^API_PORT=(\d+)/m)?.[1] ?? "8787";
-if (!token) throw new Error("no API_TOKENS in run/bot.env; start testworld/bot.sh first");
+const port = env.match(/^API_PORT=(\d+)/m)?.[1] ?? String(apiPort);
+if (!token) throw new Error("no API_TOKENS in the slot's bot.env; start testworld/bot.sh first");
 
 const [intent = "status", arg] = process.argv.slice(2);
 const msg: Record<string, string> = { type: "intent", id: "d1", intent };

@@ -6,8 +6,9 @@
 # Maven
 target/
 
-# Local test server (bot/testworld): world data, jars, logs, generated config
+# Local test server (bot/testworld): world data, jars, logs, generated config; run-N/ for slot N
 run/
+run-*/
 
 # Scratch
 chatlab/lore.txt

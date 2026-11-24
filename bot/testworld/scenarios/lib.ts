@@ -5,8 +5,8 @@ import net from "node:net";
 import { openSync, readFileSync } from "node:fs";
 import path from "node:path";
 import WebSocket from "ws";
+import { apiPort, botPattern, rconPort, runDir as run, slot } from "../slot";
 
-const run = path.join(__dirname, "..", "..", "..", "run");
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export { sleep };
 
@@ -18,7 +18,7 @@ export class Rcon {
 
   async connect(): Promise<void> {
     const password = readFileSync(path.join(run, ".rcon"), "utf8").trim();
-    this.sock = net.connect(25576, "127.0.0.1");
+    this.sock = net.connect(rconPort, "127.0.0.1");
     this.sock.on("data", (d) => {
       this.buf = Buffer.concat([this.buf, d]);
       for (;;) {
@@ -163,8 +163,8 @@ export class Body {
   async connect(): Promise<void> {
     const env = readFileSync(path.join(run, "bot.env"), "utf8");
     const token = env.match(/^API_TOKENS=[^:]+:(\S+)/m)?.[1];
-    const port = env.match(/^API_PORT=(\d+)/m)?.[1] ?? "8787";
-    if (!token) throw new Error("no API_TOKENS in run/bot.env; start testworld/bot.sh first");
+    const port = env.match(/^API_PORT=(\d+)/m)?.[1] ?? String(apiPort);
+    if (!token) throw new Error(`no API_TOKENS in ${path.join(run, "bot.env")}; start testworld/bot.sh first`);
     this.ws = new WebSocket(`ws://127.0.0.1:${port}`);
     await new Promise<void>((resolve, reject) => {
       this.ws.on("open", () => this.ws.send(JSON.stringify({ type: "auth", token })));
@@ -253,8 +253,8 @@ export interface Scenario {
 
 // The test bot is a process of its own: this kills it and starts it again from the same checkout, which also
 // forgets everything it only held in memory (handles, refused places), and puts the runner's socket on the new one.
-export async function restartBot(c: Ctx, logFile = "/tmp/scuttle-run/bot-restart.log"): Promise<void> {
-  spawn("pkill", ["-f", "tsx src/index.ts --testworld"]);
+export async function restartBot(c: Ctx, logFile = `/tmp/scuttle-run/bot-restart${slot ? `-${slot}` : ""}.log`): Promise<void> {
+  spawn("pkill", ["-f", botPattern]);
   // a duplicate login is kicked and costs minutes of backoff, so wait until the server has let go
   for (let i = 0; i < 60 && (await c.world.run("list")).includes(c.bot); i++) await sleep(500);
   const log = openSync(logFile, "a");

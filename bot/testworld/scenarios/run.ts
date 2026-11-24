@@ -8,9 +8,9 @@
 import { execFile } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
+import { botName as BOT } from "../slot";
 import { Body, Rcon, sleep, World, type Ctx, type Scenario } from "./lib";
 
-const BOT = "ScuttleTest";
 const WATCHER = process.env.WATCHER ?? "MartianRiver";
 const OLD_CHECKS = ["check_movement.ts", "check_craft.ts", "check_body.ts"];
 const out = (s: string) => process.stdout.write(s + "\n");
