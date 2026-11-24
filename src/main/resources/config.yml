@@ -128,7 +128,8 @@ trigger:
   # Words that count as saying its name. Case doesn't matter.
   names:
     - "scuttle"
-  # Ignore very short messages so "scuttle" on its own doesn't fire a request.
+  # Ignore messages shorter than this, whole line counted. The name itself is 7 characters, so "scuttle"
+  # on its own still fires a request.
   min-message-length: 4
 
   # After Scuttle answers you, your next message reaches it WITHOUT saying its
