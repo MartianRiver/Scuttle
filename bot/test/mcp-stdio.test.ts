@@ -99,7 +99,7 @@ test("against the real body API server with a stub body", async () => {
     guard: () => new Promise<void>(() => {}),
     give: () => Promise.resolve(),
     runTask: () => new Promise<void>(() => {}),
-    say: () => {},
+    say: () => "sent",
     stop: () => {},
     interrupt: () => {},
   };

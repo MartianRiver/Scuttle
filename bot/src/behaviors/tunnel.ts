@@ -66,7 +66,7 @@ export async function tunnel(bot: Bot, ctx: MineCtx, opts: TunnelOpts): Promise<
       }
 
       await setStatus({ task: tunnelStatus(dug) });
-      for (const p of plan.dig) await breakBlock(bot, ctx, p, true);
+      for (const p of plan.dig) await breakBlock(bot, ctx, p, true, "tunnel");
       await walkWithin(bot, new goals.GoalBlock(plan.to.x, plan.to.y, plan.to.z), STEP_WALK_MS);
       ctx.checkStop();
       if (!same(cellOf(bot), plan.to)) throw new TaskError("stuck", "it could not walk on into the tunnel");

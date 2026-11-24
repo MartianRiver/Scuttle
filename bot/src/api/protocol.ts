@@ -2,6 +2,9 @@
 // no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
 import { CARDINALS, isLengthBand, TUNNEL_MAX, type Cardinal } from "../behaviors/tunnel-plan";
 import { BLOCK_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
+import { sayable } from "../lib/speech";
+
+export { SAY_MAX, sayable } from "../lib/speech";
 
 export const TASKS = ["get_wood", "get_stone", "get_iron"] as const;
 export type TaskName = (typeof TASKS)[number];
@@ -47,15 +50,6 @@ export type Parsed = { ok: true; msg: ClientMsg } | { ok: false; id?: string };
 
 const PLAYER = /^[A-Za-z0-9_.]{1,17}$/;
 const ITEM = /^[a-z_]{1,48}$/;
-export const SAY_MAX = 100;
-
-// one plain line of printable ASCII: nothing that is a command, a control or format character, a section sign
-// (the server kicks a client for one) or a look-alike letter
-export function sayable(text: unknown): text is string {
-  if (typeof text !== "string") return false;
-  const t = text.trim();
-  return t.length > 0 && t.length <= SAY_MAX && !t.startsWith("/") && /^[\x20-\x7e]+$/.test(t);
-}
 
 const countIn = (v: unknown, max: number) => v === undefined || (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= max);
 

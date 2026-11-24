@@ -3,6 +3,7 @@ import type { Block } from "prismarine-block";
 import { goals } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
 import "mineflayer-tool"; // types for bot.tool
+import { nameAtOf } from "../lib/gate";
 import { home } from "../lib/home";
 import { itemCount } from "../lib/inventory";
 import { dig, inReach, pickUp } from "../lib/collect";
@@ -52,10 +53,7 @@ export interface MineSpec {
 }
 
 const keyOf = (p: Pos) => `${p.x},${p.y},${p.z}`;
-export const nameAtOf =
-  (bot: Bot): NameAt =>
-  (p) =>
-    bot.blockAt(new Vec3(p.x, p.y, p.z))?.name ?? null;
+export { nameAtOf };
 
 const cellAtOf =
   (bot: Bot) =>
@@ -167,7 +165,8 @@ export async function mineBlock(bot: Bot, ctx: MineCtx, spec: MineSpec, pick: Pi
     return; // bare hands, or too weak a pickaxe, break it and drop nothing
   }
   ctx.checkStop();
-  await dig(bot, live, ctx.stopping);
+  // a refusal at the door reads like the plan's: the block is left and the loop counts it
+  if (!(await dig(bot, live, ctx.stopping, "mine")).ok) return;
   if (!isTarget(spec, bot.blockAt(pick.pos)?.name) && !ctx.stopping()) {
     await pickUp(bot, pick.pos.offset(0.5, 0.5, 0.5), ctx.stopping, (name) => (spec.drops ?? [spec.drop]).includes(name));
   }

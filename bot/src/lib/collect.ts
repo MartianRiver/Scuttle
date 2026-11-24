@@ -4,7 +4,9 @@ import type { Entity } from "prismarine-entity";
 import type { Vec3 } from "vec3";
 import { goals, type Movements } from "mineflayer-pathfinder";
 import "mineflayer-tool"; // types for bot.tool
+import { gateDig } from "./gate";
 import { isPlainLogName } from "./movement";
+import type { CheckOpts, Verdict } from "./policy";
 
 // One log, every wait bounded. mineflayer-collectblock's collect() waits for the dropped item with
 // no limit, and pathfinder's goto resolves on an empty path, so a drop out of reach (on a canopy,
@@ -57,9 +59,12 @@ async function spareTool(bot: Bot, block: Block): Promise<void> {
   await bot.unequip("hand").catch(() => {});
 }
 
-// a stop that lands while dig() is still turning to face the block finds no dig to abort, so the
-// dig watches for it itself
-export async function dig(bot: Bot, block: Block, shouldStop: () => boolean): Promise<void> {
+// The one dig door: the gate reads the block again and refuses a stale plan, a build, a kept-out zone or a
+// hazard that came up since the plan; the caller turns the verdict into its own refusal. A stop that lands while
+// dig() is still turning to face the block finds no dig to abort, so the dig watches for it itself.
+export async function dig(bot: Bot, block: Block, shouldStop: () => boolean, job = "dig", opts: CheckOpts = {}): Promise<Verdict> {
+  const verdict = gateDig(bot, block, job, opts);
+  if (!verdict.ok) return verdict;
   const timer = setTimeout(() => {
     if (bot.targetDigBlock) bot.stopDigging();
   }, DIG_MS);
@@ -73,6 +78,7 @@ export async function dig(bot: Bot, block: Block, shouldStop: () => boolean): Pr
     clearTimeout(timer);
     clearInterval(watch);
   }
+  return verdict;
 }
 
 function dropsNear(bot: Bot, spot: Vec3, tries: Map<number, number>, wanted: (name: string) => boolean): Entity[] {
@@ -138,7 +144,8 @@ export async function collectLog(bot: Bot, target: Block, movements: Movements, 
   }
   if (shouldStop()) return false;
   try {
-    await dig(bot, again, shouldStop);
+    // logs and leaves never had the liquid and falling rules; the gate still asks the rest
+    if (!(await dig(bot, again, shouldStop, "tree", { physical: false })).ok) return false;
   } catch {
     return false;
   }

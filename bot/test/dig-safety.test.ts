@@ -133,22 +133,23 @@ test("the wider made list", () => {
   for (const name of natural) assert.ok(!isMade(name), name);
 });
 
-test("allowMade lifts the made-block and under-a-build rules and nothing else", () => {
+test("a grant test lifts the made-block and under-a-build rules and nothing else", () => {
   const house = grid([[at(2, 0, 0), "oak_planks"], [at(0, 6, 0), "oak_slab"]]);
+  const all = { allowMade: () => true };
   assert.equal(safeToDig(T, house), false);
-  assert.equal(safeToDig(T, house, undefined, { allowMade: true }), true);
+  assert.equal(safeToDig(T, house, undefined, all), true);
 
   // lava beside the player-approved block still refuses
   const lava = grid([[at(1, 0, 0), "lava"], [at(2, 0, 0), "oak_planks"]]);
-  assert.equal(safeToDig(T, lava, undefined, { allowMade: true }), false);
+  assert.equal(safeToDig(T, lava, undefined, all), false);
   // so do water, falling blocks over it, unloaded ground and a bad standing spot
-  assert.equal(safeToDig(T, grid([[at(0, 1, 0), "water"]]), undefined, { allowMade: true }), false);
-  assert.equal(safeToDig(T, grid([[at(0, 2, 0), "gravel"]]), undefined, { allowMade: true }), false);
-  assert.equal(safeToDig(T, grid([], [at(0, 0, 1)]), undefined, { allowMade: true }), false);
-  assert.equal(safeToDig(T, grid(), at(0, 1, 0), { allowMade: true }), false);
+  assert.equal(safeToDig(T, grid([[at(0, 1, 0), "water"]]), undefined, all), false);
+  assert.equal(safeToDig(T, grid([[at(0, 2, 0), "gravel"]]), undefined, all), false);
+  assert.equal(safeToDig(T, grid([], [at(0, 0, 1)]), undefined, all), false);
+  assert.equal(safeToDig(T, grid(), at(0, 1, 0), all), false);
 });
 
-test("allowMade with a test approves only the blocks it names", () => {
+test("a grant test approves only the blocks it names", () => {
   const w = grid([[at(2, 0, 0), "oak_planks"], [at(-2, 0, 0), "chest"]]);
   const onlyPlanks = (p: Pos) => p.x === T.x + 2;
   assert.equal(safeToDig(T, w, undefined, { allowMade: onlyPlanks }), false); // the chest still counts

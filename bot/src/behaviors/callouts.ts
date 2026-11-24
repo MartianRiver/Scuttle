@@ -32,9 +32,11 @@ export class CalloutLimiter {
   private lastAt = -Infinity;
   private fought = false;
   private quietSince: number | null = null;
+  private before: { said: Set<number>; lastAt: number; fought: boolean; quietSince: number | null } | null = null;
 
   // `mobs` are the hostile mobs near the ward right now; returns the line to say, if any
   next(now: number, mobs: Array<{ id?: number; name: string }>, player: string): string | null {
+    this.before = { said: new Set(this.said), lastAt: this.lastAt, fought: this.fought, quietSince: this.quietSince };
     if (mobs.length > 0) {
       this.fought = true;
       this.quietSince = null;
@@ -55,5 +57,13 @@ export class CalloutLimiter {
     this.said.clear();
     this.lastAt = now;
     return clearLine(player);
+  }
+
+  // the line next() just gave was never said (the speech clock dropped it): as if it hadn't been asked, so a later
+  // tick tries again instead of the warning or the all-clear being lost
+  unsay(): void {
+    if (!this.before) return;
+    ({ said: this.said, lastAt: this.lastAt, fought: this.fought, quietSince: this.quietSince } = this.before);
+    this.before = null;
   }
 }

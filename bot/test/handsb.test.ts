@@ -57,7 +57,7 @@ function stub(over: Partial<BodyControl> = {}): BodyControl {
     stash: () => ({ items: {}, fresh: true, looked: "just now" }),
     equip: () => true,
     canExplore: () => true,
-    say: () => {},
+    say: () => "sent",
     stop: () => {},
     interrupt: () => {},
     ...over,

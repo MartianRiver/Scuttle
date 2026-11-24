@@ -1,11 +1,13 @@
 // `dig_down`: a staircase cut down toward stone, one step at a time, and `climb_up`, the way back out. The planning is
 // dig-down-plan.ts; this walks it: each block checked by dig-safety just before it is dug, every wait bounded.
 import type { Bot } from "mineflayer";
-import type { Block } from "prismarine-block";
 import { goals } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
 import "mineflayer-tool"; // types for bot.tool
 import { dig } from "../lib/collect";
+import { GateRefusal, taskErrorOf } from "../lib/gate";
+import { PLACEABLE } from "../lib/policy";
+import { placeBlock } from "../lib/place-block";
 import { logger } from "../lib/logger";
 import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
@@ -40,7 +42,7 @@ export const cellOf = (bot: Bot): Pos => {
 };
 
 // breaks one block, twice at most: a block that is back after the dig is a place the server protects
-export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest = false): Promise<void> {
+export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest = false, job = "dig_down"): Promise<void> {
   const at = new Vec3(p.x, p.y, p.z);
   let completed = false;
   const mark = (b: { position: { equals(o: unknown): boolean } }) => {
@@ -57,7 +59,15 @@ export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest 
         // bare hands then
       }
       ctx.checkStop();
-      await dig(bot, block, ctx.stopping).catch((err: Error) => log.warn("dig failed", { message: err.message }));
+      const verdict = await dig(bot, block, ctx.stopping, job).catch((err: Error) => {
+        log.warn("dig failed", { message: err.message });
+        return undefined;
+      });
+      if (verdict && !verdict.ok) {
+        // the plan said yes a moment ago: a kept-out zone reads as the server's undo does, the rest as the plan's words
+        if (verdict.reason === "protected") throw new TaskError("protected", undoneWords(1, "ground", bot.entity.position, refusedNow()));
+        throw taskErrorOf(verdict);
+      }
       ctx.checkStop();
       await sleep(250); // a dig the server undoes shows as the block again a tick or two later
       if (bot.blockAt(at)?.boundingBox !== "block") return;
@@ -119,10 +129,6 @@ export async function digDown(bot: Bot, ctx: MineCtx): Promise<{ detail: string 
   }
 }
 
-// natural blocks first: cobblestone is on the made list, so a fill of it makes the foot of its own stair look like a
-// build and the next dig there is refused (until the journal, 0.10.0, knows its own blocks)
-const FILL = ["dirt", "stone", "netherrack", "cobbled_deepslate", "cobblestone"];
-
 // A hole one under the foot of the stair (a floor taken for stone) is a rise of two to the first step: jump and
 // set a block under itself, as a player does, until it stands in the foot again. The look down is made on the ground,
 // and the block is placed on the first physics tick the feet are clear of the pit's top: a look turned in the air, or a
@@ -130,11 +136,13 @@ const FILL = ["dirt", "stone", "netherrack", "cobbled_deepslate", "cobblestone"]
 // refused it ("the block is still air").
 async function fillPit(bot: Bot, ctx: MineCtx, foot: Pos): Promise<void> {
   const items = bot.inventory.items();
-  const item = FILL.map((name) => items.find((i) => i.name === name)).find((i) => i !== undefined);
+  // natural blocks first (PLACEABLE is in that order): cobblestone is on the made list, so a fill of it makes the foot of
+  // its own stair look like a build and the next dig there is refused (until the journal, 0.10.0, knows its own blocks)
+  const item = PLACEABLE.map((name) => items.find((i) => i.name === name)).find((i) => i !== undefined);
   if (!item) throw new TaskError("stuck", "it is in a hole with nothing to fill it");
   await bot.equip(item, "hand");
   const below = new Vec3(foot.x, foot.y - 2, foot.z); // the pit floor
-  const place = (bot as unknown as { _placeBlockWithOptions(ref: Block, face: Vec3, o: object): Promise<void> })._placeBlockWithOptions;
+  const job = `climb_up@${Date.now()}`;
   const tick = () => new Promise<void>((r) => bot.once("physicsTick", () => r()));
   for (let attempt = 0; attempt < 4 && cellOf(bot).y < foot.y; attempt++) {
     ctx.checkStop();
@@ -146,7 +154,8 @@ async function fillPit(bot: Bot, ctx: MineCtx, foot: Pos): Promise<void> {
     while (Date.now() - start < 1200 && bot.entity.position.y < foot.y + 0.05) await tick();
     bot.setControlState("jump", false);
     const y = bot.entity.position.y;
-    const placed = await place.call(bot, floor, new Vec3(0, 1, 0), { swingArm: "right", forceLook: "ignore" }).then(() => true, (err: Error) => {
+    const placed = await placeBlock(bot, floor, new Vec3(0, 1, 0), item.name, job, { swingArm: "right", forceLook: "ignore" }).then(() => true, (err: Error) => {
+      if (err instanceof GateRefusal) throw new TaskError("stuck", err.verdict.detail);
       log.warn("place failed", { message: err.message, feetY: y, footY: foot.y, attempt });
       return false;
     });

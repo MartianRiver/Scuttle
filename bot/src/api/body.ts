@@ -18,6 +18,7 @@ import { stashMemory, stashPlaces, store, take } from "../behaviors/stash";
 import { hazardWords, isInHazard } from "../behaviors/survive";
 import { actionCtx, isTaskRunning, requestStop, runAction, startTask, type TaskResult } from "../behaviors/task";
 import { StuckError, walkTo } from "../behaviors/unstuck";
+import { speak } from "../lib/speech";
 import { setStatus } from "../lib/status";
 import { HandleTable } from "../senses/handles";
 import { createObserver } from "../senses/observe";
@@ -156,7 +157,7 @@ export function createBody(bot: Bot): BodyControl {
     },
     canExplore: (dir, far) => canExplore(bot, dir as CompassPoint, far as ExploreBand | undefined),
 
-    say: (text) => bot.chat(text),
+    say: (text) => speak(bot, text, "say"),
 
     stop() {
       endEscort();
