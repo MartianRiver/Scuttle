@@ -56,6 +56,9 @@ public final class ChatListener implements Listener {
 
         recentChat.add(player.getName(), text);
 
+        // another bot's lines are context for the model, never a question
+        if (config.ignoredPlayers.contains(player.getName().toLowerCase(Locale.ROOT))) return;
+
         // A bare "yes" while an offer is up is an answer, not a conversation.
         // Handling it here keeps a swap from costing an API call, and means kids
         // who don't click buttons still get the obvious thing to work.

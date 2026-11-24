@@ -125,6 +125,9 @@ trigger:
   # Saying Scuttle's name in normal chat also works:
   #   "scuttle, what's a piston door?"
   name-mention-enabled: true
+  # Players whose chat never reaches Scuttle, whatever it says (case doesn't matter). For a bot
+  # on the server that talks in chat: its lines still show up in what Scuttle has overheard.
+  ignore-players: []
   # Words that count as saying its name. Case doesn't matter.
   names:
     - "scuttle"

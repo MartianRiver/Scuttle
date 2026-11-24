@@ -17,7 +17,7 @@ const MOB_WORD: Record<string, string> = {
 const word = (mobName: string): string => MOB_WORD[mobName] ?? "Something nasty";
 
 export function warnLine(mobName: string, player: string): string {
-  return mobName === "creeper" ? `Creeper near you, ${player}, I've got it!` : `${word(mobName)} near you, ${player}!`;
+  return `${word(mobName)} near you, ${player}!`;
 }
 
 export const clearLine = (player: string): string => `All clear, ${player}.`;
