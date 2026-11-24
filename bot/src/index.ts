@@ -3,9 +3,17 @@ import { pathfinder } from "mineflayer-pathfinder";
 import { plugin as collectBlockPlugin } from "mineflayer-collectblock";
 import { config } from "./lib/config";
 import { logger } from "./lib/logger";
-import { setStatus } from "./lib/status";
+import { getStatus, setStatus } from "./lib/status";
 import { safeMovements } from "./lib/movement";
-import { startSurvival } from "./behaviors/survival";
+import { isFleeing, startDefence } from "./behaviors/defence";
+import { isGuarding, startEscort } from "./behaviors/escort";
+import { startSurvival, isEating } from "./behaviors/survival";
+import { startIdleHand } from "./behaviors/idle-hand";
+import { isTaskRunning } from "./behaviors/task";
+import { isFalling, startFall } from "./behaviors/fall";
+import { isInHazard, startSurvive } from "./behaviors/survive";
+import { watchHurt } from "./behaviors/hurt-watch";
+import { startBedtime } from "./behaviors/bedtime";
 import { isGuardFighting, startGuard } from "./behaviors/guard";
 import { startBodyApi } from "./api";
 import { chatIntent } from "./api/chat";
@@ -47,6 +55,8 @@ function leave(reason: string, duplicate = false): void {
   setTimeout(() => process.exit(1), wait);
 }
 
+// every reflex and watcher listens for death on its own
+bot.setMaxListeners(20);
 bot.loadPlugin(pathfinder);
 bot.loadPlugin(collectBlockPlugin);
 const api = startBodyApi(bot);
@@ -56,16 +66,26 @@ bot.once("spawn", () => {
   spawned = true;
   log.info("spawned", { position: bot.entity.position, version: bot.version });
 
-  // collectblock would swap in default movements (dig and build on) on every collect and never put
-  // ours back, so it gets none of its own
+  // collectblock stays loaded for bot.tool; its collect() would swap in default movements (dig and
+  // build on) and never put ours back, so it gets none of its own
   bot.collectBlock.movements = undefined;
   bot.pathfinder.setMovements(safeMovements(bot));
 
   setStatus({ task: "idle", location: describeLocation(bot) });
-  stopTimers.push(startSurvival(bot), startGuard(bot));
+  stopTimers.push(
+    startSurvival(bot, isTaskRunning, api.noFood, api.starving, api.reflex),
+    watchHurt(bot, api.emit),
+    startGuard(bot, api.reflex),
+    startDefence(bot, api.interrupt, api.reflex),
+    startSurvive(bot, api.interrupt, api.reflex),
+    startFall(bot, api.interrupt, api.reflex),
+    startBedtime(bot, api),
+    startEscort(bot, () => isFleeing() || isInHazard() || isFalling() || isGuardFighting()),
+    startIdleHand(bot, () => getStatus().task === "idle" && !isTaskRunning() && !isEating() && !isFleeing() && !isInHazard() && !isFalling() && !isGuardFighting() && !isGuarding())
+  );
 
   bot.on("goal_reached", () => {
-    if (!isGuardFighting()) setStatus({ task: "idle", location: describeLocation(bot) });
+    if (!isGuardFighting() && !isGuarding()) setStatus({ task: "idle", location: describeLocation(bot) });
   });
 
   bot.on("death", () => {

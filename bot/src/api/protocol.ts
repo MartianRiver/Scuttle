@@ -1,14 +1,46 @@
 // Everything a client may send. Strict on purpose: unknown fields are an error, and there is
-// no coordinate, command or chat-text field anywhere. See ../../API.md.
+// no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
+import { CARDINALS, isLengthBand, TUNNEL_MAX, type Cardinal } from "../behaviors/tunnel-plan";
+import { BLOCK_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
+import { sayable } from "../lib/speech";
 
-export const TASKS = ["get_wood"] as const;
+export { SAY_MAX, sayable } from "../lib/speech";
+
+export const TASKS = ["get_wood", "get_stone", "get_iron"] as const;
 export type TaskName = (typeof TASKS)[number];
 
+export const COMPASS_POINTS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"] as const;
+export type CompassPoint = (typeof COMPASS_POINTS)[number];
+export const EXPLORE_BANDS = ["near", "a short walk", "a fair way", "far"] as const;
+export type ExploreBand = (typeof EXPLORE_BANDS)[number];
+
+export const DIG_TARGETS = ["stone"] as const;
+export type DigTarget = (typeof DIG_TARGETS)[number];
+
 export type Intent =
-  | { intent: "come_to" | "follow"; player: string }
-  | { intent: "task"; name: TaskName }
+  | { intent: "come_to" | "follow" | "guard"; player: string }
+  | { intent: "go_to"; handle: string }
+  | { intent: "give"; player: string; item: string; count?: number }
+  | { intent: "task"; name: TaskName; near?: string }
+  | { intent: "recipe"; item: string }
+  | { intent: "craft"; item: string; count?: number }
+  | { intent: "collect"; handle: string; count?: number }
+  | { intent: "equip"; item: string }
+  | { intent: "store"; item?: string; count?: number }
+  | { intent: "take"; item: string; count?: number }
+  | { intent: "stash" }
+  | { intent: "explore"; dir: CompassPoint; far?: ExploreBand }
+  | { intent: "dig_down"; to?: DigTarget }
+  | { intent: "tunnel"; dir?: Cardinal; length?: number | ExploreBand; through?: boolean }
+  | { intent: "climb_up" }
+  | { intent: "say"; text: string }
   | { intent: "stop" }
-  | { intent: "status" };
+  | { intent: "status" }
+  | { intent: "observe" };
+
+// the actions that run like a task: one at a time, with task events
+export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" }>;
+export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up"] as const;
 
 export type ClientMsg =
   | { type: "auth"; token: string; since?: number; epoch?: string }
@@ -17,6 +49,9 @@ export type ClientMsg =
 export type Parsed = { ok: true; msg: ClientMsg } | { ok: false; id?: string };
 
 const PLAYER = /^[A-Za-z0-9_.]{1,17}$/;
+const ITEM = /^[a-z_]{1,48}$/;
+
+const countIn = (v: unknown, max: number) => v === undefined || (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= max);
 
 function onlyKeys(o: Record<string, unknown>, allowed: string[]): boolean {
   return Object.keys(o).every((k) => allowed.includes(k));
@@ -48,15 +83,68 @@ export function parseFrame(raw: string): Parsed {
   switch (m.intent) {
     case "come_to":
     case "follow":
+    case "guard":
       if (!onlyKeys(m, ["type", "id", "intent", "player"])) return bad;
       if (typeof m.player !== "string" || !PLAYER.test(m.player)) return bad;
       return { ok: true, msg: m as ClientMsg };
-    case "task":
-      if (!onlyKeys(m, ["type", "id", "intent", "name"])) return bad;
-      if (!(TASKS as readonly unknown[]).includes(m.name)) return bad;
+    case "go_to":
+      if (!onlyKeys(m, ["type", "id", "intent", "handle"])) return bad;
+      if (typeof m.handle !== "string" || !HANDLE_SHAPE.test(m.handle)) return bad;
       return { ok: true, msg: m as ClientMsg };
+    case "give":
+      if (!onlyKeys(m, ["type", "id", "intent", "player", "item", "count"])) return bad;
+      if (typeof m.player !== "string" || !PLAYER.test(m.player)) return bad;
+      if (typeof m.item !== "string" || !ITEM.test(m.item)) return bad;
+      if (m.count !== undefined && !(Number.isInteger(m.count) && (m.count as number) >= 1 && (m.count as number) <= 64)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "task":
+      if (!onlyKeys(m, ["type", "id", "intent", "name", "near"])) return bad;
+      if (!(TASKS as readonly unknown[]).includes(m.name)) return bad;
+      if (m.near !== undefined && (typeof m.near !== "string" || !NEAR_SHAPE.test(m.near))) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "recipe":
+    case "equip":
+      if (!onlyKeys(m, ["type", "id", "intent", "item"])) return bad;
+      if (typeof m.item !== "string" || !ITEM.test(m.item)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "craft":
+    case "take":
+      if (!onlyKeys(m, ["type", "id", "intent", "item", "count"])) return bad;
+      if (typeof m.item !== "string" || !ITEM.test(m.item) || !countIn(m.count, 64)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "store":
+      if (!onlyKeys(m, ["type", "id", "intent", "item", "count"])) return bad;
+      if (m.item !== undefined && (typeof m.item !== "string" || !ITEM.test(m.item))) return bad;
+      if (!countIn(m.count, 64) || (m.count !== undefined && m.item === undefined)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "collect":
+      if (!onlyKeys(m, ["type", "id", "intent", "handle", "count"])) return bad;
+      if (typeof m.handle !== "string" || !BLOCK_SHAPE.test(m.handle) || !countIn(m.count, 16)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "explore":
+      if (!onlyKeys(m, ["type", "id", "intent", "dir", "far"])) return bad;
+      if (!(COMPASS_POINTS as readonly unknown[]).includes(m.dir)) return bad;
+      if (m.far !== undefined && !(EXPLORE_BANDS as readonly unknown[]).includes(m.far)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "dig_down":
+      if (!onlyKeys(m, ["type", "id", "intent", "to"])) return bad;
+      if (m.to !== undefined && !(DIG_TARGETS as readonly unknown[]).includes(m.to)) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "tunnel":
+      if (!onlyKeys(m, ["type", "id", "intent", "dir", "length", "through"])) return bad;
+      if (m.dir !== undefined && !(CARDINALS as readonly unknown[]).includes(m.dir)) return bad;
+      if (m.length !== undefined && !countIn(m.length, TUNNEL_MAX) && !isLengthBand(m.length)) return bad;
+      if (m.through !== undefined && typeof m.through !== "boolean") return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "say":
+      if (!onlyKeys(m, ["type", "id", "intent", "text"])) return bad;
+      if (!sayable(m.text)) return bad;
+      return { ok: true, msg: { ...(m as object), text: m.text.trim() } as ClientMsg };
     case "stop":
     case "status":
+    case "observe":
+    case "stash":
+    case "climb_up":
       if (!onlyKeys(m, ["type", "id", "intent"])) return bad;
       return { ok: true, msg: m as ClientMsg };
     default:

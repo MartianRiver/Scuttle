@@ -1,5 +1,6 @@
 import type { Bot } from "mineflayer";
 import type { Block } from "prismarine-block";
+import type { Recipe } from "prismarine-recipe";
 
 export function itemCount(bot: Bot, name: string): number {
   return bot.inventory.items().reduce((sum, item) => (item.name === name ? sum + item.count : sum), 0);
@@ -12,12 +13,14 @@ export async function craftItem(
   name: string,
   count: number,
   craftingTable?: Block | null,
-  shouldStop?: () => boolean
+  shouldStop?: () => boolean,
+  // the recipe to use; by default the first one the inventory covers for a single craft
+  chosen?: Recipe
 ): Promise<boolean> {
   const item = bot.registry.itemsByName[name];
   if (!item) throw new Error(`unknown item: ${name}`);
 
-  const recipes = bot.recipesFor(item.id, null, 1, craftingTable ?? null);
+  const recipes = chosen ? [chosen] : bot.recipesFor(item.id, null, 1, craftingTable ?? null);
   if (recipes.length === 0) return false;
 
   await pacedClicks(bot, shouldStop, async () => {
@@ -67,7 +70,7 @@ const INVENTORY_PACKETS = ["window_items", "set_slot", "set_cursor_item"];
 
 // resolves once inventory packets have arrived and then gone quiet for a tick, or after a cap
 // (a click that changes nothing gets no answer)
-function inventoryReply(bot: Bot, quietMs = 60, capMs = 750): Promise<void> {
+export function inventoryReply(bot: Bot, quietMs = 60, capMs = 750): Promise<void> {
   return new Promise((resolve) => {
     let quiet: NodeJS.Timeout | undefined;
     const done = () => {

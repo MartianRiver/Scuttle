@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import path from "node:path";
+import { resolveVersion } from "./version";
 
 // BOT_ENV points at another env file (the test world uses one) instead of the default .env
 dotenv.config({ path: process.env.BOT_ENV });
@@ -15,8 +16,7 @@ export const config = {
   port: Number(process.env.MC_PORT ?? 25565),
   username: required("MC_USERNAME"),
   auth: (process.env.MC_AUTH ?? "microsoft") as "microsoft" | "mojang" | "offline",
-  // leave unset to let mineflayer auto-detect against the server on connect
-  version: process.env.MC_VERSION || undefined,
+  version: resolveVersion(process.env.MC_VERSION),
   // scoped to this project so the Microsoft device-code token cache is easy to find and gitignore,
   // rather than the OS-wide default mineflayer/prismarine-auth otherwise picks
   profilesFolder: path.join(__dirname, "..", "..", ".auth-cache"),
