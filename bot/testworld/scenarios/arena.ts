@@ -18,7 +18,6 @@ export async function arena(c: Ctx) {
   await floor(c);
   await w.run("gamerule spawn_mobs false"); // only the mobs a scenario summons
   await w.run("difficulty normal");
-  await w.run("time set midnight");
   await w.run("weather clear");
   await w.run(`gamemode survival ${c.bot}`);
   await w.run(`clear ${c.bot}`);
@@ -26,6 +25,7 @@ export async function arena(c: Ctx) {
   await w.run(`effect give ${c.bot} minecraft:instant_health 1 10 true`);
   await w.run(`effect give ${c.bot} minecraft:saturation 1 10 true`);
   await w.run(`tp ${c.bot} ${C.x} ${C.y} ${C.z}`);
+  await w.run("time set midnight"); // after the tp, or bedtime sees the bot near the bed and heads home
   await w.trackDeaths(c.bot);
   await sleep(1500);
 }

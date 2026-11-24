@@ -38,30 +38,30 @@ test("store one item: all by default, up to a count, a tool when named", () => {
 test("the stash it remembers: counts, how fresh, and chests never opened", () => {
   const m = new StashMemory();
   assert.deepEqual(m.answer(3, 0), { items: {}, fresh: false, looked: "never", unseen: 3 });
-  m.note(0, { oak_log: 12, stick: 4 }, 1_000);
+  m.note("0", { oak_log: 12, stick: 4 }, 1_000);
   const a = m.answer(3, 5_000);
   assert.deepEqual(a.items, { oak_log: 12, stick: 4 });
   assert.equal(a.fresh, false); // two chests were never opened
   assert.equal(a.unseen, 2);
   assert.equal(a.looked, "just now");
-  m.note(1, { oak_log: 3 }, 2_000);
-  m.note(2, {}, 3_000);
+  m.note("1", { oak_log: 3 }, 2_000);
+  m.note("2", {}, 3_000);
   const b = m.answer(3, 10_000);
   assert.deepEqual(b.items, { oak_log: 15, stick: 4 });
   assert.equal(b.fresh, true);
   assert.equal(b.unseen, undefined);
   assert.equal(m.answer(3, 1_000 + FRESH_MS + 1).fresh, false);
   assert.equal(m.answer(3, 3_000 + FRESH_MS + 1).looked, "a while ago");
-  assert.equal(m.chestHas(0, "stick", 10_000), 4);
-  assert.equal(m.chestHas(2, "stick", 10_000), 0);
-  assert.equal(m.chestHas(0, "stick", 1_000 + FRESH_MS + 1), null); // too old to skip the chest on
-  assert.equal(new StashMemory().chestHas(0, "stick"), null);
+  assert.equal(m.chestHas("0", "stick", 10_000), 4);
+  assert.equal(m.chestHas("2", "stick", 10_000), 0);
+  assert.equal(m.chestHas("0", "stick", 1_000 + FRESH_MS + 1), null); // too old to skip the chest on
+  assert.equal(new StashMemory().chestHas("0", "stick"), null);
 });
 
 test("a new look replaces the old one for that chest", () => {
   const m = new StashMemory();
-  m.note(0, { oak_log: 12 }, 0);
-  m.note(0, { oak_log: 2 }, 10);
+  m.note("0", { oak_log: 12 }, 0);
+  m.note("0", { oak_log: 2 }, 10);
   assert.deepEqual(m.answer(1, 20).items, { oak_log: 2 });
 });
 

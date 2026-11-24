@@ -4,7 +4,7 @@ import { goals } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
 import "mineflayer-tool"; // types for bot.tool
 import { nameAtOf } from "../lib/gate";
-import { home } from "../lib/home";
+import { base } from "../lib/base";
 import { itemCount } from "../lib/inventory";
 import { dig, inReach, pickUp } from "../lib/collect";
 import { safeMovements } from "../lib/movement";
@@ -183,7 +183,7 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
   let reverts = 0;
   const builds = new NoDigMap();
   refusedNow(); // forgets what has faded
-  const centre = ctx.centre ?? home.craftingTable;
+  const centre = ctx.centre ?? base.craftingTable;
   let list: Vec3[] = [];
   let fresh = false; // the list came from a search with nothing mined since
   let searches = 0;

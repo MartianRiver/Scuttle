@@ -23,6 +23,7 @@ export interface RawEntity extends Offset {
 export interface RawBlock extends Offset {
   handle: string;
   what: string;
+  has?: string; // a chest of its own: what it last saw in it
 }
 export interface RawSense {
   health: number | null;
@@ -39,7 +40,7 @@ export interface RawSense {
   standing?: Standing; // what it stands in, when not plain ground
   stone?: Offset; // the nearest natural stone it may dig, in view
   refused: Array<{ dx: number; dz: number; r: number }>; // places the server undid its digs, nearest first
-  places: Array<{ name: string; leads?: "up" | "down" } & Offset> | null; // null away from the overworld; `leads` is the dug stair's
+  places: Array<{ name: string; leads?: "up" | "down"; yours?: boolean } & Offset> | null; // null away from the overworld; `leads` is the dug stair's
 }
 
 export interface Observation {
@@ -103,7 +104,7 @@ export function compose(raw: RawSense, max = OBSERVATION_MAX_CHARS): Observation
       })),
       ...waterLines(fish, entities.length === 0),
     ],
-    blocks: [...raw.blocks].sort(byDistance).map((b) => ({ h: b.handle, what: b.what, ...words(b) })),
+    blocks: [...raw.blocks].sort(byDistance).map((b) => ({ h: b.handle, what: b.what, ...(b.has && { has: b.has }), ...words(b) })),
     refused: raw.refused.map(({ dx, dz, r }) => ({ d: distanceBand(Math.max(0, Math.hypot(dx, dz) - r)), dir: directionWords(dx, 0, dz) })),
     tools: raw.tools.map((t) => `${t.name} ${t.left}%`),
     inv: [...raw.items].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
@@ -126,7 +127,7 @@ export function compose(raw: RawSense, max = OBSERVATION_MAX_CHARS): Observation
       blocks: l.blocks,
       ...(raw.stone && { stone: placeWords(raw.stone) }),
       ...(raw.places && {
-        places: Object.fromEntries(raw.places.map((p) => [p.name, p.leads ? `${placeWords(p)}, the stair you dug, ${p.leads}` : placeWords(p)])),
+        places: Object.fromEntries(raw.places.map((p) => [p.name, p.leads ? `${placeWords(p)}, the stair you dug, ${p.leads}` : p.yours ? `your base, ${placeWords(p)}` : placeWords(p)])),
       }),
       ...(l.refused.length > 0 && { refused: l.refused }),
       ...(Object.keys(trimmed).length > 0 && { more: { ...trimmed } }),

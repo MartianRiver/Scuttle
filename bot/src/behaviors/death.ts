@@ -1,6 +1,6 @@
 import type { Bot } from "mineflayer";
 import loadChat from "prismarine-chat";
-import { home } from "../lib/home";
+import { base } from "../lib/base";
 import { logger } from "../lib/logger";
 import { setStatus } from "../lib/status";
 import { isTaskRunning } from "./task";
@@ -55,7 +55,7 @@ export function watchDeath(bot: Bot, hooks: DeathHooks): () => void {
 
   const onDeath = async (): Promise<void> => {
     // respawn moves the body right after this event, so the place is taken now
-    const place = describePlace(bot.entity.position, home.bed[0], bot.game.dimension);
+    const place = describePlace(bot.entity.position, base.bed[0], bot.game.dimension);
     hooks.ended();
     bot.pathfinder.setGoal(null);
     bot.clearControlStates();

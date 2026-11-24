@@ -246,7 +246,7 @@ test("skills: every task in TASKS has an entry and failure reasons, every action
     assert.ok(t.does.length > 20 && t.needs.length > 0, name);
     assert.ok(Object.keys(t.fails).length > 0 && Object.values(t.fails).every((s) => s.length > 0), name);
   }
-  assert.deepEqual(Object.keys(ACTIONS).sort(), ["climb_up", "collect", "come_to", "craft", "dig_down", "equip", "explore", "follow", "give", "go_to", "guard", "stop", "store", "take", "task", "tunnel"]);
+  assert.deepEqual(Object.keys(ACTIONS).sort(), ["climb_up", "collect", "come_to", "craft", "dig_down", "equip", "explore", "follow", "give", "go_to", "guard", "make_base", "pick_up", "place", "stop", "store", "take", "task", "tunnel"]);
   for (const [name, a] of Object.entries(ACTIONS)) {
     assert.ok(a.does.length > 0 && a.ends.length > 0, name);
     for (const r of a.rejects) assert.ok(REJECTS[r], `${name}: no hint for ${r}`);

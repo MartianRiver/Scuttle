@@ -1,6 +1,6 @@
 import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
-import { home } from "../lib/home";
+import { base } from "../lib/base";
 import { craftItem, itemCount } from "../lib/inventory";
 import { isPlainLogName } from "../lib/movement";
 import { setStatus } from "../lib/status";
@@ -35,7 +35,7 @@ export async function stashItems(bot: Bot, ctx: MineCtx, status: string, amounts
   const todo = amounts.filter((a) => a.count > 0);
   if (!todo.length) return;
   await setStatus({ task: status });
-  const chestPos = home.stashChests[0];
+  const chestPos = base.stashChests[0];
   await walkTo(bot, new goals.GoalNear(chestPos.x, chestPos.y, chestPos.z, 2));
   ctx.checkStop();
   const block = bot.blockAt(chestPos);
@@ -52,7 +52,7 @@ export async function stashItems(bot: Bot, ctx: MineCtx, status: string, amounts
         });
     }
   } finally {
-    noteLook(0, chest);
+    noteLook(chestPos, chest);
     chest.close();
   }
 }

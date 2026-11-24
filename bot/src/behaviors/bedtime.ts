@@ -1,7 +1,7 @@
 import type { Bot } from "mineflayer";
 import type { Block } from "prismarine-block";
 import { goals } from "mineflayer-pathfinder";
-import { home } from "../lib/home";
+import { base } from "../lib/base";
 import { logger } from "../lib/logger";
 import { getStatus, setStatus } from "../lib/status";
 import { isFleeing } from "./defence";
@@ -54,7 +54,7 @@ async function wakeUp(bot: Bot): Promise<void> {
 }
 
 function findBed(bot: Bot): Block | null | "missing" {
-  const found = home.bed.map((p) => bot.blockAt(p));
+  const found = base.bed.map((p) => bot.blockAt(p));
   const bed = found.find((b): b is Block => Boolean(b) && bot.isABed(b as Block));
   if (bed) return bed;
   return found.every((b) => b === null) ? null : "missing"; // null: the chunk isn't loaded yet
@@ -85,7 +85,7 @@ export function startBedtime(bot: Bot, deps: BedtimeDeps): () => void {
 
   const facts = () => {
     const p = bot.entity.position;
-    const bed = home.bed[0];
+    const bed = base.bed[0];
     return {
       timeOfDay: bot.time.timeOfDay as number | null,
       thunder: bot.isRaining && bot.thunderState > 0,
@@ -126,7 +126,7 @@ export function startBedtime(bot: Bot, deps: BedtimeDeps): () => void {
       if (first && occupied(bot, first)) throw new Error("the bed is occupied");
       if (from === "go_home" || !first) {
         void setStatus({ task: GOING });
-        const foot = home.bed[0];
+        const foot = base.bed[0];
         await walkTo(bot, new goals.GoalNear(foot.x, foot.y, foot.z, 2));
       }
       if (cancelled) return;

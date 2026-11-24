@@ -4,13 +4,16 @@ import type { Bot } from "mineflayer";
 import type { Block } from "prismarine-block";
 import type { Recipe } from "prismarine-recipe";
 import { goals } from "mineflayer-pathfinder";
-import { home } from "../lib/home";
+import type { Vec3 } from "vec3";
+import { base } from "../lib/base";
+import { config } from "../lib/config";
 import { craftItem, inventoryReply, itemCount } from "../lib/inventory";
 import { logger } from "../lib/logger";
 import { setStatus } from "../lib/status";
 import { isOverworld } from "../senses/observe";
 import { MAX_CRAFT, craftsFor, describe, isPlanks, pickRecipe, type Counts, type RecipeLite } from "./craft-plan";
 import { TaskError } from "./fail";
+import { pickUpBlock, put } from "./put";
 import type { MineCtx } from "./mine";
 import { walkWithin } from "./walk";
 
@@ -53,15 +56,20 @@ export function recipeAnswer(bot: Bot, item: string) {
   return describe(item, pick, heldBy(bot), bestPlanks(bot));
 }
 
-// the nearest crafting table in range, the home table when none is, null when there is nowhere to craft
-function findTable(bot: Bot): Block | null {
+// the nearest crafting table in range, null when none is
+function nearTable(bot: Bot): Block | null {
   const id = bot.registry.blocksByName.crafting_table?.id;
   if (id === undefined) return null;
   const me = bot.entity.position;
   const near = bot.findBlocks({ matching: id, maxDistance: TABLE_SEARCH, count: 8 }).sort((a, b) => a.distanceTo(me) - b.distanceTo(me))[0];
-  if (near) return bot.blockAt(near);
-  if (!isOverworld(bot) || Math.hypot(home.craftingTable.x - me.x, home.craftingTable.z - me.z) > HOME_TABLE_MAX) return null;
-  const spot = bot.blockAt(home.craftingTable);
+  return near ? bot.blockAt(near) : null;
+}
+
+// the base's table, when it is not farther than a table is worth walking to
+function baseTable(bot: Bot): Block | null {
+  const me = bot.entity.position;
+  if (!isOverworld(bot) || Math.hypot(base.craftingTable.x - me.x, base.craftingTable.z - me.z) > HOME_TABLE_MAX) return null;
+  const spot = bot.blockAt(base.craftingTable);
   return spot?.name === "crafting_table" ? spot : null;
 }
 
@@ -91,9 +99,16 @@ export async function craft(bot: Bot, ctx: MineCtx, item: string, count = 1): Pr
   refuseIfShort(); // before any walking
 
   let table: Block | null = null;
+  let field: Vec3 | null = null; // a table it set down for this craft and takes back after
   if (choose().pick.recipe.table) {
-    table = findTable(bot);
-    if (!table) throw new TaskError("no_table", "no crafting table in reach and none at home");
+    table = nearTable(bot);
+    if (!table && config.placement && itemCount(bot, "crafting_table") > 0) {
+      // carrying one beats a walk home: set it down here, craft, pick it up
+      field = (await put(bot, ctx, "crafting_table", { word: "here" })).at;
+      table = bot.blockAt(field);
+    }
+    table ??= baseTable(bot);
+    if (!table) throw new TaskError("no_table", "no crafting table in reach, none in its pack to set down, and none at its base");
     if (!inReachOf(bot, table)) {
       await setStatus({ task: "walking to the crafting table" });
       const p = table.position;
@@ -109,8 +124,13 @@ export async function craft(bot: Bot, ctx: MineCtx, item: string, count = 1): Pr
   const before = itemCount(bot, item);
   await setStatus({ task: `crafting ${item}` });
   log.info("crafting", { item, times, table: Boolean(table) });
-  if (!(await craftItem(bot, item, times, table, ctx.stopping, live.recipe))) throw new TaskError("craft_failed", "the recipe would not take");
-  ctx.checkStop();
-  await inventoryReply(bot);
-  if (itemCount(bot, item) <= before) throw new TaskError("craft_failed", "nothing came out of the crafting");
+  try {
+    if (!(await craftItem(bot, item, times, table, ctx.stopping, live.recipe))) throw new TaskError("craft_failed", "the recipe would not take");
+    ctx.checkStop();
+    await inventoryReply(bot);
+    if (itemCount(bot, item) <= before) throw new TaskError("craft_failed", "nothing came out of the crafting");
+  } finally {
+    // the field table goes back in the pack, unless a stop is what ended the craft
+    if (field && !ctx.stopping()) await pickUpBlock(bot, ctx, field).catch((err: Error) => log.warn("couldn't take the table back", { message: err.message }));
+  }
 }

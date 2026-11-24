@@ -4,7 +4,7 @@ import type { Entity } from "prismarine-entity";
 import type { Vec3 } from "vec3";
 import { goals, type Movements } from "mineflayer-pathfinder";
 import "mineflayer-tool"; // types for bot.tool
-import { gateDig } from "./gate";
+import { done, gateDig } from "./gate";
 import { isPlainLogName } from "./movement";
 import type { CheckOpts, Verdict } from "./policy";
 
@@ -74,6 +74,7 @@ export async function dig(bot: Bot, block: Block, shouldStop: () => boolean, job
   try {
     await spareTool(bot, block);
     await bot.dig(block);
+    done({ kind: "dig", pos: block.position, job }, block.name, bot.blockAt(block.position)?.name ?? "air");
   } finally {
     clearTimeout(timer);
     clearInterval(watch);

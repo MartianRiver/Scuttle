@@ -41,6 +41,7 @@ export interface World {
 }
 
 export interface CheckOpts {
+  strict?: boolean; // place: the made radius and the kept zones apply, as they do to a dig (what the hands set down, not the stair's fill)
   stand?: Pos; // where the feet are, when the planner knows: geometry is its job, the doors leave it out
   physical?: boolean; // false: only the block itself must be loaded (logs and leaves, which never had the rule)
 }
@@ -67,7 +68,7 @@ export function provenanceAt(pos: Pos, blockNow: string | null, world: Pick<Worl
 }
 
 // made blocks in the cube around `target`, and over it in its column; `skip` leaves out the ones that don't count
-function madeNear(target: Pos, world: World, skip: (p: Pos) => boolean): boolean {
+export function madeNear(target: Pos, world: World, skip: (p: Pos) => boolean): boolean {
   const madeAt = (dx: number, dy: number, dz: number): boolean => {
     const p = { x: target.x + dx, y: target.y + dy, z: target.z + dz };
     const name = world.nameAt(p);
@@ -111,29 +112,41 @@ function checkDig(op: Op, world: World, opts: CheckOpts): Verdict {
   return ok;
 }
 
-// what fill the body may set down: today the stair's, and nothing else. Natural blocks first; cobblestone last
-// because it reads as a build until the journal knows its own
+// what fill the stair may set down, in the order it uses it: natural blocks first, cobblestone last because it reads
+// as a build to anything that has not journalled its own
 export const PLACEABLE = ["dirt", "stone", "netherrack", "cobbled_deepslate", "cobblestone"] as const;
+// what the hands set down besides: a table, a furnace, a chest, a torch, any bed. Never in the stair's fill order
+const FIXTURES = /^(crafting_table|furnace|chest|torch|\w+_bed)$/;
+export const placeable = (name: string): boolean => (PLACEABLE as readonly string[]).includes(name) || FIXTURES.test(name);
+// what the mind may ask for: the stair's stone is its own fill and not on the list
+export const handsPlaceable = (name: string): boolean => name !== "stone" && placeable(name);
 const REPLACEABLE = /^(air|cave_air|void_air|short_grass|grass|tall_grass|fern|large_fern|dead_bush|snow)$/;
+export const isReplaceable = (name: string): boolean => REPLACEABLE.test(name);
 
 // Made radius, liquid and falling are about what breaking takes apart; a block set down can't, and the stair's own
-// fill would otherwise refuse against the cobblestone it laid before.
-function checkPlace(op: Op, world: World): Verdict {
+// fill would otherwise refuse against the cobblestone it laid before. The hands (`strict`) set blocks down among
+// things players built, which is as bad as digging them, so for them the radius and the kept zones count.
+function checkPlace(op: Op, world: World, opts: CheckOpts): Verdict {
   const here = world.nameAt(op.pos);
   if (here === null || (op.against && world.nameAt(op.against) === null)) return no("unknown", WORDS.unknown);
   const prov = provenanceAt(op.pos, here, world);
   if (prov === "player" && world.granted?.(op.pos, op) !== true) return no("player_built", WORDS.here);
 
-  if (!op.block || !(PLACEABLE as readonly string[]).includes(op.block)) return no("not_allowed", "it does not set that block down");
+  if (!op.block || !placeable(op.block) || (opts.strict && !handsPlaceable(op.block))) return no("not_allowed", "it does not set that block down");
   if (!REPLACEABLE.test(here)) return no("not_allowed", "something is already there");
   if (!op.against || !world.solidAt?.(op.against)) return no("not_allowed", "nothing solid to set it against");
   if (world.occupied?.(op.pos)) return no("not_allowed", "someone is standing there");
+  if (opts.strict) {
+    const skip = (p: Pos): boolean => world.granted?.(p, op) === true || (world.isOwn?.(p, world.nameAt(p) ?? "") ?? false);
+    if (madeNear(op.pos, world, skip)) return no("player_built", WORDS.made);
+    if ((world.zonesAt?.(op.pos).length ?? 0) > 0 && world.granted?.(op.pos, op) !== true) return no("protected", WORDS.zone);
+  }
   if (world.budgetLeft && !world.budgetLeft(op.job)) return no("not_allowed", "it has set down enough blocks for now");
   return ok;
 }
 
 export function check(op: Op, world: World, opts: CheckOpts = {}): Verdict {
-  return op.kind === "dig" ? checkDig(op, world, opts) : checkPlace(op, world);
+  return op.kind === "dig" ? checkDig(op, world, opts) : checkPlace(op, world, opts);
 }
 
 // ---- grants: a player asks for help with something, for a while, in a box ----
