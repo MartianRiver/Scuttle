@@ -17,6 +17,8 @@ export interface BodyApi {
   interrupt(detail?: string): void;
   reflexEnded(e: ReflexEnd): void;
   noFood(food: number): void;
+  idle(): boolean;
+  emit(event: string, fields?: Record<string, unknown>): void;
   close(): void;
 }
 
@@ -37,9 +39,12 @@ export function startBodyApi(bot: Bot): BodyApi {
     events.emit("chat", { uuid: bot.players[name]?.uuid ?? null, name, message });
   });
 
+  const idle = () => dispatcher.snapshot().task === null;
+  const emit = (event: string, fields?: Record<string, unknown>) => void events.emit(event, fields);
+
   if (!port || tokens.size === 0) {
     log.info("body API server off (API_PORT / API_TOKENS not set)");
-    return { dispatch: dispatcher.handle, interrupt: dispatcher.interrupted, reflexEnded, noFood, close() {} };
+    return { dispatch: dispatcher.handle, interrupt: dispatcher.interrupted, reflexEnded, noFood, idle, emit, close() {} };
   }
 
   const server = startApiServer({ host, port, tokens }, dispatcher, events);
@@ -48,6 +53,8 @@ export function startBodyApi(bot: Bot): BodyApi {
     interrupt: dispatcher.interrupted,
     reflexEnded,
     noFood,
+    idle,
+    emit,
     close() {
       for (const client of server.clients) client.terminate();
       server.close();

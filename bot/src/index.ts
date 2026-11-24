@@ -12,6 +12,7 @@ import { startIdleHand } from "./behaviors/idle-hand";
 import { isTaskRunning } from "./behaviors/task";
 import { isFalling, startFall } from "./behaviors/fall";
 import { isInHazard, startSurvive } from "./behaviors/survive";
+import { startBedtime } from "./behaviors/bedtime";
 import { isGuardFighting, startGuard } from "./behaviors/guard";
 import { startBodyApi } from "./api";
 import { chatIntent } from "./api/chat";
@@ -74,6 +75,7 @@ bot.once("spawn", () => {
     startDefence(bot, api.interrupt, api.reflexEnded),
     startSurvive(bot, api.interrupt, api.reflexEnded),
     startFall(bot, api.interrupt),
+    startBedtime(bot, api),
     startEscort(bot, () => isFleeing() || isInHazard() || isFalling() || isGuardFighting()),
     startIdleHand(bot, () => getStatus().task === "idle" && !isTaskRunning() && !isEating() && !isFleeing() && !isInHazard() && !isFalling() && !isGuardFighting() && !isGuarding())
   );
