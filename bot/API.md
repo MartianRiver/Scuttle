@@ -346,7 +346,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   first (`woke`), then proceeds as normal; after one it waits 30 s idle before trying again that night.
   Sleeping also sets the body's spawn point.
 - Public chat goes through the same path: `come here` becomes `come_to` (the speaker), `guard me` becomes
-  `guard` (the speaker), `stop` becomes `stop`, `get wood` becomes `task get_wood`, `get stone` becomes `task get_stone`, `get iron` becomes `task get_iron`, spelled exactly. Actions started that way are ordinary
+  `guard` (the speaker), `stop` becomes `stop`, `get wood` becomes `task get_wood`, `get stone` becomes `task get_stone`, `get iron` becomes `task get_iron`. The whole message has to be the phrase, but case, repeated spaces and trailing `.` `!` `?` are ignored (`Stop!` stops); `please stop` is chat. Actions started that way are ordinary
   tasks with ordinary events, and get the same `busy` / `in_fight` / `unknown_player` checks. This works with
   the WebSocket server off; it is the only optional part.
 - The bot validates every intent against this list itself. Nothing upstream is trusted to have.
