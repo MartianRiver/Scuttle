@@ -56,7 +56,7 @@ export async function tunnel(bot: Bot, ctx: MineCtx, opts: TunnelOpts): Promise<
   const deadline = Date.now() + RUN_MS;
   const seen: string[] = [];
   const pacer = opts.torches ? new TorchPacer(lightAtHead(bot)) : null;
-  const job = `torch@${Date.now()}`;
+  const job = `tunnel@${Date.now()}`;
   let stopped: string | null = null;
   let dug = 0;
   try {
@@ -78,7 +78,7 @@ export async function tunnel(bot: Bot, ctx: MineCtx, opts: TunnelOpts): Promise<
         break;
       }
       await setStatus({ task: tunnelStatus(dug) });
-      for (const p of plan.dig) await breakBlock(bot, ctx, p, true, "tunnel");
+      for (const p of plan.dig) await breakBlock(bot, ctx, p, true, job);
       await walkWithin(bot, new goals.GoalBlock(plan.to.x, plan.to.y, plan.to.z), STEP_WALK_MS);
       ctx.checkStop();
       if (!same(cellOf(bot), plan.to)) throw new TaskError("stuck", "it could not walk on into the tunnel");

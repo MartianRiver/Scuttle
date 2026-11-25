@@ -6,6 +6,8 @@ import { isFleeing, mobsNearWords, noteStop } from "../behaviors/defence";
 import { beginEscort, endEscort } from "../behaviors/escort";
 import { giveItem } from "../behaviors/give";
 import { destination, goTo, goToPoint } from "../behaviors/goto";
+import { digShaft, goToSite, makeMine } from "../behaviors/mine-site";
+import { undo } from "../behaviors/undo";
 import { isGuardFighting } from "../behaviors/guard";
 import { craft, recipeAnswer } from "../behaviors/craft";
 import { climbUp, digDown } from "../behaviors/dig-down";
@@ -114,6 +116,11 @@ export function createBody(bot: Bot): BodyControl {
     async goTo(handle) {
       endEscort();
       await yieldToOrder(bot);
+      // the mine and the shaft's top are walked along the shaft's cells; a stop bumps `orders`, which ends it between legs
+      if (handle === "mine" || handle === "shaft") {
+        const asked = orders;
+        return goToSite(bot, handle, () => asked !== orders);
+      }
       return goTo(bot, handles, handle);
     },
     async goToPoint(x, y, z) {
@@ -168,6 +175,12 @@ export function createBody(bot: Bot): BodyControl {
           if (t?.kind !== "entity") throw new Error("stale_handle");
           return run("shear", () => shear(bot, ctx, t.id, () => goTo(bot, handles, a.handle)));
         }
+        case "dig_shaft":
+          return run("dig_shaft", () => digShaft(bot, ctx, { to: a.to, torches: a.torches }));
+        case "make_mine":
+          return run("make_mine", () => makeMine(bot, ctx));
+        case "undo":
+          return run("undo", () => undo(bot, ctx, a.job));
         case "explore":
           return run("explore", () => explore(bot, ctx, a.dir, a.far, lookAround));
         case "dig_down":

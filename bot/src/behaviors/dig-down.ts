@@ -91,6 +91,9 @@ export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest 
 export interface DigDownOpts {
   to?: number | "stone"; // stone (the default), or the y of the step to stop on
   torches?: boolean;
+  job?: string; // the journal key of this run (its digs and its torches); `dig_down@<ts>` when not given
+  // a mine site keeps the shaft as it goes: the top and the way it faces when the first step is cut, then each step
+  track?: { begin(top: Pos, facing: Facing): void; step(p: Pos): void };
 }
 
 // Throws `refused`, `blocked`, `no_tool`, `protected` or `stuck`; returns where it ended up in words.
@@ -127,7 +130,7 @@ export async function digDown(bot: Bot, ctx: MineCtx, opts: DigDownOpts = {}): P
   const cap = through ? MAX_DEPTH_STEPS : MAX_STEPS;
   const topY = goingOn ? (stairTop() as Pos).y : cur.y; // how far down it comes is counted from the top of the stair
   const pacer = opts.torches ? new TorchPacer(lightAtHead(bot)) : null;
-  const job = `torch@${Date.now()}`;
+  const job = opts.job ?? `dig_down@${Date.now()}`;
   const ended = (detail: string) => ({ detail: withTorchNote(detail, pacer) });
   let steps = 0;
   for (;;) {
@@ -143,13 +146,17 @@ export async function digDown(bot: Bot, ctx: MineCtx, opts: DigDownOpts = {}): P
     if (noRoomFor(bot, plan.dig.filter((p) => g.solid(p)).map((p) => g.name(p) as string))) return ended("pack full");
 
     await setStatus({ task: digStatus(steps) });
-    for (const p of plan.dig) if (g.solid(p)) await breakBlock(bot, ctx, p, through);
-    if (steps === 0 && !goingOn) beginStair(cur, facing);
+    for (const p of plan.dig) if (g.solid(p)) await breakBlock(bot, ctx, p, through, job);
+    if (steps === 0 && !goingOn) {
+      beginStair(cur, facing);
+      opts.track?.begin(cur, facing);
+    }
 
     await walkWithin(bot, new goals.GoalBlock(plan.to.x, plan.to.y, plan.to.z), STEP_WALK_MS);
     ctx.checkStop();
     if (!same(cellOf(bot), plan.to)) throw new TaskError("stuck", "it could not step down into the hole");
     addStep(plan.to);
+    opts.track?.step(plan.to);
     cur = plan.to;
     steps++;
     pacer?.step();

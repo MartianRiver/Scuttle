@@ -3,13 +3,14 @@
 // the known places. A handle maps to a position or entity id inside the body only; none of that is
 // ever sent. Pure.
 
-// `stair` is the one that is not fixed: the way down the body dug, and only once there is one
-export const PLACES = ["home", "table", "stash", "furnace", "bed", "stair"] as const;
+// `stair` is the one that is not fixed: the way down the body dug, and only once there is one. `mine` (the landing at the
+// foot of its permanent shaft) and `shaft` (the shaft's top) likewise, from the mine site (lib/sites.ts)
+export const PLACES = ["home", "table", "stash", "furnace", "bed", "stair", "mine", "shaft"] as const;
 export type Place = (typeof PLACES)[number];
 export const isPlace = (h: string): h is Place => (PLACES as readonly string[]).includes(h);
 
 // the shape check the protocol does; whether it still points at anything is the table's business
-export const HANDLE_SHAPE = /^(?:[eb][0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed|stair)$/;
+export const HANDLE_SHAPE = /^(?:[eb][0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed|stair|mine|shaft)$/;
 
 // a block only: what `collect` takes
 export const BLOCK_SHAPE = /^b[0-9]{1,9}[a-z]{2}$/;
@@ -18,7 +19,7 @@ export const BLOCK_SHAPE = /^b[0-9]{1,9}[a-z]{2}$/;
 export const ENTITY_SHAPE = /^e[0-9]{1,9}[a-z]{2}$/;
 
 // what a task can be aimed at: a block or a known place; not a mob, which moves
-export const NEAR_SHAPE = /^(?:b[0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed)$/;
+export const NEAR_SHAPE = /^(?:b[0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed|mine)$/;
 
 export type Target =
   | { kind: "entity"; id: number; label: string }

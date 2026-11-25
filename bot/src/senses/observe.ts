@@ -16,6 +16,7 @@ import { armourPoints } from "../behaviors/stance";
 import { base } from "../lib/base";
 import { blockLightAt } from "../lib/light";
 import { journal } from "../lib/journal";
+import { getMine } from "../lib/sites";
 import { spotKey, stashMemory, stashSummary } from "../behaviors/stash-plan";
 import { isPlainLogName } from "../lib/movement";
 import { durabilityLeft, mobHealthBand, timeWords, weatherWords } from "./bands";
@@ -37,6 +38,10 @@ export function placeSpot(p: Place): Vec3 | null {
   if (p === "stair") {
     const top = stairTop();
     return top ? new Vec3(top.x, top.y, top.z) : null;
+  }
+  if (p === "mine" || p === "shaft") {
+    const at = p === "mine" ? getMine()?.landing : getMine()?.top;
+    return at ? new Vec3(at.x, at.y, at.z) : null;
   }
   // a base made in the field may have no furnace or chest yet
   return (p === "table" ? base.craftingTable : p === "stash" ? base.stashChests[0] : p === "furnace" ? base.furnaces[0] : base.bed[0]) ?? null;
@@ -210,7 +215,7 @@ function seenBlocks({ bot, handles, opaque, feet, eye, rel }: View): RawBlock[] 
     if (id !== undefined) found.push(...bot.findBlocks({ matching: id, maxDistance: SIGHT_BLOCKS, count: 30 }));
   }
   // a known place that is also in view is listed once, under its place handle
-  const spots = new Set([...PLACES.filter((p) => p !== "home" && p !== "stair").map(placeSpot), base.bed[1]].filter((v): v is Vec3 => v !== null).map((v) => v.toString()));
+  const spots = new Set([...PLACES.filter((p) => p !== "home" && p !== "stair" && p !== "mine" && p !== "shaft").map(placeSpot), base.bed[1]].filter((v): v is Vec3 => v !== null).map((v) => v.toString()));
 
   const listed = new Map<string, number>();
   const tested = new Map<string, number>();

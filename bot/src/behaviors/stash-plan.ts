@@ -45,6 +45,11 @@ export function takeSpots<T extends At>(own: readonly T[], baseSpots: readonly T
   return out;
 }
 
+// Whether a `take` goes and opens a chest: not when it was seen lately with none of the item, unless it is near enough
+// that a look costs nothing. The memory goes stale without the body knowing (its own `store`, a kid, a restock),
+// and trusting it sent the body 250 blocks to the base with a chest holding the item beside it.
+export const worthOpening = (seen: number | null, chest: At, from: At): boolean => seen !== 0 || flat(chest, from) <= OWN_NEAR;
+
 export const KEEP_FOOD = 16;
 export const KEEP_COBBLE = 4; // what the tasks keep
 export const KEEP_COAL = 4;

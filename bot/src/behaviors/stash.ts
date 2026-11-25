@@ -13,7 +13,7 @@ import { isOverworld } from "../senses/observe";
 import { TaskError } from "./fail";
 import type { MineCtx } from "./mine";
 import { noteStashed } from "./run-report";
-import { distinctChests, spotKey, stashMemory, storeAll, storeOne, storeSpots, takeSpots, type Carried, type Counts } from "./stash-plan";
+import { distinctChests, spotKey, stashMemory, storeAll, storeOne, storeSpots, takeSpots, worthOpening, type Carried, type Counts } from "./stash-plan";
 import { carriedItems, foodTable } from "./survival";
 import { walkWithin } from "./walk";
 
@@ -130,7 +130,7 @@ export async function take(bot: Bot, ctx: MineCtx, item: string, count?: number,
   let full = false;
   for (const at of chestsFor(bot, chest, () => takeSpots(ownChests(bot), baseSpots(), bot.entity.position))) {
     if (want <= 0) break;
-    if (stashMemory.chestHas(spotKey(at), item) === 0) continue; // seen lately with none of it
+    if (!worthOpening(stashMemory.chestHas(spotKey(at), item), at, bot.entity.position)) continue; // seen lately with none of it, and a walk away
     await setStatus({ task: "taking from the stash" });
     const open = await openStash(bot, ctx, at);
     try {

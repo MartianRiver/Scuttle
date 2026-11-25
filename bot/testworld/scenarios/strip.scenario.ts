@@ -17,11 +17,11 @@ const REGIONS = path.join(runDir, "plugins", "WorldGuard", "worlds", "world", "r
 const REGION = "scuttle-strip";
 const JOURNAL = path.join(process.cwd(), ".auth-cache");
 
-const X0 = 400;
-const Z0 = 400;
-const TOP = 67; // the bot's feet; the grass is y 66
-const AT = `${X0}.5 ${TOP} ${Z0}.5 270 0`; // facing east
-const COL = { x0: 395, x1: 540, z0: 376, z1: 424 };
+export const X0 = 400;
+export const Z0 = 400;
+export const TOP = 67; // the bot's feet; the grass is y 66
+export const AT = `${X0}.5 ${TOP} ${Z0}.5 270 0`; // facing east
+export const COL = { x0: 395, x1: 540, z0: 376, z1: 424 };
 
 const offlineUuid = (name: string): string => {
   const b = createHash("md5").update(`OfflinePlayer:${name}`).digest();
@@ -74,7 +74,7 @@ const FILLER = [
 ];
 
 // the frozen start: survival, fed, healed, day, the pack `give` lists and nothing else, facing east on the grass
-async function checkpoint(c: Ctx, give: string[], reach = COL.x1): Promise<void> {
+export async function checkpoint(c: Ctx, give: string[], reach = COL.x1): Promise<void> {
   const w = c.world;
   await c.body.send({ intent: "stop" });
   await sleep(1000);
@@ -95,7 +95,7 @@ async function checkpoint(c: Ctx, give: string[], reach = COL.x1): Promise<void>
   await sleep(500);
 }
 
-async function tidy(c: Ctx, reach = COL.x1): Promise<void> {
+export async function tidy(c: Ctx, reach = COL.x1): Promise<void> {
   await c.body.send({ intent: "stop" });
   await sleep(1000);
   await column(c, reach);
@@ -105,7 +105,7 @@ async function tidy(c: Ctx, reach = COL.x1): Promise<void> {
   await c.world.run(`tp ${c.bot} 0.5 68 -10`);
 }
 
-const KIT = ["iron_pickaxe 1", "torch 32", "bread 8", "chest 1", "crafting_table 1"];
+export const KIT = ["iron_pickaxe 1", "torch 32", "bread 8", "chest 1", "crafting_table 1"];
 
 async function observe(c: Ctx): Promise<Observation> {
   const r = await c.body.send({ intent: "observe" });
@@ -113,7 +113,7 @@ async function observe(c: Ctx): Promise<Observation> {
   return r.observation;
 }
 
-const feet = async (c: Ctx): Promise<Pos> => {
+export const feet = async (c: Ctx): Promise<Pos> => {
   const [x, y, z] = await c.world.pos(c.bot);
   return { x: Math.floor(x), y: Math.floor(y), z: Math.floor(z) };
 };
@@ -138,8 +138,8 @@ async function torchesIn(c: Ctx, from: Pos, to: Pos): Promise<Pos[]> {
   return cells.filter((_, i) => hits[i]);
 }
 
-const words = (s: unknown) => typeof s === "string" && s.length > 0 && !/\d/.test(s);
-const events = (c: Ctx, from: number, name: string) => c.body.events.slice(from).filter((e) => e.event === name);
+export const words = (s: unknown) => typeof s === "string" && s.length > 0 && !/\d/.test(s);
+export const events = (c: Ctx, from: number, name: string) => c.body.events.slice(from).filter((e) => e.event === name);
 
 // ---- the way down ----
 

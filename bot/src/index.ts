@@ -3,10 +3,13 @@ import { pathfinder } from "mineflayer-pathfinder";
 import { plugin as collectBlockPlugin } from "mineflayer-collectblock";
 import { config } from "./lib/config";
 import { openBase } from "./lib/base";
+import { openSites } from "./lib/sites";
+import { seedSite } from "./behaviors/mine-site";
 import { openJournal } from "./lib/journal";
 import { logger } from "./lib/logger";
 import { getStatus, setStatus } from "./lib/status";
 import { safeMovements } from "./lib/movement";
+import { fixPhysicsRounding } from "./lib/physics-fix";
 import { isFleeing, startDefence } from "./behaviors/defence";
 import { isGuarding, startEscort } from "./behaviors/escort";
 import { startSurvival, isEating } from "./behaviors/survival";
@@ -33,12 +36,15 @@ fs.chmodSync(config.profilesFolder, 0o700);
 // what it changed and where it lives, per bot name, kept across restarts
 openJournal(config.profilesFolder, config.username);
 openBase(config.profilesFolder, config.username);
+openSites(config.profilesFolder, config.username);
+seedSite();
 
 function describeLocation(bot: import("mineflayer").Bot): string {
   const { x, y, z } = bot.entity.position;
   return `${Math.round(x)}, ${Math.round(y)}, ${Math.round(z)}`;
 }
 
+fixPhysicsRounding(); // before the first physics tick
 const bot = mineflayer.createBot({
   host: config.host,
   port: config.port,
