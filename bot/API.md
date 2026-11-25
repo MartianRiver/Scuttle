@@ -42,6 +42,7 @@ Client → bot:
 {"type":"intent","id":"p1","intent":"place","item":"crafting_table","where":"here"}   where: here | ahead | wall | on b17kq (or on table)
 {"type":"intent","id":"p2","intent":"pick_up","handle":"b17kq"}
 {"type":"intent","id":"p3","intent":"make_base"}
+{"type":"intent","id":"p5","intent":"shear","handle":"e4kq"}                       a sheep from observe's near
 {"type":"intent","id":"p4","intent":"store","item":"oak_log","chest":"b17kq"}      `chest` also on take
 {"type":"intent","id":"d8","intent":"explore","dir":"north-east","far":"a fair way"}
 ```
@@ -292,7 +293,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   - `take {item, count?, chest?}` takes up to `count` (default a stack) from the chests that may hold it (its own chests nearest first, then the base's stash; or only
     `chest`, `not_yours` if that is not its own). Ends `task_finished` with `got` (maybe less than asked), or `none_stashed`, `inventory_full`.
   - `place {item, where?}` sets a block it carries down. `item`: `crafting_table`, `furnace`, `chest`, `torch`, any bed, or `dirt`, `cobblestone`,
-    `cobbled_deepslate`, `netherrack`; anything else is `not_allowed`, an item it does not hold `none_held`. `where` (default `here`): `here` the ground beside it (the
+    `cobbled_deepslate`, `netherrack`, or a sapling (`oak`, `spruce`, `birch`, `jungle`, `acacia`, `dark_oak`, `cherry`; pale oak, azalea and mangrove propagules are left out, and no bone meal ever); anything else is `not_allowed`, an item it does not hold `none_held`. A sapling goes only on the top of `grass_block`, `dirt`, `podzol`, `coarse_dirt` or `rooted_dirt` in light 9 or more (the gate checks both again; a bad ground or a dark cell ends `no_room`, `detail` "a sapling only goes in grass or dirt..." or "too dark", and is not remembered as a refused place); a dark_oak sapling only grows from four planted in a square. `where` (default `here`): `here` the ground beside it (the
     way it faces first), `ahead` the cell in front, `wall` a torch on a wall within reach, `on <handle>` on top of that block. The body picks the exact cell: free, with
     something solid to set it on, nobody standing in it, a bed with two clear cells in line away from it, two chests never side by side; and the gate's rules for a place
     from the hands, which count the made radius and the places the server undid work as for a dig (`refused`, `detail` "something a player built is too close", try
@@ -300,6 +301,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
     words (`a crafting table beside it`, `a torch on the wall`), `no_room` (nothing free or in reach; `detail` says which), `stale_handle`. What it sets down is journalled
     as its own and `observe` lists it in `blocks` as `your crafting table`, `your chest` (a chest also carries `has`, what it last saw in it), `your furnace` or `your bed`,
     with a handle. `rejected` `not_enabled` unless the body runs with `PLACEMENT=on` (the test world's `bot.env` only).
+  - `shear {handle}` (an `e` handle, a sheep; only with `PLACEMENT=on`, same `not_enabled`) walks to the sheep, takes shears from the pack in hand, uses them and picks up the wool: `task_finished` with `got` (`white_wool:2`) and `detail`; `none_held` with no shears (craft them from two iron ingots), `not_allowed` for any mob that is not a sheep, `refused` for a lamb or when the server will not let it shear there, `no_wool` for a sheep already shorn (it does not wait for the wool to grow back), `stale_handle`, `stuck`. One sheep per call. A bed is then `craft` of that colour's bed from three wool of one colour and three planks (mixed colours end `missing`).
   - `pick_up {handle}` breaks a block the journal says it set down (and that is still that block) and picks the drop up: `not_yours` for anything else, `not_empty` for a
     chest or furnace with things in it, `no_tool` for a furnace without a pickaxe, `stale_handle`. Same `not_enabled`.
   - `make_base` makes where it stands the base: refused `not_ready` (`detail` names what is missing) unless its own bed, crafting table and a chest, all set down by it,

@@ -14,6 +14,7 @@ import { equipItem, equipSlot } from "../behaviors/equip";
 import { pinHand } from "../behaviors/idle-hand";
 import { canExplore, explore } from "../behaviors/explore";
 import { makeBase, pickUpBlock, put, type WhereWord } from "../behaviors/put";
+import { shear } from "../behaviors/shear";
 import { collect } from "../behaviors/harvest";
 import { stashCount, stashMemory, store, take } from "../behaviors/stash";
 import { hazardWords, isInHazard } from "../behaviors/survive";
@@ -161,6 +162,11 @@ export function createBody(bot: Bot): BodyControl {
           return run("pick_up", () => pickUpBlock(bot, ctx, posOf(a.handle)));
         case "make_base":
           return run("make_base", () => makeBase(bot, ctx));
+        case "shear": {
+          const t = handles.resolve(a.handle);
+          if (t?.kind !== "entity") throw new Error("stale_handle");
+          return run("shear", () => shear(bot, ctx, t.id, () => goTo(bot, handles, a.handle)));
+        }
         case "explore":
           return run("explore", () => explore(bot, ctx, a.dir, a.far, lookAround));
         case "dig_down":

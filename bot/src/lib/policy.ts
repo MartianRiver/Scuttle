@@ -38,6 +38,7 @@ export interface World {
   granted?: (p: Pos, op: Op) => boolean;
   budgetLeft?: (job: string) => boolean;
   occupied?: (p: Pos) => boolean; // a player or mob stands in the cell (not the body itself)
+  lightAt?: (p: Pos) => number | null; // 0 to 15, the brighter of sky and block light; null where it is not loaded
 }
 
 export interface CheckOpts {
@@ -117,11 +118,28 @@ function checkDig(op: Op, world: World, opts: CheckOpts): Verdict {
 export const PLACEABLE = ["dirt", "stone", "netherrack", "cobbled_deepslate", "cobblestone"] as const;
 // what the hands set down besides: a table, a furnace, a chest, a torch, any bed. Never in the stair's fill order
 const FIXTURES = /^(crafting_table|furnace|chest|torch|\w+_bed)$/;
-export const placeable = (name: string): boolean => (PLACEABLE as readonly string[]).includes(name) || FIXTURES.test(name);
+// the one widening for planting: these saplings and no other plant (pale oak, azalea and mangrove propagules are left out)
+export const SAPLINGS = ["oak_sapling", "spruce_sapling", "birch_sapling", "jungle_sapling", "acacia_sapling", "dark_oak_sapling", "cherry_sapling"] as const;
+export const placeable = (name: string): boolean => (PLACEABLE as readonly string[]).includes(name) || FIXTURES.test(name) || (SAPLINGS as readonly string[]).includes(name);
 // what the mind may ask for: the stair's stone is its own fill and not on the list
 export const handsPlaceable = (name: string): boolean => name !== "stone" && placeable(name);
+export const isSapling = (name: string): boolean => (SAPLINGS as readonly string[]).includes(name);
+// what a sapling goes in, and the light it needs to grow
+export const SAPLING_GROUND = ["grass_block", "dirt", "podzol", "coarse_dirt", "rooted_dirt"] as const;
+export const SAPLING_LIGHT = 9;
 const REPLACEABLE = /^(air|cave_air|void_air|short_grass|grass|tall_grass|fern|large_fern|dead_bush|short_dry_grass|tall_dry_grass|leaf_litter|snow)$/;
 export const isReplaceable = (name: string): boolean => REPLACEABLE.test(name);
+
+// a sapling goes on the top of grass or dirt, and only where there is light to grow it
+function checkSapling(op: Op, world: World): Verdict | null {
+  const on = op.against;
+  if (!on || on.x !== op.pos.x || on.z !== op.pos.z || on.y !== op.pos.y - 1) return no("not_allowed", "a sapling goes on the ground, not against a side");
+  if (!(SAPLING_GROUND as readonly string[]).includes(world.nameAt(on) ?? "")) return no("not_allowed", "a sapling only goes in grass or dirt");
+  const light = world.lightAt?.(op.pos);
+  if (light === undefined || light === null) return no("unknown", WORDS.unknown);
+  if (light < SAPLING_LIGHT) return no("not_allowed", "it is too dark there for a sapling to grow");
+  return null;
+}
 
 // Made radius, liquid and falling are about what breaking takes apart; a block set down can't, and the stair's own
 // fill would otherwise refuse against the cobblestone it laid before. The hands (`strict`) set blocks down among
@@ -136,6 +154,8 @@ function checkPlace(op: Op, world: World, opts: CheckOpts): Verdict {
   if (!REPLACEABLE.test(here)) return no("not_allowed", "something is already there");
   if (!op.against || !world.solidAt?.(op.against)) return no("not_allowed", "nothing solid to set it against");
   if (world.occupied?.(op.pos)) return no("not_allowed", "someone is standing there");
+  const planting = isSapling(op.block) ? checkSapling(op, world) : null;
+  if (planting) return planting;
   if (opts.strict) {
     const skip = (p: Pos): boolean => world.granted?.(p, op) === true || (world.isOwn?.(p, world.nameAt(p) ?? "") ?? false);
     if (madeNear(op.pos, world, skip)) return no("player_built", WORDS.made);

@@ -8,9 +8,9 @@ import path from "node:path";
 import { runDir } from "../slot";
 import { restartBot, sleep, type BodyEvent, type Ctx, type Observation, type Pos, type Scenario } from "./lib";
 
-const S = { x: 215, y: 67, z: 215 }; // the bot's cell; the platform floor is y 66
+export const S = { x: 215, y: 67, z: 215 }; // the bot's cell; the platform floor is y 66
 const FAR = { x: 315, y: 67, z: 215 }; // a second small platform a hundred blocks east, for the leash
-const AT = `${S.x + 0.5} ${S.y} ${S.z + 0.5} 270 0`; // facing east
+export const AT = `${S.x + 0.5} ${S.y} ${S.z + 0.5} 270 0`; // facing east
 const REGIONS = path.join(runDir, "plugins", "WorldGuard", "worlds", "world", "regions.yml");
 const SITE_REGION = "scuttle-site";
 const BASE_FILE = path.join(process.cwd(), ".auth-cache");
@@ -50,7 +50,7 @@ async function platform(c: Ctx, at: Pos, half: number): Promise<void> {
 }
 
 // the frozen start: bare pack plus `give`, day, nothing set down near, facing east
-async function checkpoint(c: Ctx, give: string[] = [], region = true): Promise<void> {
+export async function checkpoint(c: Ctx, give: string[] = [], region = true): Promise<void> {
   const w = c.world;
   await c.body.send({ intent: "stop" });
   await sleep(1000);
@@ -69,7 +69,7 @@ async function checkpoint(c: Ctx, give: string[] = [], region = true): Promise<v
   await sleep(500);
 }
 
-async function tidy(c: Ctx, restart = false): Promise<void> {
+export async function tidy(c: Ctx, restart = false): Promise<void> {
   await c.body.send({ intent: "stop" });
   await sleep(1000);
   await c.world.run("time set day");
@@ -83,13 +83,13 @@ async function tidy(c: Ctx, restart = false): Promise<void> {
   await c.world.run(`tp ${c.bot} 0.5 68 -10`);
 }
 
-async function observe(c: Ctx): Promise<Observation> {
+export async function observe(c: Ctx): Promise<Observation> {
   const r = await c.body.send({ intent: "observe" });
   if (r.type !== "observation" || !r.observation) throw new Error(`observe answered ${r.type} ${r.reason ?? ""}`);
   return r.observation;
 }
 
-async function run(c: Ctx, intent: object, ms = 60_000): Promise<{ reply: string; end: BodyEvent | null }> {
+export async function run(c: Ctx, intent: object, ms = 60_000): Promise<{ reply: string; end: BodyEvent | null }> {
   const from = c.body.mark();
   const r = await c.body.send(intent);
   if (r.type !== "accepted") return { reply: r.type === "rejected" ? `rejected ${r.reason}` : r.type, end: null };
@@ -101,18 +101,18 @@ async function run(c: Ctx, intent: object, ms = 60_000): Promise<{ reply: string
   return { reply: "accepted", end: end ?? null };
 }
 
-const said = (e: BodyEvent | null) => `${e?.event ?? "no end"} ${e?.reason ?? ""} ${e?.detail ?? ""}`.trim();
-const finished = (e: BodyEvent | null) => e?.event === "task_finished";
+export const said = (e: BodyEvent | null) => `${e?.event ?? "no end"} ${e?.reason ?? ""} ${e?.detail ?? ""}`.trim();
+export const finished = (e: BodyEvent | null) => e?.event === "task_finished";
 
 // the cells within two of the bot's start that hold a block of that kind
-async function findAround(c: Ctx, block: string): Promise<Pos[]> {
+export async function findAround(c: Ctx, block: string): Promise<Pos[]> {
   const cells = c.world.cells({ x: S.x - 2, y: S.y, z: S.z - 2 }, { x: S.x + 2, y: S.y + 1, z: S.z + 2 });
   const hits = await Promise.all(cells.map((p) => c.world.blockIs(p, block)));
   return cells.filter((_, i) => hits[i]);
 }
 
 // the starting facts every scenario here asserts before it acts
-async function startsBare(c: Ctx, held: Record<string, number>): Promise<void> {
+export async function startsBare(c: Ctx, held: Record<string, number>): Promise<void> {
   for (const [item, n] of Object.entries(held)) c.check((await c.world.count(c.bot, item)) === n, `starts with ${n} ${item}`);
   c.check((await findAround(c, "crafting_table")).length === 0, "no table within reach to start with");
   const [x, y, z] = await c.world.pos(c.bot);
