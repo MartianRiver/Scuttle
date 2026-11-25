@@ -11,8 +11,16 @@ test("chat commands map to intents", () => {
   assert.deepEqual(chatIntent("Sam", "guard me"), { intent: "guard", player: "Sam" });
 });
 
+test("chat: case, spacing and trailing punctuation do not change the command", () => {
+  const stop = { intent: "stop" };
+  for (const text of ["Stop", "STOP!", "stop!!", "stop.", " stop ", "stop?!"]) assert.deepEqual(chatIntent("Sam", text), stop, text);
+  assert.deepEqual(chatIntent("Sam", "Get  Stone!"), { intent: "task", name: "get_stone" });
+  assert.deepEqual(chatIntent("Sam", "Guard me."), { intent: "guard", player: "Sam" });
+  assert.deepEqual(chatIntent("Sam", " get wood"), { intent: "task", name: "get_wood" });
+});
+
 test("chat: anything else is not a command", () => {
-  for (const text of ["come here please", "Stop", "stop!", " get wood", "get_wood", "get_stone", "get  stone", "Get stone", "get stone please", "get_iron", "Get iron", "get iron please", "get  iron", "follow me", "Guard me", "guard me please", "guard", "guard Sam", ""]) {
+  for (const text of ["come here please", "please stop", "don't stop", "stop it", "stop, stop", "get_wood", "get_stone", "get stone please", "get_iron", "get iron please", "follow me", "guard me please", "guard", "guard Sam", "!", ""]) {
     assert.equal(chatIntent("Sam", text), null, text);
   }
 });

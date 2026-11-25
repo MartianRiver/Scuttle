@@ -1,10 +1,14 @@
 import { parseFrame, type Intent } from "./protocol";
 
-// Public chat has six commands, spelled exactly. Each is built as an API frame and parsed, so
+// A kid types "Stop!" in a hurry: case, spacing and trailing . ! ? don't change which command it is. The whole
+// message still has to be the command, so "please stop" and "don't stop" are ordinary chat.
+export const normalise = (message: string): string => message.trim().toLowerCase().replace(/\s+/g, " ").replace(/[.!?]+$/, "").trim();
+
+// Public chat has six commands, each the whole message. Each is built as an API frame and parsed, so
 // a speaker's name faces the same check as one sent over the socket.
 export function chatIntent(username: string, message: string): Intent | null {
   let frame: Record<string, unknown>;
-  switch (message) {
+  switch (normalise(message)) {
     case "come here":
       frame = { intent: "come_to", player: username };
       break;
