@@ -1,6 +1,8 @@
 import type { SpeechResult } from "../lib/speech";
 import { endFields, wordsOnly, type EndInfo, type EventLog } from "./events";
 import type { Observation } from "../senses/compose";
+import { comingLine, fullLine, queuedLine } from "../behaviors/callouts";
+import { GuardQueue } from "../behaviors/guard-queue";
 import { ACTION_INTENTS, PLACING_INTENTS, type ActionIntent, type Intent, type TaskName } from "./protocol";
 
 export type Got = Record<string, number>;
@@ -67,6 +69,7 @@ export interface BodyControl {
   placementOn(): boolean; // false: place, pick_up and make_base are refused `not_enabled` (only the test world switches them on)
   canExplore(dir: string, far: string | undefined): boolean; // false: the target is past the leash from home
   say(text: string): SpeechResult; // one public chat line, through lib/speech.ts: the one clock and the one text check
+  announce(text: string): void; // a line the body itself says (the guard queue's); dropped, not queued, when it spoke a moment ago
   stop(): void; // the API's stop
   interrupt(): void; // the same cleanup, for the body's own reflexes taking over
 }
@@ -105,14 +108,24 @@ interface Current {
   kind: string;
   isTask: boolean;
   keepOnReflex?: boolean; // a reflex taking the body does not end it (guard)
+  player?: string; // who a guard is for
 }
 
 const isAction = (i: Intent): i is ActionIntent => (ACTION_INTENTS as readonly string[]).includes(i.intent);
 
+const HAND_OVER_AFTER_DEATH_MS = 2500; // the body has to respawn and the players load back in
+
 // Owns "one action at a time" and turns each action's life into events.
-export function createDispatcher(body: BodyControl, log: EventLog, now: () => number = Date.now) {
+export function createDispatcher(
+  body: BodyControl,
+  log: EventLog,
+  now: () => number = Date.now,
+  defer: (fn: () => void, ms: number) => void = (fn, ms) => void setTimeout(fn, ms).unref()
+) {
   let current: Current | null = null;
   let counter = 0;
+  const queue = new GuardQueue();
+  const wardOf = (): string | null => current?.player ?? null;
 
   const snapshot = (): Snapshot => ({
     inGame: body.inGame(),
@@ -126,10 +139,11 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     if (current?.taskId !== c.taskId) return;
     current = null;
     log.emit(event, { taskId: c.taskId, ...(reason && { reason }), ...endFields(info) });
+    if (reason === "lost_ward") handOver(); // after the event, so a waiter hears this end first
   };
 
-  const begin = (kind: string, isTask: boolean, run: Promise<TaskDone | void> | null, keepOnReflex = false): string => {
-    const c: Current = { taskId: `t${++counter}`, kind, isTask, keepOnReflex };
+  const begin = (kind: string, isTask: boolean, run: Promise<TaskDone | void> | null, keepOnReflex = false, player?: string): string => {
+    const c: Current = { taskId: `t${++counter}`, kind, isTask, keepOnReflex, player };
     current = c;
     log.emit("task_started", { taskId: c.taskId, kind });
     run?.then(
@@ -153,7 +167,31 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     return taskId;
   };
 
-  function handle(i: Intent): Outcome {
+  // the guard is free: the first waiting player in view gets it, those who left are dropped
+  function handOver(): void {
+    if (current || queue.size === 0) return;
+    if (!body.inGame() || body.fighting()) return queue.clear();
+    const name = queue.next(body.canSee);
+    if (!name) return;
+    begin(`guard:${name}`, false, body.guard(name), true, name);
+    body.announce(comingLine(name));
+  }
+
+  // a `guard` while another player is guarded: the same player again is nothing, another from chat waits
+  // their turn, one over the API (no speaker) replaces it as every other order does
+  function guardRequest(player: string, speaker: string | undefined): Outcome | null {
+    const ward = wardOf();
+    if (ward === null) return null;
+    if (player === ward) return { kind: "accepted", taskId: current?.taskId };
+    if (speaker !== player) return null;
+    const ask = queue.ask(ward, player);
+    if (ask === "queued") body.announce(queuedLine(ward, player));
+    if (ask === "full") body.announce(fullLine(player));
+    return { kind: "accepted" };
+  }
+
+  // `speaker` is who typed it in public chat; the API has none
+  function handle(i: Intent, speaker?: string): Outcome {
     if (i.intent === "status") return { kind: "status", snapshot: snapshot() };
 
     if (i.intent === "observe") {
@@ -174,8 +212,12 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     }
 
     if (i.intent === "stop") {
+      const action = queue.stop(wardOf(), speaker);
+      if (action === "dequeue") return { kind: "accepted" }; // a waiting player gives up their turn, the guard carries on
       body.stop();
-      return { kind: "accepted", taskId: endCurrent("task_stopped") };
+      const taskId = endCurrent("task_stopped");
+      if (action === "handover") handOver();
+      return { kind: "accepted", taskId };
     }
 
     if (i.intent === "say") {
@@ -235,19 +277,26 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     if (i.intent === "go_to") {
       if ("handle" in i) {
         if (!body.handleLabel(i.handle)) return { kind: "rejected", reason: "stale_handle" };
+        queue.clear();
         endCurrent("task_stopped"); // replaced by this one
         return { kind: "accepted", taskId: begin(`go_to:${i.handle}`, false, body.goTo(i.handle)) };
       }
+      queue.clear();
       endCurrent("task_stopped");
       return { kind: "accepted", taskId: begin("go_to:point", false, body.goToPoint(i.x, i.y, i.z)) };
     }
     if (!body.canSee(i.player)) return { kind: "rejected", reason: "unknown_player" };
+    if (i.intent === "guard") {
+      const early = guardRequest(i.player, speaker);
+      if (early) return early;
+    }
+    queue.clear();
     endCurrent("task_stopped"); // replaced by this one
     if (i.intent === "follow") {
       body.follow(i.player);
       return { kind: "accepted", taskId: begin(`follow:${i.player}`, false, null) };
     }
-    if (i.intent === "guard") return { kind: "accepted", taskId: begin(`guard:${i.player}`, false, body.guard(i.player), true) };
+    if (i.intent === "guard") return { kind: "accepted", taskId: begin(`guard:${i.player}`, false, body.guard(i.player), true, i.player) };
     if (i.intent === "give") return { kind: "accepted", taskId: begin(`give:${i.player}`, false, body.give(i.player, i.item, i.count)) };
     return { kind: "accepted", taskId: begin(`come_to:${i.player}`, false, body.comeTo(i.player)) };
   }
@@ -259,6 +308,7 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
       log.emit("body_connected");
     },
     bodyDisconnected(reason: string) {
+      queue.clear();
       endCurrent("task_failed", "disconnected");
       log.emit("body_disconnected", { reason });
     },
@@ -266,6 +316,8 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
     bodyDied() {
       body.interrupt();
       endCurrent("task_failed", "died");
+      // not at once: the escort's own death listener runs after this and would clear a guard started now
+      if (queue.size > 0) defer(handOver, HAND_OVER_AFTER_DEATH_MS);
     },
     died(place: string, cause: string) {
       log.emit("died", { place, cause });

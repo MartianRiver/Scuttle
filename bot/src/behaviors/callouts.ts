@@ -22,6 +22,10 @@ export function warnLine(mobName: string, player: string): string {
 
 export const clearLine = (player: string): string => `All clear, ${player}.`;
 
+export const queuedLine = (ward: string, player: string): string => `I'm with ${ward} right now, ${player}. You're next.`;
+export const fullLine = (player: string): string => `I've got a few waiting already, ${player}, try again in a bit.`;
+export const comingLine = (player: string): string => `Coming, ${player}.`;
+
 export const CALLOUT_GAP_MS = 5000; // at most one line this often, whatever happens
 const QUIET_MS = 2000; // no threat this long before a fight counts as over
 
