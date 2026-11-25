@@ -13,7 +13,7 @@ import { startApiServer } from "./server";
 const log = logger("api");
 
 export interface BodyApi {
-  dispatch(intent: Intent): Outcome;
+  dispatch(intent: Intent, speaker?: string): Outcome;
   interrupt(detail?: string): void;
   reflex: ReflexHooks;
   noFood(food: number): void;

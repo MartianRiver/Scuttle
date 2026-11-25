@@ -188,6 +188,7 @@ export function createBody(bot: Bot): BodyControl {
     canExplore: (dir, far) => canExplore(bot, dir as CompassPoint, far as ExploreBand | undefined),
 
     say: (text) => speak(bot, text, "say"),
+    announce: (text) => void speak(bot, text, "escort"),
 
     stop() {
       endEscort();

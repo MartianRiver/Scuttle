@@ -82,6 +82,7 @@ function stub(over: Partial<BodyControl> = {}) {
     },
     canExplore: (dir) => dir !== "south",
     say: () => "sent",
+    announce: () => {},
     stop: () => {},
     interrupt: () => {},
     ...over,
