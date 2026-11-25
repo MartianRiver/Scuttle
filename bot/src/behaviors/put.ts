@@ -12,6 +12,7 @@ import { itemCount } from "../lib/inventory";
 import { journal } from "../lib/journal";
 import { logger } from "../lib/logger";
 import { placeBlock } from "../lib/place-block";
+import { cellLight } from "../lib/cell-light";
 import { check, handsPlaceable, madeNear, type Op } from "../lib/policy";
 import { setStatus } from "../lib/status";
 import { isOverworld } from "../senses/observe";
@@ -36,6 +37,7 @@ export function viewOf(bot: Bot) {
     feet: cellOf(bot.entity.position),
     facing: cardinalOfYaw(bot.entity.yaw),
     nameAt: nameAtOf(bot),
+    lightAt: (p: { x: number; y: number; z: number }) => cellLight(bot, p),
     solid: (p: { x: number; y: number; z: number }) => bot.blockAt(vecOf(p))?.boundingBox === "block",
     occupied: (p: { x: number; y: number; z: number }) => entities.some((e) => Math.floor(e.position.x) === p.x && Math.floor(e.position.y) === p.y && Math.floor(e.position.z) === p.z),
   };

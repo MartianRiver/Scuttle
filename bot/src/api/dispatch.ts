@@ -250,13 +250,13 @@ export function createDispatcher(
       if ((PLACING_INTENTS as readonly string[]).includes(i.intent) && !body.placementOn()) return { kind: "rejected", reason: "not_enabled" };
       if (i.intent === "place" && !body.knowsItem(i.item)) return { kind: "rejected", reason: "unknown_item" };
       // every handle an order names has to be live now: the block it points at, the block it goes on, the chest
-      const named = i.intent === "collect" || i.intent === "pick_up" ? i.handle : i.intent === "place" && i.where?.startsWith("on ") ? i.where.slice(3) : i.intent === "store" || i.intent === "take" ? i.chest : undefined;
+      const named = i.intent === "collect" || i.intent === "pick_up" || i.intent === "shear" ? i.handle : i.intent === "place" && i.where?.startsWith("on ") ? i.where.slice(3) : i.intent === "store" || i.intent === "take" ? i.chest : undefined;
       if (named !== undefined && !body.handleLabel(named)) return { kind: "rejected", reason: "stale_handle" };
       if (i.intent === "explore" && !body.canExplore(i.dir, i.far)) return { kind: "rejected", reason: "too_far" };
       // torches asked for and none carried: said at once, not after the first stretch in the dark
       if ((i.intent === "dig_down" || i.intent === "tunnel") && i.torches && body.carries("torch") === 0) return { kind: "rejected", reason: "no_torches" };
       const what =
-        i.intent === "collect" || i.intent === "pick_up" ? i.handle
+        i.intent === "collect" || i.intent === "pick_up" || i.intent === "shear" ? i.handle
         : i.intent === "make_base" ? "base"
         : i.intent === "explore" ? i.dir
         : i.intent === "store" ? (i.item ?? "all")
