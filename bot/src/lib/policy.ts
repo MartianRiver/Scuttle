@@ -120,7 +120,7 @@ const FIXTURES = /^(crafting_table|furnace|chest|torch|\w+_bed)$/;
 export const placeable = (name: string): boolean => (PLACEABLE as readonly string[]).includes(name) || FIXTURES.test(name);
 // what the mind may ask for: the stair's stone is its own fill and not on the list
 export const handsPlaceable = (name: string): boolean => name !== "stone" && placeable(name);
-const REPLACEABLE = /^(air|cave_air|void_air|short_grass|grass|tall_grass|fern|large_fern|dead_bush|snow)$/;
+const REPLACEABLE = /^(air|cave_air|void_air|short_grass|grass|tall_grass|fern|large_fern|dead_bush|short_dry_grass|tall_dry_grass|leaf_litter|snow)$/;
 export const isReplaceable = (name: string): boolean => REPLACEABLE.test(name);
 
 // Made radius, liquid and falling are about what breaking takes apart; a block set down can't, and the stair's own
