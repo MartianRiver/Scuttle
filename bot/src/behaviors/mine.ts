@@ -99,14 +99,17 @@ export function stairFloor(bot: Bot, target: Vec3, feet: Vec3): boolean {
 export function findStand(bot: Bot, target: Vec3): Vec3 | null {
   const me = bot.entity.position;
   let best: Vec3 | null = null;
-  for (const dy of [0, -1]) {
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const feet = target.offset(dx, dy, dz);
-      if (!standOk(target, feet) || !standable(bot, feet)) continue;
-      if (!best || feet.distanceTo(me) < best.distanceTo(me)) best = feet;
+  // at its level or one below first; the floor or ceiling of the next cell only when neither will do
+  for (const dys of [[0, -1], [1, -2]]) {
+    for (const dy of dys) {
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const feet = target.offset(dx, dy, dz);
+        if (!standOk(target, feet) || !standable(bot, feet)) continue;
+        if (!best || feet.distanceTo(me) < best.distanceTo(me)) best = feet;
+      }
     }
+    if (best) return best;
   }
-  if (best) return best;
   const over = target.offset(0, 1, 0);
   return standable(bot, over) && stairFloor(bot, target, over) ? over : null;
 }

@@ -188,7 +188,7 @@ const deep: Scenario = (() => {
     },
     async verify(c) {
       c.check(start.picks === 2 && start.torches === 32 && start.bread === 8 && start.chest === 1 && start.table === 1, `it started from the kit (${JSON.stringify(start)})`);
-      c.check(first?.event === "task_failed" && first.reason === "stuck" && /no further within sixty-four steps/.test(String(first.detail ?? "")), `the first call stops at sixty-four steps (${said(first)})`);
+      c.check(first?.event === "task_finished" && /sixty-four steps down, not at the depth yet/.test(String(first.detail ?? "")), `the first call stops at sixty-four steps (${said(first)})`);
       c.check(mid.y <= TOP - 60 && mid.y >= TOP - 66, `and is 64 steps down (y ${mid.y})`);
       c.check(second?.event === "task_finished" && /at the depth asked/.test(String(second.detail ?? "")), `the second finishes at the depth asked (${said(second)})`);
       c.check(foot.y === -50, `it stands on y -50 (${foot.y})`);

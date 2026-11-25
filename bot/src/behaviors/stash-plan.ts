@@ -50,9 +50,15 @@ export function takeSpots<T extends At>(own: readonly T[], baseSpots: readonly T
 // and trusting it sent the body 250 blocks to the base with a chest holding the item beside it.
 export const worthOpening = (seen: number | null, chest: At, from: At): boolean => seen !== 0 || flat(chest, from) <= OWN_NEAR;
 
+// Once a take holds some of what was asked, a chest further off than this is not walked to for the rest: a few torches
+// from the mine's chest beat a 400 block walk to the base (it went, and ran out of time on the way).
+export const TAKE_ON_NEAR = 48;
+export const walkOnFor = (got: number, chest: At, from: At): boolean => got === 0 || flat(chest, from) <= TAKE_ON_NEAR;
+
 export const KEEP_FOOD = 16;
 export const KEEP_COBBLE = 4; // what the tasks keep
 export const KEEP_COAL = 4;
+export const KEEP_STICKS = 8; // two pickaxes' worth: underground there is no wood to make more
 
 // `store` with no item: everything except what it works with. Tools, weapons and armour it carries stay, as
 // does food up to 16 (the best first) and the 4 cobblestone and 4 coal the tasks keep for themselves.
@@ -68,6 +74,8 @@ export function storeAll(items: readonly Carried[]): Counts {
       food -= keep;
     } else if (it.name === "cobblestone") keep = KEEP_COBBLE;
     else if (it.name === "coal") keep = KEEP_COAL;
+    else if (it.name === "stick") keep = KEEP_STICKS;
+    else if (it.name === "torch") keep = it.count; // light for the way on
     const put = it.count - keep;
     if (put > 0) out[it.name] = (out[it.name] ?? 0) + put;
   }
