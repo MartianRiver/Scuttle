@@ -6,6 +6,7 @@ import type { Block } from "prismarine-block";
 import { Vec3 } from "vec3";
 import { TaskError } from "../behaviors/fail";
 import { refusedNow, reverted } from "../behaviors/refused";
+import { cellLight } from "./cell-light";
 import { journal, record } from "./journal";
 import { check, GrantStore, memoNames, PlaceBudget, type CheckOpts, type Op, type Refusal, type Verdict, type World } from "./policy";
 import type { NameAt, Pos } from "./block-rules";
@@ -55,6 +56,7 @@ export function worldOf(bot: Bot, _op: Op, nameAt: NameAt = nameAtOf(bot), now: 
     isOwn: hooks.isOwn,
     granted: (p, o) => grants.covers(p, o, now),
     budgetLeft: (job) => placeBudget.left(job, now),
+    lightAt: (p) => cellLight(bot, p),
     occupied: (p) =>
       Object.values(bot.entities).some((e) => e !== bot.entity && MOB.has(e.type) && Math.floor(e.position.x) === p.x && Math.floor(e.position.y) === p.y && Math.floor(e.position.z) === p.z),
   };

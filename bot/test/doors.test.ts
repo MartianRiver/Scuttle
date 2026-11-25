@@ -64,3 +64,7 @@ test("the doors call the gate", () => {
 test("the journal is written only through the gate: record( is called in lib/gate.ts and defined in lib/journal.ts", () => {
   assert.deepEqual(where(/\brecord\(/), ["lib/gate.ts", "lib/journal.ts"]);
 });
+
+test("using an item on a mob is in behaviors/shear.ts only", () => {
+  assert.deepEqual(where(/\.activateEntity(At)?\(/), ["behaviors/shear.ts"]);
+});

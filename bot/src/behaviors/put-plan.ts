@@ -2,7 +2,7 @@
 // block it is set against and the face. Pure, over a small view of the world, so it is tested on made-up grids. The
 // gate's verdict on a candidate comes in as `vet`, which is how a refused cell makes the next one get tried.
 import type { Pos } from "../lib/block-rules";
-import { isReplaceable } from "../lib/policy";
+import { isReplaceable, isSapling, SAPLING_GROUND, SAPLING_LIGHT } from "../lib/policy";
 
 export type Where = { kind: "here" } | { kind: "ahead" } | { kind: "wall" } | { kind: "on"; target: Pos };
 
@@ -13,6 +13,7 @@ export interface PutView {
   nameAt(p: Pos): string | null;
   solid(p: Pos): boolean; // a full block to stand on or set something against
   occupied(p: Pos): boolean; // a player or mob stands in the cell (the body itself is not counted)
+  lightAt(p: Pos): number | null; // 0 to 15, sky or block light, for a sapling; null where it is not loaded
 }
 
 export type Spot = { cell: Pos; ref: Pos; face: Pos; head?: Pos };
@@ -108,10 +109,23 @@ export function planPut(item: string, where: Where, v: PutView, vet: (cell: Pos,
   let refused: string | null = null;
   let far = false;
   let any = false;
+  let badGround = false;
+  let dark = false;
   for (const c of candidates(item, where, v)) {
     if (same(c.cell, v.feet) || same(c.cell, up(v.feet))) continue; // the body's own column
     if (!free(v, c.cell) || !v.solid(c.ref)) continue;
     if (item === "chest" && nextToChest(v, c.cell)) continue; // two chests side by side are one double chest
+    if (isSapling(item)) {
+      // a bad ground or a dark cell ends as no_room: the server would put it back, and that reads as a refused place
+      if (!(SAPLING_GROUND as readonly string[]).includes(v.nameAt(c.ref) ?? "")) {
+        badGround = true;
+        continue;
+      }
+      if ((v.lightAt(c.cell) ?? 0) < SAPLING_LIGHT) {
+        dark = true;
+        continue;
+      }
+    }
     if (reach(v, c.ref, c.face) > PUT_REACH) {
       far = true;
       continue;
@@ -131,5 +145,7 @@ export function planPut(item: string, where: Where, v: PutView, vet: (cell: Pos,
   }
   if (refused) return { ok: false, reason: "refused", detail: refused };
   if (far && !any) return { ok: false, reason: "too_far", detail: "that is too far to reach from here" };
+  if (dark && !far) return { ok: false, reason: "no_room", detail: "it is too dark there for a sapling to grow" };
+  if (badGround && !far) return { ok: false, reason: "no_room", detail: "a sapling only goes in grass or dirt, and there is none free there" };
   return { ok: false, reason: "no_room", detail: where.kind === "wall" ? "no wall within reach to put it on" : where.kind === "on" ? "nothing free on top of that" : "no free ground there to set it on" };
 }

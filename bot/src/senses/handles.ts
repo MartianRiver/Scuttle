@@ -14,6 +14,9 @@ export const HANDLE_SHAPE = /^(?:[eb][0-9]{1,9}[a-z]{2}|home|table|stash|furnace
 // a block only: what `collect` takes
 export const BLOCK_SHAPE = /^b[0-9]{1,9}[a-z]{2}$/;
 
+// a mob or player only: what `shear` takes
+export const ENTITY_SHAPE = /^e[0-9]{1,9}[a-z]{2}$/;
+
 // what a task can be aimed at: a block or a known place; not a mob, which moves
 export const NEAR_SHAPE = /^(?:b[0-9]{1,9}[a-z]{2}|home|table|stash|furnace|bed)$/;
 

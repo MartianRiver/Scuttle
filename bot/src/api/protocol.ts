@@ -3,7 +3,7 @@
 // 2026-11-24: the mind plans a strip mine by position). See ../../API.md.
 import { CLEAR_MAX, CLEAR_MIN } from "../behaviors/clear-plan";
 import { CARDINALS, isLengthBand, TUNNEL_MAX, type Cardinal } from "../behaviors/tunnel-plan";
-import { BLOCK_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
+import { BLOCK_SHAPE, ENTITY_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
 import { sayable } from "../lib/speech";
 
 export { SAY_MAX, sayable } from "../lib/speech";
@@ -41,6 +41,7 @@ export type Intent =
   | { intent: "place"; item: string; where?: string }
   | { intent: "pick_up"; handle: string }
   | { intent: "make_base" }
+  | { intent: "shear"; handle: string }
   | { intent: "stash" }
   | { intent: "explore"; dir: CompassPoint; far?: ExploreBand }
   | { intent: "dig_down"; to?: DigTarget; torches?: boolean }
@@ -53,10 +54,10 @@ export type Intent =
   | { intent: "observe" };
 
 // the actions that run like a task: one at a time, with task events
-export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "clear_trees" | "place" | "pick_up" | "make_base" }>;
-export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "clear_trees", "place", "pick_up", "make_base"] as const;
+export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "clear_trees" | "place" | "pick_up" | "make_base" | "shear" }>;
+export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "clear_trees", "place", "pick_up", "make_base", "shear"] as const;
 // the intents that change the world with the hands; off unless the body's placement switch is on
-export const PLACING_INTENTS = ["place", "pick_up", "make_base"] as const;
+export const PLACING_INTENTS = ["place", "pick_up", "make_base", "shear"] as const;
 
 // where a `place` goes, in words: never a position
 export const WHERE_SHAPE = /^(?:here|ahead|wall|on (?:b[0-9]{1,9}[a-z]{2}|table|stash|furnace|bed))$/;
@@ -143,6 +144,10 @@ export function parseFrame(raw: string): Parsed {
       if (!onlyKeys(m, ["type", "id", "intent", "item", "where"])) return bad;
       if (typeof m.item !== "string" || !ITEM.test(m.item)) return bad;
       if (m.where !== undefined && (typeof m.where !== "string" || !WHERE_SHAPE.test(m.where))) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "shear":
+      if (!onlyKeys(m, ["type", "id", "intent", "handle"])) return bad;
+      if (typeof m.handle !== "string" || !ENTITY_SHAPE.test(m.handle)) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "pick_up":
       if (!onlyKeys(m, ["type", "id", "intent", "handle"])) return bad;
