@@ -1,0 +1,26 @@
+---
+interface Item {
+  href: string;
+  title: string;
+  desc: string;
+  date?: Date;
+}
+
+interface Props {
+  items: Item[];
+}
+
+const { items } = Astro.props;
+const fmt = (d: Date) => d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+---
+<ul class="cards">
+  {items.map((i) => (
+    <li>
+      <a class="card" href={i.href}>
+        {i.date && <time datetime={i.date.toISOString().slice(0, 10)}>{fmt(i.date)}</time>}
+        <span class="title">{i.title}</span>
+        <span class="desc">{i.desc}</span>
+      </a>
+    </li>
+  ))}
+</ul>

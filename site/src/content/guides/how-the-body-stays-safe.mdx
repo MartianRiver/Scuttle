@@ -1,0 +1,120 @@
+---
+title: How the body stays safe
+description: The rules that stop a bot from breaking what players built, why each one is there, and what to check if something looks wrong.
+topic: safety
+order: 1
+updated: 2026-11-25
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+Scuttle has two parts. The chat character talks. <Term id="body">The body</Term> is a <Term id="bot">bot</Term> that walks around, digs, builds and says things in <Term id="chat">chat</Term>.
+
+A bot that can dig is a bot that could dig up someone's house. On a <Term id="server">server</Term> where kids have spent weeks building, that is the worst thing it could do. So the rules that stop it are written in code, in a few places, and the model behind it can't talk its way past them. This guide goes through each rule and says why it's there.
+
+It describes what the code does today. The last two sections say what has and hasn't been tested, and what to check when something looks wrong.
+
+## One gate for every dig and every placed block
+
+Every <Term id="block">block</Term> the body breaks, and every block it puts down, has to pass one rule. It lives in `bot/src/lib/policy.ts` and is called through `bot/src/lib/gate.ts`. It even covers blocks the body's pathfinder breaks to get through a gap. I call it <Term id="gate">the gate</Term>.
+
+The gate says no to anything that is:
+
+- next to or under a <Term id="build">build</Term>. Planks, torches, chests, glass, cobblestone, walls and concrete all count as "made by a player",
+- in or against water or lava,
+- under sand or gravel, which could fall on the body,
+- not a <Term id="natural-block">natural block</Term>, when the job is to dig natural stone, <Term id="ore">ore</Term> or trees.
+
+**Why one gate:** if the rule were copied into each place that can break a block, one copy would eventually be missing or wrong. With one gate there is one thing to check.
+
+**Why it checks again at the last moment:** the world changes while the body walks. A player might put down a chest between the plan and the dig, so the check runs again right before the change.
+
+The body also never digs or builds while it is walking. Walking, digging and placing are separate steps, so every dig happens standing still, after looking around.
+
+## Look before you dig
+
+The mining jobs (stone, iron, a tunnel, a stair) add a second check on top. Before each block, the body looks at the block's sides and the space around it:
+
+- no lava or water touching it, because digging could let it flow onto the body,
+- nothing that falls (sand, gravel) above it, because it would land on the body,
+- nothing a player made within 3 blocks of it, or up to 12 above it, so the body never digs under a build,
+- the body itself beside the block at the same level or one below, never above or under, so it doesn't dig the floor out from under its own feet.
+
+If there is no walking route to a block, the body skips it. When there is nothing it may dig, the job ends and says so (`no_stone`, `no_ore`, `refused`). It doesn't dig anyway.
+
+The exact distances and job endings are in `bot/API.md` in the repository.
+
+## What it put down is its own, and only that
+
+The body keeps a <Term id="journal">journal</Term>: a list of every block it digs or places, with the ones it set down itself marked. (Placing blocks is off unless the body starts with `PLACEMENT=on`, which the test world does.)
+
+**Why:** the journal is how it tells "mine" from "someone else's". With it the body can:
+
+- pick up a table, <Term id="chest">chest</Term>, <Term id="furnace">furnace</Term> or bed that it set down, and refuse to touch one it didn't (`not_yours`),
+- keep its stuff in its own chests and never open anyone else's,
+- refuse to pick up a chest or furnace that still has things in it.
+
+If the server undoes something the body did, because <Term id="worldguard">WorldGuard</Term> protects that <Term id="region">region</Term>, the body counts that as a no. The job ends `protected` and it remembers the spot, so it doesn't try there again.
+
+## Speech goes through one function
+
+Every line the body says goes through one function (`bot/src/lib/speech.ts`) with one clock, including the callouts it makes while guarding someone. A line is 1 to 100 characters of plain printable letters, numbers and punctuation, and can't start with `/`. That rules out new lines, hidden characters, look-alike letters, and the section sign, which makes the server kick a player. There is also a <Term id="rate-limit">rate limit</Term>: one line every 2 seconds and 12 a minute. A guard callout is dropped, never queued, if anything else was said in the last 4 seconds.
+
+**Why:** without limits a bot can flood the chat, or be tricked into typing a command or a hidden character.
+
+## A test that fails on a second door
+
+A test fails if anyone adds a second way to break a block, place one, or speak. That is on purpose: every new way to change the world has to go through the gate, so nothing reaches it by a side door.
+
+## Stopping it
+
+`stop` is handled before anything else and reaches whatever the body is doing: walking, digging, crafting, smelting, using a chest.
+
+One catch: if <Term id="hostile-mob">hostile mobs</Term> are on it, its <Term id="reflex">reflexes</Term> fight or run again after a short delay. A stopped body isn't frozen for good while a zombie is standing next to it.
+
+## What the outside world can ask for
+
+The body takes orders from chat (six exact phrases, see [Talking to Scuttle](/guides/talking-to-scuttle/)) and from a small control <Term id="api">API</Term> over a <Term id="websocket">WebSocket</Term>. The API is off unless a <Term id="port">port</Term> and a <Term id="token">token</Term> are set, and it listens on <Term id="localhost">localhost</Term> unless told otherwise.
+
+- There is no map-number field and no command field anywhere in the API, and there won't be. Orders are named jobs like `come_to`, `get_wood` and `craft`, with a few typed details.
+- `say` is the one free-text field, and it follows the speech rules above.
+- The body checks every order itself and trusts nothing upstream. Ten orders per ten seconds per connection, then `rate_limited`.
+- The body refuses to run in <Term id="offline-mode">offline mode</Term> against any host except the local machine, so it can't be pointed at a real server without a real account.
+
+An <Term id="llm">AI model</Term> playing the body through <Term id="mcp">MCP</Term> gets the same thing. It sees the world in words (a distance like "close", a compass point, a <Term id="handle">handle</Term> to point at) and has no way to ask for exact map numbers.
+
+## The chat plugin has the same shape
+
+The chat <Term id="plugin">plugin</Term> never gives its model a way to run commands. It gets a short list of named tools, and Java code checks every call and does the work. A model that has been talked into something still can't go past the list. When it offers a trade, nothing moves until the player agrees, and both sides are checked again at that moment. Cooldowns and daily limits are checked before any money is spent. There's a monthly spending ceiling and a kill switch in `config.yml`.
+
+## What has and hasn't been tested
+
+All of it has been tested in a disposable <Term id="test-world">test world</Term>. About 120 <Term id="scenario">scenarios</Term> put the body through real situations and read the result back from the world, and unit tests cover the rules and the parsing. The body has not run on the family server, or without someone watching, and I wouldn't run it unwatched until it had. A rule that holds in a test world is a good sign, not a promise about yours.
+
+## If it doesn't work
+
+### The body dug or placed something it shouldn't have
+
+- **What you'd see:** a hole or a block next to or under a build.
+- **Likely cause:** the block that counted as "made by a player" wasn't on the gate's list, or the build was further away than the checks look.
+- **Check:** say `stop` first. Then look at the list of made blocks in `bot/src/lib/block-rules.ts` and the distances in `bot/API.md`. If a block type is missing, or the rule let it through, that is a real bug: tell me through [SECURITY.md](https://github.com/MartianRiver/Scuttle/blob/next/SECURITY.md) so it's fixed.
+
+### It won't do a job
+
+- **What you'd see:** you give an order and nothing happens, or the job ends straight away.
+- **Likely cause:** one of the rules said no. Usually it's busy with another <Term id="task">task</Term>, a mob is close, it has no pickaxe in its <Term id="inventory">inventory</Term>, or the only block it could dig was next to a build.
+- **Check:** say `stop` and ask again. Then look at the body's log. It records the reason for each refusal (`busy`, `in_danger`, `no_pickaxe`, `refused`).
+
+### It said nothing, or stopped talking
+
+- **What you'd see:** no reply in chat when you expected one.
+- **Likely cause:** the rate limit, which drops lines that come too fast. Or the text broke the speech rules (non-ASCII, too long).
+- **Check:** wait a few seconds and try again.
+
+### It keeps running from something, or ignores `stop`
+
+- **What you'd see:** it moves away from you, or starts again after you said stop.
+- **Likely cause:** a hostile mob is near and its reflexes took over.
+- **Check:** look for a zombie, skeleton or similar nearby. Once the mob is gone or the body is out of reach, `stop` holds.
+
+If you find a way past any of these rules, [SECURITY.md](https://github.com/MartianRiver/Scuttle/blob/next/SECURITY.md) says how to tell me privately.

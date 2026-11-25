@@ -1,0 +1,45 @@
+---
+import { getEntry } from "astro:content";
+import { nextId } from "../lib/uid";
+
+interface Props {
+  id: string;
+}
+
+const { id } = Astro.props;
+const entry = await getEntry("glossary", id);
+if (!entry) throw new Error(`unknown glossary term: ${id}`);
+const popId = nextId(`term-${id}`);
+---
+<a class="term" href={`/glossary/${id}/`} data-pop={popId} aria-haspopup="dialog"><slot /></a>
+<span id={popId} popover role="dialog" aria-label={entry.data.term} class="term-pop">
+  <strong class="term-name">{entry.data.term}</strong>
+  <span class="term-short">{entry.data.short}</span>
+  <span class="term-actions">
+    <a href={`/glossary/${id}/`} autofocus>Read more</a>
+    <button type="button" popovertarget={popId} popovertargetaction="hide">Close</button>
+  </span>
+</span>
+
+<script>
+  // With JS and the Popover API, a term link opens its explanation in place. Without either it stays a plain link to the glossary page.
+  if ("showPopover" in HTMLElement.prototype) {
+    document.addEventListener("click", (e) => {
+      const link = (e.target as Element).closest<HTMLAnchorElement>("a.term[data-pop]");
+      if (!link || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const pop = document.getElementById(link.dataset.pop!);
+      if (!pop) return;
+      e.preventDefault();
+      pop.togglePopover();
+    });
+    document.addEventListener(
+      "toggle",
+      (e) => {
+        const pop = e.target as HTMLElement;
+        const link = document.querySelector(`a.term[data-pop="${pop.id}"]`);
+        link?.setAttribute("aria-expanded", String((e as ToggleEvent).newState === "open"));
+      },
+      true,
+    );
+  }
+</script>

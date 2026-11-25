@@ -1,0 +1,17 @@
+---
+title: Letting a model play it
+summary: An MCP adapter, a way of seeing the world in words and no coordinates, and the first verbs a language model can act with.
+date: 2026-11-24
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+The <Term id="body">body</Term> so far runs on rules I wrote. This is the start of letting a <Term id="llm">language model</Term> drive it instead, through the control <Term id="api">API</Term>, with an <Term id="mcp">MCP</Term> adapter on top.
+
+The decision I care about is what it gets to see. `observe` describes what's close in words: a distance band (`here`, `close`, `near`, `a short walk`...), a compass point and a <Term id="handle">handle</Term> to point at it. It lists only what a ray from the body's eyes could reach, since <Term id="mineflayer">mineflayer</Term> itself sees through walls. There's no coordinate in it, and no way to ask for one.
+
+The verbs came in two steps. First the senses got better, and a failure now says what it got and why it stopped (what it got, what's missing, what's in the way), because a model that gets only "failed" has nothing to try next. Then the hands: recipe lookups, crafting from the live recipes, collecting a tree or block it's pointed at, equipping, using its own <Term id="chest">chests</Term>, and exploring in a compass direction.
+
+I also added a suite to the <Term id="bake-off">bake-off</Term> for the body running <Term id="chat">chat</Term>: kid-speak, staying quiet in a group chat, and the say contract, with a hard spend cap.
+
+A model has played the body through this for a first round, enough to show me what it was missing. That's as far as it has got.

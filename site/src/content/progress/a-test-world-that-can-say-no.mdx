@@ -1,0 +1,13 @@
+---
+title: A test world that can say no
+summary: A scenario runner, and the body learning to run from zombies, get out of lava and water, and survive a fall.
+date: 2026-11-22
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+Before I added more behaviour I wanted a way to find out when something was broken. The <Term id="scenario">scenario runner</Term> sets something up in the <Term id="test-world">test world</Term> (a zombie, a pool, a bed), gives the <Term id="body">body</Term> an order, and then checks facts read back from the server. It doesn't care how the body got there. One pass or fail line per scenario, and a non-zero exit if any fail.
+
+The first big group was danger. The body now runs from <Term id="hostile-mob">hostile mobs</Term> and ends what it was doing as `interrupted`, fights the ones it can beat with what it carries, and runs from the rest. It gets itself out of lava, fire and deep water. A fall that would hurt gets steered toward water or a soft landing. There's a watch mode that announces each scenario in <Term id="chat">chat</Term> so I can follow along in the game, and a known-failing flag so a scenario I know about stays visible and doesn't get quietly deleted.
+
+Two hangs got fixed the same day, and they're worth saying plainly: `get wood` could hang on a drop it couldn't reach, and a collect attempt in general could hang. Both now give up after a bounded time.

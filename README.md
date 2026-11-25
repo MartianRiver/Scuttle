@@ -19,6 +19,14 @@ The model never gets a `run_command`. It gets a short list of typed tools, and J
 
 There are per-player cooldowns and daily limits that are checked before any money is spent, a monthly spend ceiling, and a kill switch in `config.yml`. Replies are only generated for lines that are aimed at Scuttle. I wrote the reasoning for these into the comments in `config.yml`, which is also the manual for every setting.
 
+## How it's made
+
+I build this with Claude Code, running Claude Sonnet and Opus (5.5 as I write this), and use Codex for adversarial reviews and gap analysis: it reads the code and the plans and tries to break them. I set what Scuttle is and who it's for, the rules it has to keep (the model gets typed tools and never a raw command, and nothing it does can take apart a player's build), what has to be true before something counts as done, and which way to go when something's stuck. Claude writes most of the code, runs the test world and the scenarios, and reports back. I read it, push back, and decide.
+
+Claude Code is also how I test the harness. A separate session plays the body through the MCP adapter, the same way any model would, without seeing the code, and what it reaches for and can't find shows me what the body is missing before it goes anywhere near the family server.
+
+The guides and progress posts on the site are drafted by Claude and edited by me, and each one says which model drafted it.
+
 ## The plugin
 
 You need Paper 26.3 and Java 25 or newer. WorldGuard is optional, but land claims and the shop area need it.
@@ -54,12 +62,12 @@ The body is built so it can't take apart what players built. It doesn't dig or b
 
 The test world can run more than one copy at once: `SCUTTLE_SLOT=1` in front of the scripts starts a second server and bot on their own ports and folder, so two pieces of work don't share a world.
 
-Everything above is checked against the test world, not the family server. About 120 scenarios run the body through real situations on a disposable server (zombies, lava, a fall into a pool, a night in the bed, a stop in the middle of a dig) and read the result back from the world, and the unit tests cover the policy and the parsing. A language model has played it there through the adapter for a first round, enough to show what it was missing, but the body has not been run on the live server or without someone watching. It also isn't done: the model has no verb for placing blocks yet (so no bridges, torches or builds), it hasn't gone deep for diamonds, and it knows nothing about biomes or where it is in numbers.
+Everything above is checked against the test world, not the family server. About 120 scenarios run the body through real situations on a disposable server (zombies, lava, a fall into a pool, a night in the bed, a stop in the middle of a dig) and read the result back from the world, and the unit tests cover the policy and the parsing. A language model has played it there through the adapter for a first round, enough to show what it was missing, but the body has not been run on the live server or without someone watching. It also isn't done. It can set blocks down now, keeps a journal of every block it digs or places so it knows which ones are its own, and moves its base where it likes, but placing is only switched on in the test world. It hasn't gone deep for diamonds, and it knows nothing about biomes.
 
-Next, in order: placing blocks with a journal so every placement can be undone, and a base it sets up where it likes; a second round of a model playing it, from saved checkpoints so rounds can be compared; then the local view, coordinates, biome and plain-words refusals the model needs, which is the point where "never a coordinate" stops being true, though every dig and placement still goes through the one rule above. After that, the small reactive model, which is the first thing that will cost real money to test, so it gets a budget agreed first.
+Next, in order: strip mining, which needs the body to know where it is in numbers, so this is where "never a coordinate" stops being true, though every dig and placement still goes through the one rule above. Then rounds of a model playing it on its own, from saved checkpoints so rounds can be compared. Then the small reactive model, which is the first thing that will cost real money to test, so it gets a budget agreed first.
 
 The plan behind that is three layers: reflexes in plain code that keep it alive, a small model that reacts to events the reflexes can't handle, and a bigger one that picks goals and plans, only when something happens and never on a timer. I'm not letting a model write its own code. When it hits something it has no skill for, it should say so and carry on with something else, and I build and test that skill. The aim is a player that helps, chats and builds, and gets better over time. Beating the game would be one milestone of that, not the point.
 
 ## Licence
 
-Apache-2.0. See `LICENSE`. The plugin is built against the Paper API, which is GPL-3 with no stated exception for plugins. I think that's fine, plenty of plugins are licensed otherwise, but I'm not a lawyer.
+Apache-2.0. See `LICENSE`. The one exception is the written guides and posts (`site/src/content/`) and the builds I design (`library/`), which are CC BY 4.0: see `site/src/content/LICENSE` and `library/LICENSE`. The site's own code is Apache-2.0 like the rest. The plugin is built against the Paper API, which is GPL-3 with no stated exception for plugins. I think that's fine, plenty of plugins are licensed otherwise, but I'm not a lawyer.

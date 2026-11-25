@@ -1,0 +1,13 @@
+---
+title: Underground, at night, and two worlds at once
+summary: A stair down to stone, a tunnel for ore, sleeping in its bed, and test world slots.
+date: 2026-11-24
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+The <Term id="body">body</Term> now digs a one-block-wide stair down to <Term id="natural-block">natural stone</Term> and climbs back up, and tunnels level from the foot of it. By default a tunnel stops on the first <Term id="ore">ore</Term> it sees in the wall. `explore` stops at the shore instead of walking into a lake, and `in_danger` now says why.
+
+At night, when it's idle, the body walks home and sleeps in its bed. A <Term id="task">task</Term> that's running at nightfall isn't interrupted: it goes to bed once the task is done, and any order or <Term id="reflex">reflex</Term> wakes it first.
+
+The practical change for me is <Term id="test-world">test world</Term> <Term id="slot">slots</Term>. `SCUTTLE_SLOT=N` in front of the scripts starts a second <Term id="server">server</Term> and <Term id="bot">bot</Term> on their own <Term id="port">ports</Term>, folder and bot name, and a restart only kills its own slot's bot. Two pieces of work no longer share a world.

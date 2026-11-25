@@ -1,0 +1,80 @@
+---
+title: Talking to Scuttle
+description: How to reach the chat character, how to give the body orders in chat with the exact phrases, and what to check when it doesn't answer.
+topic: using
+order: 3
+updated: 2026-11-25
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+Scuttle is two things with one name. The chat character answers questions and trades with you. It is a <Term id="plugin">plugin</Term> on the <Term id="server">server</Term>. <Term id="body">The body</Term> is a <Term id="bot">bot</Term> that walks around and does jobs. You reach them in different ways, and only the body is picky about the exact words.
+
+Both listen in <Term id="chat">chat</Term>, the text box everyone on the server can see.
+
+## The chat character
+
+Any of these gets you an answer:
+
+- `/scuttle how do I make a piston`, or `/sc` for short. It's a <Term id="command">command</Term>, which is why it starts with a slash. This one always works.
+- Saying its name in normal chat: `scuttle, what's a piston door?`. Messages shorter than 4 characters are ignored.
+
+After it answers you, your next message reaches it without the name, for 45 seconds. Each reply restarts the clock, so a back-and-forth keeps going.
+
+**Why:** having to say its name on every line makes it feel like a vending machine. The clock is per person, so you chatting to Scuttle doesn't make it answer everyone else. A message that starts with another player's name is ignored, because it's clearly for them. And inside that window a cheap model is asked one yes-or-no question first ("was that meant for Scuttle?") for lines that don't say its name. If that check breaks, the line goes through, so a fault makes Scuttle chattier, not silent.
+
+All of that is in `config.yml` under `trigger:`, with the reasons written next to each setting.
+
+It looks recipes up in the server's own list, so it isn't guessing from memory. It can price things, trade for coins (nothing moves until you agree), find <Term id="ore">ore</Term> and structures near you, and hand out land claims if <Term id="worldguard">WorldGuard</Term> is installed.
+
+## The body
+
+The body listens for six phrases. Each has to be the whole message, in lowercase, spelled exactly:
+
+| Say | What it does |
+| --- | --- |
+| `come here` | Walks to you. |
+| `guard me` | Follows you and fights what threatens you, with a short chat line per <Term id="mob">mob</Term>. It carries on until you say `stop`. |
+| `stop` | Stops whatever it's doing. |
+| `get wood` | Cuts natural trees around where it stands, never a player's build. |
+| `get stone` | Mines natural stone and makes stone tools. Needs a <Term id="pickaxe">pickaxe</Term> in its <Term id="inventory">inventory</Term>. |
+| `get iron` | Mines coal and iron, smelts the iron in a <Term id="furnace">furnace</Term> and makes iron tools. Needs a stone pickaxe or better. |
+
+**Why exact words:** it has to be the whole message, because `stop` and `come` turn up in ordinary chat between kids. Anything else is ignored.
+
+A few things that catch people out:
+
+- `come here` and `guard me` only work if you're in the body's own view, meaning close enough that your part of the world is loaded for it. If it can't see you it doesn't know where you are.
+- It does one <Term id="task">task</Term> at a time. Ask while it's busy and the order is refused quietly: the refusal goes in the body's log, not in chat. Say `stop` first.
+- While something <Term id="hostile-mob">hostile</Term> is on it, it fights or runs and won't take new jobs until that's over.
+- A job can end early with a reason, such as no trees, no stone it's allowed to dig, or no pickaxe. That reason is in its log, not said in chat. [How the body stays safe](/guides/how-the-body-stays-safe/) covers the rules behind the refusals.
+
+## Beyond chat
+
+A small control <Term id="api">API</Term> gives the body the same orders and more, and an <Term id="mcp">MCP</Term> adapter lets an <Term id="llm">AI model</Term> play it through named jobs. Both are described in `bot/API.md` in the repository. Neither has a field for map numbers or commands.
+
+## If it doesn't work
+
+### The chat character doesn't answer
+
+- **What you'd see:** you type and nothing comes back.
+- **Likely cause:** it wasn't addressed (no `/scuttle`, no name, and your 45 seconds had run out), the line was under 4 characters, or it began with another player's name. It can also be switched off or out of money: the kill switch and the monthly spending ceiling are both in `config.yml`.
+- **Check:** try `/scuttle hello`, which always goes through. If that is silent too, ask whoever runs the server to check `/scuttle status`.
+
+### The body ignores a phrase
+
+- **What you'd see:** you say `get wood` and it just stands there.
+- **Likely cause:** the words weren't exactly right (a capital letter, a full stop, extra words), it's already busy, or the body isn't in the game.
+- **Check:** type the phrase on its own, in lowercase, with nothing else. If the body is busy, say `stop`, then ask again.
+
+### `come here` does nothing
+
+- **What you'd see:** the body doesn't move toward you.
+- **Likely cause:** it can't see you, because you're too far away or in a part of the world it hasn't loaded.
+- **Check:** walk closer, in sight of it, and say it again.
+
+### `get stone` or `get iron` ends at once
+
+- **What you'd see:** the job finishes straight away with nothing done.
+- **Likely cause:** `no_pickaxe`, because it has no pickaxe (a stone one or better for iron), or there's no stone it's allowed to dig near a build.
+- **Check:** run `get wood` first. It also makes a wooden pickaxe and axe, and a wooden pickaxe is enough for `get stone`. Then `get stone` makes the stone pickaxe that `get iron` needs.

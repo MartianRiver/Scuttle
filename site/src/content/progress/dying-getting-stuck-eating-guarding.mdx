@@ -1,0 +1,17 @@
+---
+title: Dying, getting stuck, eating, guarding
+summary: The body reports its deaths, notices when it isn't getting anywhere, eats sensibly, guards a player, and hands items over.
+date: 2026-11-23
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+Most of this one is the <Term id="body">body</Term> being honest about what happened to it.
+
+A death is now reported with a described place and a cause, and it really ends the running <Term id="task">task</Term>. A walk that makes no progress ends as `stuck` after two nudges, and arriving by "no path found" is no longer taken as having arrived.
+
+It eats only food worth eating, between the steps of a task, restocks from its stash and reports `no_food` when it has run out.
+
+`guard me` is new: the body follows you, fights what threatens you and calls out in <Term id="chat">chat</Term>, with a fixed line per <Term id="mob">mob</Term> and one more when it's over. There's also a way to tell it to hand over items it carries: it walks to the player and throws the stack.
+
+What it says in chat goes through a `say` that I tightened twice the same day. First it refused the section sign, which the <Term id="server">server</Term> kicks a <Term id="client">client</Term> for. Then I made it printable ASCII only, which also closes zero-width and look-alike characters.

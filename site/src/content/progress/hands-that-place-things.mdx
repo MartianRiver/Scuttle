@@ -1,0 +1,15 @@
+---
+title: Hands that place things
+summary: The body can set down a table, chest, furnace, bed or torch, journals everything it digs and places, and moves its base.
+date: 2026-11-25
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+The <Term id="body">body</Term> can now set <Term id="block">blocks</Term> down: a <Term id="crafting-table">crafting table</Term>, <Term id="furnace">furnace</Term>, <Term id="chest">chest</Term>, torch or bed, and a few plain blocks like dirt and cobblestone. It's off unless the body is started with `PLACEMENT=on`, and the test world turns it on.
+
+Every dig and every placement is written to a <Term id="journal">journal</Term>, and the journal marks the blocks the body set down itself. That is what lets it pick up a table it made and refuse to touch one it didn't, store things in its own chests and take them back, and never open anyone else's.
+
+The other half is the base. Until now "home" was the fixed place it started. With `make_base` it can make where it stands the base, once its own bed, table and chest are set down within 8 blocks of where it stands, and everything that used to read the fixed home (gathering, the table it crafts at, bedtime) reads the base instead.
+
+This is checked in the <Term id="test-world">test world</Term> with <Term id="scenario">scenarios</Term>, like the rest. It hasn't placed anything on a real <Term id="server">server</Term>.

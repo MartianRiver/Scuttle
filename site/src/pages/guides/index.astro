@@ -1,0 +1,31 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import Cards from "../../components/Cards.astro";
+import { topics } from "../../content.config";
+
+const guides = (await getCollection("guides")).sort((a, b) => a.data.order - b.data.order);
+const groups = Object.entries(topics).map(([key, label]) => ({
+  key,
+  label,
+  items: guides.filter((g) => g.data.topic === key).map((g) => ({
+    href: `/guides/${g.id}/`,
+    title: g.data.title,
+    desc: g.data.description,
+  })),
+}));
+---
+<Base title="Guides" description="Guides for running, using and trusting Scuttle, free to reuse under CC BY 4.0.">
+  <h1>Guides</h1>
+  <p class="lede">How the things I build for Scuttle work, written so you can use them without me. They are all CC BY 4.0.</p>
+  <p>Written for any age and any Minecraft experience. A word with a dotted underline opens a short explanation when you tap it or press Enter on it, and every one is also in the <a href="/glossary/">glossary</a>. Each guide says why a step works and ends with what to check when it doesn't.</p>
+  <ul class="topics" aria-label="Topics">
+    {groups.map((g) => <li><a href={`#${g.key}`}>{g.label}</a></li>)}
+  </ul>
+  {groups.map((g) => (
+    <section aria-labelledby={g.key}>
+      <h2 id={g.key}>{g.label}</h2>
+      {g.items.length ? <Cards items={g.items} /> : <p class="empty">No guides under {g.label.toLowerCase()} yet.</p>}
+    </section>
+  ))}
+</Base>

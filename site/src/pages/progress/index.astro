@@ -1,0 +1,14 @@
+---
+import { getCollection } from "astro:content";
+import Base from "../../layouts/Base.astro";
+import Cards from "../../components/Cards.astro";
+
+const posts = (await getCollection("progress", (p) => !p.data.draft)).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+const items = posts.map((p) => ({ href: `/progress/${p.id}/`, title: p.data.title, desc: p.data.summary, date: p.data.date }));
+---
+<Base title="Progress" description="What has been built on Scuttle so far, newest first.">
+  <h1>Progress</h1>
+  <p class="lede">What has been built so far, newest first. Screenshots and short clips will go in here as I take them from the test world.</p>
+  {items.length ? <Cards items={items} /> : <p class="empty">No posts yet.</p>}
+  <p class="meta"><a href="/progress/rss.xml">Follow by RSS</a></p>
+</Base>

@@ -1,0 +1,51 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title, description = "A character for a Minecraft server: an old iron coal scuttle that woke up, with a body that can walk around the world." } = Astro.props;
+const fullTitle = title ? `${title} | Scuttle` : "Scuttle";
+const path = Astro.url.pathname;
+const nav = [
+  { href: "/guides/", label: "Guides" },
+  { href: "/progress/", label: "Progress" },
+  { href: "/glossary/", label: "Glossary" },
+  { href: "/licence/", label: "Licence" },
+];
+---
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="light dark" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="application/rss+xml" title="Scuttle progress" href="/progress/rss.xml" />
+    <link rel="canonical" href={new URL(path, Astro.site)} />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="bar">
+        <a class="mark" href="/" aria-label="Scuttle, home"><span class="tag">[</span><span class="name">Scuttle</span><span class="tag">]</span></a>
+        <nav aria-label="Main">
+          {nav.map((n) => (
+            <a href={n.href} aria-current={path.startsWith(n.href) ? "page" : undefined}>{n.label}</a>
+          ))}
+        </nav>
+      </div>
+    </header>
+    <main id="main"><slot /></main>
+    <footer class="site-footer">
+      <div class="inner">
+        <p class="disclaimer">NOT AN OFFICIAL MINECRAFT PRODUCT. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT.</p>
+        <p>Guides and posts are <a href="/licence/">CC BY 4.0</a>. The code is Apache-2.0. <a href="https://github.com/MartianRiver/Scuttle">Source on GitHub</a>. <a href="/progress/rss.xml">RSS</a>.</p>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+---
+title: Mining, and never under a build
+summary: Stone, coal and iron, dug only where it is safe and never beneath something a player made.
+date: 2026-11-23
+drafted: "Sonnet 5.5"
+---
+import Term from "../../components/Term.astro";
+
+The <Term id="body">body</Term> can now mine stone (`get stone`) and then coal and iron, smelt the iron and make iron tools (`get iron`). It's the first thing it does that puts a hole in the world, so most of the work went into when it may not dig.
+
+Each <Term id="block">block</Term> is dug only after a look-before-you-dig check: no lava or water against any face, nothing falling over it, nothing a player made within 3 blocks or up to 12 above it, and the body beside the block at its own level or below. For iron it only goes for <Term id="ore">ore</Term> with a face in the open, never ore buried in rock.
+
+Three more rules came the same day: a wider list of blocks that count as made by a player, a map of places it won't dig for the rest of a run, and a route check before each dig, so a target it has no way to walk to is skipped.
+
+All of this is checked in the <Term id="test-world">test world</Term> only.
