@@ -32,7 +32,7 @@ const key = (p: Pos) => `${p.x},${p.y},${p.z}`;
 const label = (name: string) => name.replace(/_/g, " ");
 
 // the item names a block drops, which is all a dig of it may pick up
-function dropsOf(bot: Bot, name: string): string[] {
+export function dropsOf(bot: Bot, name: string): string[] {
   const def = bot.registry.blocksByName[name];
   const ids = (def?.drops ?? []).map((d) => (typeof d === "number" ? d : typeof d.drop === "number" ? d.drop : d.drop.id));
   const names = ids.map((id) => bot.registry.items[id]?.name).filter((n): n is string => Boolean(n));

@@ -3,10 +3,15 @@
 import type { Bot } from "mineflayer";
 import { goals } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
+import { nameAtOf } from "../lib/gate";
 import { setStatus } from "../lib/status";
 import { HandleTable, isPlace } from "../senses/handles";
 import { isOverworld, placeSpot } from "../senses/observe";
+import { madeBlocksNear } from "./dig-safety";
+import { TaskError } from "./fail";
+import { reverted } from "./refused";
 import { StuckError, walkTo } from "./unstuck";
+import { walkWithin } from "./walk";
 
 const ENTITY_ARRIVED = 3; // blocks; the walk stops this close to a mob or player
 const REWALKS = 5; // the target moves, so the walk is redone from where it ended up
@@ -56,6 +61,32 @@ export async function goTo(bot: Bot, handles: HandleTable, handle: string): Prom
   } catch (err) {
     // a reflex or a stop owns the status after any other failure
     if (err instanceof StuckError) await setStatus({ task: "idle" });
+    throw err;
+  }
+  await setStatus({ task: "idle" });
+}
+
+const ARRIVED = 2; // blocks; this close to the cell counts as there
+
+// `go_to {x,y,z}`: on foot to a cell, by the safe movements (never a dig or a placed block). A cell inside a kept-out
+// zone or beside a build is refused in words, as a dig there would be, so the mind does not stand where it may not work.
+export async function goToPoint(bot: Bot, p: { x: number; y: number; z: number }): Promise<void> {
+  if (!isOverworld(bot)) throw new TaskError("refused", "it only walks by place in the overworld");
+  if (reverted.covers(p)) throw new TaskError("refused", "that spot is where its digs were undone");
+  if (madeBlocksNear(p, nameAtOf(bot)).length > 0) throw new TaskError("refused", "something a player built is too close to there");
+  const here = () => bot.entity.position.distanceTo(new Vec3(p.x + 0.5, p.y + 0.5, p.z + 0.5)) <= ARRIVED + 0.5;
+  if (here()) return;
+  if (!bot.blockAt(new Vec3(p.x, p.y, p.z))) throw new StuckError("that place is too far to see");
+
+  await setStatus({ task: "walking to a place" });
+  try {
+    await walkWithin(bot, new goals.GoalBlock(p.x, p.y, p.z), BUDGET_MS);
+  } catch (err) {
+    // a walk that ended a block or two short of the cell is an arrival; a reflex or a stop owns the status after it
+    if (err instanceof StuckError) {
+      await setStatus({ task: "idle" });
+      if (here()) return;
+    }
     throw err;
   }
   await setStatus({ task: "idle" });

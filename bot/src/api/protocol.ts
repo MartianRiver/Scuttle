@@ -1,5 +1,6 @@
-// Everything a client may send. Strict on purpose: unknown fields are an error, and there is
-// no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
+// Everything a client may send. Strict on purpose: unknown fields are an error, and there is no command field;
+// `say` is the one free-text field. The only coordinates are `go_to {x,y,z}` and a y for `dig_down {to}` (D12,
+// 2026-11-24: the mind plans a strip mine by position). See ../../API.md.
 import { CARDINALS, isLengthBand, TUNNEL_MAX, type Cardinal } from "../behaviors/tunnel-plan";
 import { BLOCK_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
 import { sayable } from "../lib/speech";
@@ -15,11 +16,19 @@ export const EXPLORE_BANDS = ["near", "a short walk", "a fair way", "far"] as co
 export type ExploreBand = (typeof EXPLORE_BANDS)[number];
 
 export const DIG_TARGETS = ["stone"] as const;
-export type DigTarget = (typeof DIG_TARGETS)[number];
+export type DigTarget = (typeof DIG_TARGETS)[number] | number; // stone, or a y to dig down to
+
+// where the world's cells can be: far inside the border, and the overworld's height
+export const COORD_MAX = 30_000_000;
+export const Y_MIN = -2048;
+export const Y_MAX = 2048;
+const inRange = (v: unknown, lo: number, hi: number): boolean => Number.isInteger(v) && (v as number) >= lo && (v as number) <= hi;
+export const isY = (v: unknown): boolean => inRange(v, Y_MIN, Y_MAX);
 
 export type Intent =
   | { intent: "come_to" | "follow" | "guard"; player: string }
   | { intent: "go_to"; handle: string }
+  | { intent: "go_to"; x: number; y: number; z: number }
   | { intent: "give"; player: string; item: string; count?: number }
   | { intent: "task"; name: TaskName; near?: string }
   | { intent: "recipe"; item: string }
@@ -33,8 +42,8 @@ export type Intent =
   | { intent: "make_base" }
   | { intent: "stash" }
   | { intent: "explore"; dir: CompassPoint; far?: ExploreBand }
-  | { intent: "dig_down"; to?: DigTarget }
-  | { intent: "tunnel"; dir?: Cardinal; length?: number | ExploreBand; through?: boolean }
+  | { intent: "dig_down"; to?: DigTarget; torches?: boolean }
+  | { intent: "tunnel"; dir?: Cardinal; length?: number | ExploreBand; through?: boolean; torches?: boolean }
   | { intent: "climb_up" }
   | { intent: "say"; text: string }
   | { intent: "stop" }
@@ -96,8 +105,12 @@ export function parseFrame(raw: string): Parsed {
       if (typeof m.player !== "string" || !PLAYER.test(m.player)) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "go_to":
-      if (!onlyKeys(m, ["type", "id", "intent", "handle"])) return bad;
-      if (typeof m.handle !== "string" || !HANDLE_SHAPE.test(m.handle)) return bad;
+      if (!onlyKeys(m, ["type", "id", "intent", "handle", "x", "y", "z"])) return bad;
+      if (m.handle !== undefined) {
+        // a handle, or a point: never both
+        if (m.x !== undefined || m.y !== undefined || m.z !== undefined) return bad;
+        if (typeof m.handle !== "string" || !HANDLE_SHAPE.test(m.handle)) return bad;
+      } else if (!inRange(m.x, -COORD_MAX, COORD_MAX) || !isY(m.y) || !inRange(m.z, -COORD_MAX, COORD_MAX)) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "give":
       if (!onlyKeys(m, ["type", "id", "intent", "player", "item", "count"])) return bad;
@@ -149,11 +162,13 @@ export function parseFrame(raw: string): Parsed {
       if (m.far !== undefined && !(EXPLORE_BANDS as readonly unknown[]).includes(m.far)) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "dig_down":
-      if (!onlyKeys(m, ["type", "id", "intent", "to"])) return bad;
-      if (m.to !== undefined && !(DIG_TARGETS as readonly unknown[]).includes(m.to)) return bad;
+      if (!onlyKeys(m, ["type", "id", "intent", "to", "torches"])) return bad;
+      if (m.to !== undefined && !(DIG_TARGETS as readonly unknown[]).includes(m.to) && !isY(m.to)) return bad;
+      if (m.torches !== undefined && typeof m.torches !== "boolean") return bad;
       return { ok: true, msg: m as ClientMsg };
     case "tunnel":
-      if (!onlyKeys(m, ["type", "id", "intent", "dir", "length", "through"])) return bad;
+      if (!onlyKeys(m, ["type", "id", "intent", "dir", "length", "through", "torches"])) return bad;
+      if (m.torches !== undefined && typeof m.torches !== "boolean") return bad;
       if (m.dir !== undefined && !(CARDINALS as readonly unknown[]).includes(m.dir)) return bad;
       if (m.length !== undefined && !countIn(m.length, TUNNEL_MAX) && !isLengthBand(m.length)) return bad;
       if (m.through !== undefined && typeof m.through !== "boolean") return bad;

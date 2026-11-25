@@ -54,7 +54,11 @@ see Rules.
 `item` is a Minecraft item name (`^[a-z_]{1,48}$`, no namespace) and `count` an integer 1 to 64, optional (`collect`: 1 to 16, and its
 `handle` must be a block handle, `b` and a number, never a mob or a place). `place`'s `where` is a word (`here`, `ahead`, `wall`, or `on` and a block handle or place name), never a position; `pick_up`'s `handle` and `store`/`take`'s `chest` are a block handle or a place name. `dir` is one of the eight compass points (`north`,
 `north-east`... `north-west`) and `far` one of `near`, `a short walk` (the default), `a fair way`, `far`. `store` takes a `count` only with an `item`.
-There is no coordinate or command field anywhere, and there won't be one. `say` is the one
+There is no command field anywhere, and there won't be one. Coordinates are sent in exactly two places, since 2026-11-25
+(roadmap D12: a strip mine is dug by a player's verbs, and a player knows where he is): `observe` says the body's own cell (`pos`),
+and the mind may name a cell, `go_to {x,y,z}` and a `dig_down` `to` that is a y. Every coordinate is a whole number, never a float or a string;
+`x` and `z` are within 30,000,000 and `y` within -2048 to 2048. Nothing else carries one: places, `near`, `blocks`, `refused`, the
+`died` event and every `detail` still use the bands and compass points below. `say` is the one
 free-text field (so the consumer can talk through the body): one public chat
 line, 1 to 100 characters, printable ASCII only (so no newline, control or format character, no section sign `§`, which the server kicks a client for, no look-alike letters), no leading `/`, at most one line per
 2 s and 12 a minute (`rate_limited` otherwise). Every line the body says goes through one speech function (`src/lib/speech.ts`) with one
@@ -71,7 +75,8 @@ Bot → client:
 {"type":"rejected","id":"c1","reason":"busy"}            (`detail`? in words for in_danger: `a zombie is close`, `in deep water, swimming out`, `in lava`, `on fire`)
                                                          busy | in_fight | not_in_game |
                                                          unknown_player | in_danger | bad_intent | rate_limited |
-                                                         stale_handle | unknown_item | none_held | not_enabled | too_far
+                                                         stale_handle | unknown_item | none_held | not_enabled | too_far |
+                                                         no_torches (`torches: true` with none carried)
 {"type":"status","id":"c5","snapshot":{…}}               reply to `status`
 {"type":"observation","id":"c8","observation":{…}}       reply to `observe`
 {"type":"recipe","id":"d1","recipe":{…}}                 reply to `recipe`
@@ -85,14 +90,15 @@ Snapshot: `{inGame, task, taskId, health, food}`. No position.
 
 `observe` is read-only and answers at once: like `status` it is allowed mid-fight and while in danger, never touches the
 running action, counts toward the rate limit, and is `not_in_game` only while the body is offline. The answer is one compact
-JSON object, at most 1,200 characters (about 300 tokens). **No coordinate and no exact distance is in it**: places are a
+JSON object, at most 1,200 characters (about 300 tokens). **The only coordinate in it is the body's own cell (`pos`, below)**, and no exact distance: places are a
 distance band (`here` up to 3 blocks, `close` 8, `near` 16, `a short walk` 32, `a fair way` 48, `far` 128, `a long way` 320,
 then `very far`; the words climb, so each is farther than the one before; the `died` event's place uses the same scale),
 one of eight compass points (north is -z, east is +x) with `above` or `below` when it is 2.5 or more blocks up
 or down, and a handle to point at it with.
 
 ```
-{"health":20,"food":20,"armor":7?,"time":"day|dusk|night|dawn","weather":"clear|rain|thunder",
+{"pos":{"x":412,"y":-50,"z":-18},"biome":"deep_dark"?,"under":"deepslate","light":7,
+ "health":20,"food":20,"armor":7?,"time":"day|dusk|night|dawn","weather":"clear|rain|thunder",
  "where":"at home, on the surface|underground, several blocks down|in the Nether...","in":"water|deep_water|lava"?,
  "held":"iron_pickaxe"|null,
  "inv":{"oak_log":42,"cobblestone":40},            counts per item, biggest first
@@ -107,6 +113,10 @@ or down, and a handle to point at it with.
  "more":{"near":3,"blocks":5}?}                      how many were left off each list to fit the budget
 ```
 
+- `pos`, `biome`, `under` and `light` are the local view and never trimmed (a `light` of 0 is kept): `pos` is the block the feet are in, three integers;
+  `biome` the registry name there (`plains`, `deep_dark`, omitted if unknown); `under` the name of the block under the feet (`grass_block`, `deepslate`, omitted over air);
+  `light` the block light at the head, 0 to 15, from torches and other light sources only (sunlight is not counted: on the open surface by day it is 0).
+  `go_to {x,y,z}` takes the same numbers back, so a mind can mark a branch point from `pos` and return to it.
 - **Line of sight only.** `near` (players and mobs within 32 blocks) and `blocks` (within 16) hold only what a ray from the
   body's eyes reaches: a mob behind a wall, or ore with no open face, or one whose open face is out of view, is not
   listed. Blocks also need an open face toward the body. (Mineflayer itself sees through walls; this is the fix.)
@@ -123,7 +133,9 @@ or down, and a handle to point at it with.
   (head under too: 2 or more deep, no way to touch the bottom and breathe) or `lava`.
 - `stone` is the nearest natural stone `get_stone` would take that is in view: within 40 blocks of home, above y 30, not in a
   refused place, passing the look-before-you-dig rule, with an open face. A band and a compass point. That one block is also
-  listed once in `blocks` as `stone` with a handle (the only way to point at stone, for `collect`), the same spot as `stone` says.
+  listed once in `blocks` as `stone` with a handle (the only way to point at stone, for `collect`), the same spot as `stone` says. Where no stone is in that range
+  (a long way from home, in the deep) `stone` is the nearest natural stone, deepslate, andesite, diorite, granite or tuff within 16 blocks with an open face, in view
+  and passing the same dig rules, when the body would otherwise have none listed; its handle works for `collect` like the other.
 - `refused` lists up to 3 places where the server undid a dig, nearest first, from the digs the body itself saw undone
   (it never reads the server's regions): kept for the bot's life, fading after 30 minutes, shared by `get_wood`,
   `get_stone` and `get_iron`. `d` is the distance to the place's edge (`here` inside it), `dir` the way to its middle.
@@ -142,6 +154,12 @@ or down, and a handle to point at it with.
   on every start, so a handle from before a restart never matches a new one. The same entity or block keeps its handle while it
   keeps being observed, and seeing it again keeps it fresh. A handle not seen for 10 minutes, or one of the 256 newest in the
   table pushed out, is gone. Fixed place names never expire.
+
+`go_to {x,y,z}` walks to a cell, whole numbers, and only walks: it never digs or places. `rejected` as for a handle (`busy`, `in_fight`, `in_danger`, `not_in_game`) and it
+replaces a running `come_to`/`follow`/`guard`/`give`/`go_to`; `bad_intent` for a missing or fractional number, or one out of range; both a handle and a cell is `bad_intent`. Ends
+`task_finished` within about 2 blocks of the cell, `task_failed` `refused` (`detail`: `something a player built is too close to there`, `that spot is where its digs were undone`,
+`it only walks by place in the overworld`) without a step taken, `stuck` (`that place is too far to see` when its chunk is not loaded; a walk of 90 s at most, no progress). It walks the safe
+ways only, so a cell inside rock, over a drop or across water is `stuck`, not dug to. Status text: `walking to a place`.
 
 `go_to {handle}` walks to what the handle points at, a movement action like `come_to`: `busy` while a task runs, `in_fight`,
 `in_danger`, `not_in_game`, and it replaces a running `come_to`/`follow`/`guard`/`give`/`go_to`. A handle the body no longer has (a place name away from the overworld, unknown,
@@ -183,6 +201,8 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
 | `reflex_changed` | `what`, `why`. The reflex does something else: running turns into a fight, or the hazard changes (lava to burning). `cornered, fighting a zombie` is the flee watchdog: a run that gained no distance for 5 s with the threat on the body (or after it hurt it) while the body itself went nowhere (a sealed room, a pit; a chase round the leash circle covers ground and is left alone) turns into a fight when every threat is a plain melee mob. Does not wake `wait` |
 | `reflex_ended` | `what` (`mobs`, `lava`, `fire`, `burning`, `drowning`, `fall`, `eating`, `fight`), `ok`, `detail`? One per episode of a reflex (running from or fighting mobs, getting out of a hazard), when it lets go of the body: `ok` true when clear, false when it gave up (`no way out of the water found`; `cornered, no way to get clear`: the watchdog tripped with a creeper, skeleton or other mob it will not fight among the threats; the body then takes orders and the mob reflex stays out of the way for 20 s). A client refused `in_danger` waits for this. `fall` (`landed in water, unhurt`, `landed hard, badly hurt`) comes at the end of every fall of more than 3 blocks, steered or not, about half a second after the landing so the damage is known; it may come without a `reflex_started` |
 | `hurt` | `cause` (words: `hurt by a zombie`, `burning`, `in lava`, `falling`, `drowning`, `starving`, `hurt by something`), `health` (after the loss). The body lost health. One per 3 s per cause, a different cause after 1 s, and always when health drops under 7: a creeper blast is one event. Wakes `wait` |
+| `pack_full` | The pack has no free slot and something it would pick up dropped (or the next dig in a `tunnel` or `dig_down` would drop). Once per episode, until a slot is free again. No fields. Wakes `wait`. The usual answer: empty into a chest with `store` |
+| `tool_worn` | `item` (`iron_pickaxe`), `left` (words: `a few uses left`). The held pickaxe or sword is at 10 percent durability or less. Once per tool name, again only after it was seen above 10 percent (a repair, a new tool). Wakes `wait`. The usual answer: `craft` or `equip` another |
 | `starving` | `food`. Critical hunger (food 6 or less), once per episode (until food is back at 15), whether or not it carries food. Wakes `wait`. A meal while running from mobs needs food 6 or less and the nearest threat 14 or more blocks off, never mid-fight |
 | `task_progress` | `taskId`, `step` (the status text: `gathering wood`, `crafting tools`, `mining stone`, `smelting`, `stashing ore`...), `got`? (items gained so far). Only for a `task`, on a change of step and at most one every 15 s, never closer than 2 s: a 2-minute task makes a handful. It is only a commentary: a client that waits for a task's end has no reason to wake for it |
 | `task_finished` | `taskId`, `got`? (items gained in the run, net of what it used, counting what it stashed: `{"oak_log":11}`, the 4 biggest; for a `task` and the long actions below), `stored`? (a `store`: what went into the stash, up to 8 items), `saw`? (an `explore`: kinds newly in view, in words, no digit; a `tunnel` with `through`: the ore it passed), `detail`? (a `dig_down`, `tunnel` or a `collect` that got fewer than asked: why it ended, in words) |
@@ -293,14 +313,19 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
     `stone`, ore names like `iron ore`, `water`, `lava`, `doors`, `players`), words only, no handle: `observe` for those. When a whole run of legs brings it no nearer it
     ends `blocked` (water, lava, a cliff or a drop ahead, in `detail`: `a cliff to the north`, `the sea to the east`, `a lake to the north`, `lava to the west`) or `stuck`.
     It looks along each leg's line (and a few blocks past its end) and does not walk a leg that crosses deep water or lava: it turns aside to a dry one instead, so it stops on the shore with dry feet. The body keeps the last dry ground it stood on (in itself only) and swims back to it if a leg ends in the water. At most about 40 s plus 2.5 s per block of the band.
-  - `dig_down {to?}` cuts a one-block-wide staircase down from where it stands toward natural stone (`to` is `stone`, the only target and the default),
-    facing whichever of the four ways is clear (the way it looks first). Every block goes through the dig rules; it is refused at once (`task_failed` `refused`, `detail` in
+  - `dig_down {to?, torches?}` cuts a one-block-wide staircase down from where it stands, facing whichever of the four ways is clear (the way it looks first). `to` is `stone`
+    (the default: down to natural stone, at most twelve steps, `stuck` `no stone within twelve steps`) or a whole y (`-50`): the same stair cut through stone and deepslate, at most sixty-four
+    steps a call, stopping on the step whose feet are at that y with `task_finished` `detail` `at the depth asked`. A y above where it stands is `refused` (`that is up, not down`), as is a y under
+    the world (`that is below the bottom of the world`) and bedrock in the way (`bedrock is in the way`). Sixty-four steps without reaching the y end `stuck` `no further within sixty-four steps`
+    and the mind calls again: two calls make one stair, and the stair memory, `go_to stair` and `climb_up` cover the whole length. With a y, a block that needs a better pickaxe than it holds
+    is `no_tool`, and a cell under cover that turns out to be open air stops it `blocked` `a cave opens ahead`. `torches: true`: see Torches below.
+    Every block goes through the dig rules; it is refused at once (`task_failed` `refused`, `detail` in
     words) on or near a player's build or a place where digs were undone, `blocked` when water or lava is beside or below the way (`water behind the wall`, `lava below`),
-    sand or gravel overhead, a hollow below, or rock it cannot break. It stops on natural stone: `task_finished` with `detail` (`stone ahead, a few blocks down`). At most twelve steps:
-    `stuck` `no stone within twelve steps`. `task_progress` says `digging down, four steps` (number words, the status text has no digit). The stair is remembered inside the body;
+    sand or gravel overhead (`sand or gravel overhead`), a hollow below, or rock it cannot break. With `to: stone` it stops on natural stone: `task_finished` with `detail` (`stone ahead, a few blocks down`).
+    `task_progress` says `digging down, four steps` (number words up to sixty-four, `many` after; the status text has no digit). The stair is remembered inside the body;
     `observe` then lists `stair` among the `places` (`close north, the stair you dug, down`), `go_to stair` walks to its top, and the stone it stopped at is listed in
     `blocks` as `stone` with a handle so `collect` can take it (the one spot where the body digs the floor it stands on: the last step of its own stair, once, over solid ground).
-  - `tunnel {dir?, length?, through?}` digs a branch mine from where it stands: one block wide, two high, at the level of its feet, walking in as it digs.
+  - `tunnel {dir?, length?, through?, torches?}` digs a branch mine from where it stands: one block wide, two high, at the level of its feet, walking in as it digs.
     `dir` is `north`, `east`, `south` or `west` (default: the way the stair faces when it stands at the foot of the way it dug, else the way it faces);
     `length` is a count to 32 or an `explore` band (`near` 8, `a short walk` 16, `a fair way` 24, `far` 32; default 16). Every block goes through the dig rules
     (the plan is `tunnel-plan.ts`): `refused` on or within 3 blocks of a player's build, or in a place where digs were undone; `blocked` with `detail` when water
@@ -315,6 +340,13 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
     top): `observe` lists it as `stair` among the `places`, `go_to stair` and `climb_up` walk back to its top. The ore shows up in `observe` `blocks` with a handle
     (`iron_ore`) and `collect` takes it, and a vein of the same kind, with the pickaxe tier it needs (`no_tool` for iron with a wooden one); `get_iron` also takes
     ore the tunnel opened, since it has an open face now. Ore in the floor or the roof of the tunnel is listed but `collect` cannot stand to dig it.
+  - **Torches** (`torches: true` on `dig_down` or `tunnel`): one on a wall every 8 blocks of travel, and one at the start when the light there is under 8, set through the same
+    place door as everything else (the gate, the journal as the body's own, so a later dig of them is not a build; the wall cell behind the body, never the way ahead).
+    Carrying none is `rejected` `no_torches` at once and nothing starts. Running out partway does not stop the work: the end `detail` says so (`out of torches six blocks back`,
+    appended to the usual ending). A torch that cannot be set (no wall) is skipped, not an error. Torches have a budget of their own, counted per call (16 a call, so about nine on a full stair call
+    and five on a 32-block tunnel; 256 a day, as for every place).
+  - **Upkeep.** A `tunnel` or `dig_down` that would dig into drops it has no room for ends `task_finished` `detail` `pack full` before it digs on; the usual answer is to `climb_up` or `go_to` the
+    chest and `store`. The `pack_full` and `tool_worn` events (see Events) say it while the action runs, and `wait` wakes on them.
   - `climb_up` walks back along the tunnel and up the stair to where it started; `task_failed` `no_stair` when it has dug none. If the stair's last floor was taken for stone and it stands in that hole, it jumps and sets a block under itself first (`stuck` when it carries none).
   - A `collect` that gets fewer blocks than `count` says why in `detail`: `no more in reach`, `the rest is under a build`, `the rest is where digs are undone`.
 - `guard` is `follow` that also protects: the body keeps near the player, counts hostile mobs within

@@ -12,6 +12,8 @@ export type WakeReason =
   | "interrupted"
   | "reflex_started"
   | "reflex_ended"
+  | "pack_full"
+  | "tool_worn"
   | "restarted"
   | "timeout";
 
@@ -38,6 +40,10 @@ export function wakeReason(e: BotEvent, taskId?: string): WakeReason | undefined
       return e.what === "eating" ? undefined : "reflex_started"; // a meal is news, not an alarm
     case "reflex_ended":
       return "reflex_ended";
+    case "pack_full":
+      return "pack_full";
+    case "tool_worn":
+      return "tool_worn";
   }
   if (e.event === "task_failed" && e.reason === "interrupted") return "interrupted";
   if (taskId && ENDS.includes(e.event) && e.taskId === taskId) return "task_ended";

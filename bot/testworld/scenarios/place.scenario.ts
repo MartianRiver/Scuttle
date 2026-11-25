@@ -136,7 +136,7 @@ const tableBeside: Scenario = {
     c.check((await c.world.count(c.bot, "crafting_table")) === 0, "the pack no longer has one");
     const o = await observe(c);
     c.check(o.blocks.some((b) => b.what === "your crafting table"), `observe lists it as its own (${o.blocks.map((b) => b.what).join(", ")})`);
-    c.check(!JSON.stringify(o).match(/-?\d{3,}/), "and no coordinate came with it");
+    c.check(!JSON.stringify({ ...o, pos: undefined }).match(/-?\d{3,}/), "and no coordinate came with it beyond the body's own cell");
     const none = await run(c, { intent: "place", item: "furnace" });
     c.check(none.end?.reason === "none_held", `a furnace it does not hold (${said(none.end)})`);
     await c.world.run(`give ${c.bot} tnt 1`);

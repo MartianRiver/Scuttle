@@ -1,6 +1,7 @@
 // Turns what the body read (offsets from itself, counts, names) into the observation the mind gets:
-// words and bands, handles, no coordinates, inside a size budget. Pure, so the budget and the
-// no-coordinates rule are tested on made-up input.
+// words and bands, handles, inside a size budget. The one place a number leaves the body for the mind is `pos`
+// (D12: it plans a strip mine by y and by x and z); everything else stays a band or a word. Pure, so the budget and
+// that rule are tested on made-up input.
 import { directionWords, distanceBand, type healthBand } from "./bands";
 import { fitBudget } from "./budget";
 import type { Standing } from "./standing";
@@ -26,6 +27,10 @@ export interface RawBlock extends Offset {
   has?: string; // a chest of its own: what it last saw in it
 }
 export interface RawSense {
+  pos: { x: number; y: number; z: number }; // the cell the feet are in
+  biome: string | null;
+  under: string | null; // the block under the feet
+  light: number | null; // block light at the head, 0 to 15
   health: number | null;
   food: number | null;
   armor: number;
@@ -44,6 +49,10 @@ export interface RawSense {
 }
 
 export interface Observation {
+  pos: { x: number; y: number; z: number };
+  biome?: string;
+  under?: string;
+  light?: number;
   health: number | null;
   food: number | null;
   armor?: number;
@@ -113,6 +122,10 @@ export function compose(raw: RawSense, max = OBSERVATION_MAX_CHARS): Observation
   const { out } = fitBudget(
     lists,
     (l, trimmed): Observation => ({
+      pos: raw.pos,
+      ...(raw.biome && { biome: raw.biome }),
+      ...(raw.under && { under: raw.under }),
+      ...(raw.light !== null && { light: raw.light }),
       health: raw.health,
       food: raw.food,
       ...(raw.armor > 0 && { armor: raw.armor }),

@@ -131,6 +131,10 @@ export class World {
 }
 
 export type Observation = {
+  pos: Pos;
+  biome?: string;
+  under?: string;
+  light?: number;
   health: number | null;
   food: number | null;
   armor?: number;

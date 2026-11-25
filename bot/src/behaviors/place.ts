@@ -1,5 +1,5 @@
 // Where a death happened, in words. Pure, so the bands are testable; no coordinates ever leave
-// this module (the API has no coordinate field, and a place string with digits would be one).
+// this module (the died event carries none, and a place string with digits would be one).
 import { depthWords } from "./dig-down-plan";
 
 export const AT_HOME = 16; // horizontal blocks from the bed counted as home

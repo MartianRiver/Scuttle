@@ -49,6 +49,8 @@ export function addStep(p: Pos): void {
 }
 
 export const hasStair = (): boolean => stair !== null;
+// cells the way back to the top passes: every step and every tunnel cell
+export const stairSize = (): number => (stair ? stair.steps.length + stair.tunnel.length : 0);
 export const stairTop = (): Pos | null => stair?.steps[0] ?? null;
 export const stairFacing = (): Facing | null => stair?.facing ?? null;
 export const stairBottom = (): Pos | null => (stair ? stair.steps[stair.steps.length - 1] : null);

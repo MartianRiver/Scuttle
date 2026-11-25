@@ -4,10 +4,12 @@
 // Standing at S (feet cell, y), facing (dx, dz), the next step is the column c = S + facing: three blocks to take out,
 // A = (c, y+1) at head height, B = (c, y) at the feet and C = (c, y-1) one down; then the body walks forward and drops
 // into C. C then has B and A over it, two blocks of room, and the floor under C must already be solid. A step into stone
-// is never dug (that wants a pickaxe): it stops before.
+// is never dug (that wants a pickaxe): it stops before. With `through` (a depth was asked for) stone and deepslate are
+// dug like any ground, under a tunnel's tool rules, and a cave opened into is a stop.
 import { isFalling, NATURAL_STONE, isLiquid, isMade, isStandHazard, madeBlocksNear, safeToDig, type NameAt, type Pos } from "./dig-safety";
 
 export const MAX_STEPS = 12;
+export const MAX_DEPTH_STEPS = 64; // a call that was given a depth to reach
 export const PROBE = 3; // steps looked at when choosing which way to face
 
 export interface Facing {
@@ -26,9 +28,17 @@ export interface Grid {
 
 export type StepPlan =
   | { kind: "stop" } // stone under it or in front
-  | { kind: "blocked"; detail: string } // water, lava, a hollow, something it cannot break
-  | { kind: "refused"; detail: string } // a build, a place where digs were undone
+  | { kind: "blocked"; detail: string } // water, lava, a hollow, a cave, something it cannot break
+  | { kind: "refused"; detail: string } // a build, a place where digs were undone, bedrock
+  | { kind: "no_tool"; detail: string } // through only: rock that wants a pickaxe it does not carry
   | { kind: "step"; dig: Pos[]; to: Pos; level: boolean };
+
+// how a step is planned: `through` digs stone and deepslate instead of stopping at them, and `missingTool` is the
+// tunnel's tool rule (words for the pickaxe it lacks, null when it has what the block needs)
+export interface StepOpts {
+  through?: boolean;
+  missingTool?: (name: string) => string | null;
+}
 
 const at = (p: Pos, dx: number, dy: number, dz: number): Pos => ({ x: p.x + dx, y: p.y + dy, z: p.z + dz });
 const SIX: ReadonlyArray<readonly [number, number, number]> = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -58,9 +68,10 @@ function liquidNear(g: Grid, cells: Pos[], extra: Pos[]): string | null {
 }
 
 // One step from `cur`. `canBreak` says whether the game lets a body break a block of that name at all.
-export function planStep(g: Grid, cur: Pos, f: Facing, canBreak: (name: string) => boolean): StepPlan {
+export function planStep(g: Grid, cur: Pos, f: Facing, canBreak: (name: string) => boolean, opts: StepOpts = {}): StepPlan {
+  const through = opts.through === true;
   const floor = g.name(at(cur, 0, -1, 0));
-  if (floor !== null && STONE_STOP.has(floor)) return { kind: "stop" };
+  if (!through && floor !== null && STONE_STOP.has(floor)) return { kind: "stop" };
 
   const c = at(cur, f.dx, 0, f.dz);
   const A = at(c, 0, 1, 0);
@@ -69,9 +80,9 @@ export function planStep(g: Grid, cur: Pos, f: Facing, canBreak: (name: string) 
   const names = [A, B, C].map((p) => g.name(p));
   if (names.some((n) => n === null)) return { kind: "blocked", detail: "it cannot see far enough ahead" };
   const [nA, nB, nC] = names as string[];
-  if (STONE_STOP.has(nA) || STONE_STOP.has(nB)) return { kind: "stop" };
+  if (!through && (STONE_STOP.has(nA) || STONE_STOP.has(nB))) return { kind: "stop" };
   // the step down would be into stone: walk on level onto it instead, and the next look finds stone underfoot
-  const level = STONE_STOP.has(nC);
+  const level = !through && STONE_STOP.has(nC);
   const dig = level ? [A, B] : [A, B, C];
   const to = level ? B : C;
 
@@ -87,14 +98,19 @@ export function planStep(g: Grid, cur: Pos, f: Facing, canBreak: (name: string) 
     if (isStandHazard(n)) return { kind: "blocked", detail: "something hot or prickly below" };
   }
 
+  // under rock (three cells over the feet are solid), a dug column that is already open is a cave, not the way down
+  const covered = through && g.solid(at(cur, 0, 3, 0));
   for (const p of dig) {
     const n = g.name(p) as string;
     if (!g.solid(p)) {
       if (isStandHazard(n)) return { kind: "blocked", detail: "something sticky or prickly in the way" };
+      if (covered) return { kind: "blocked", detail: "a cave opens ahead" };
       continue; // air, or a plant it walks through
     }
     if (isMade(n)) return { kind: "refused", detail: "something a player built is in the way" };
-    if (!canBreak(n)) return { kind: "blocked", detail: "rock it cannot break is in the way" };
+    if (!canBreak(n)) return through ? { kind: "refused", detail: "bedrock is in the way" } : { kind: "blocked", detail: "rock it cannot break is in the way" };
+    const tool = through ? opts.missingTool?.(n) : null;
+    if (tool) return { kind: "no_tool", detail: `it needs ${tool}` };
     if (!safeToDig(p, g.name)) {
       if (madeBlocksNear(p, g.name).length > 0) return { kind: "refused", detail: "something a player built is too close" };
       const falling = [1, 2].some((dy) => {
@@ -125,7 +141,7 @@ export interface Chosen {
 
 // The way to face: the one whose first few steps all go through, the first of `prefer` on a tie. When every way
 // is stopped early the longest is taken, and the stop is found when the body gets there.
-export function chooseFacing(g: Grid, start: Pos, prefer: readonly Facing[], canBreak: (name: string) => boolean): Chosen {
+export function chooseFacing(g: Grid, start: Pos, prefer: readonly Facing[], canBreak: (name: string) => boolean, opts: StepOpts = {}): Chosen {
   let best: Chosen | null = null;
   for (const f of prefer) {
     let grid = g;
@@ -133,7 +149,7 @@ export function chooseFacing(g: Grid, start: Pos, prefer: readonly Facing[], can
     let steps = 0;
     let first: StepPlan | null = null;
     for (; steps < PROBE; steps++) {
-      const plan = planStep(grid, cur, f, canBreak);
+      const plan = planStep(grid, cur, f, canBreak, opts);
       first ??= plan;
       if (plan.kind === "stop") {
         steps = PROBE;
@@ -161,7 +177,14 @@ const NUMBERS = [
   "seventeen", "eighteen", "nineteen", "twenty", "twenty-one", "twenty-two", "twenty-three", "twenty-four", "twenty-five", "twenty-six", "twenty-seven",
   "twenty-eight", "twenty-nine", "thirty", "thirty-one", "thirty-two",
 ];
-export const numberWords = (n: number): string => NUMBERS[n] ?? "many";
+const TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty"];
+// in words up to sixty-four, since a digit would be stripped from a detail on its way out; "many" past that
+export const numberWords = (n: number): string => {
+  if (n < NUMBERS.length) return NUMBERS[n] ?? "many";
+  if (n > 64) return "many";
+  const tens = Math.floor(n / 10);
+  return n % 10 === 0 ? TENS[tens] : `${TENS[tens]}-${NUMBERS[n % 10]}`;
+};
 
 // the status line while digging: a count of steps in words
 export const digStatus = (steps: number): string => (steps === 0 ? "digging down" : `digging down, ${numberWords(steps)} ${steps === 1 ? "step" : "steps"}`);

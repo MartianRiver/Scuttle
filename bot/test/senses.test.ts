@@ -169,6 +169,10 @@ test("fitBudget takes from the longest list first and says what it took", () => 
 const here = { dx: 0, dy: 0, dz: 0 };
 function raw(over: Partial<RawSense> = {}): RawSense {
   return {
+    pos: { x: 12, y: 68, z: -30 },
+    biome: "plains",
+    under: "grass_block",
+    light: 15,
     health: 20,
     food: 18,
     armor: 0,
@@ -287,7 +291,7 @@ test("compose: in, stone and refused read as words", () => {
   assert.equal(plain.refused, undefined);
 });
 
-test("compose: no coordinate leaves it, whatever the offsets are", () => {
+test("compose: the body's own cell is the one coordinate that leaves it, whatever the offsets are", () => {
   // offsets are what the body reads (a position minus its own); the numbers here are chosen so that
   // none could be mistaken for a count, a handle or a health value
   const dx = 7312;
@@ -301,6 +305,9 @@ test("compose: no coordinate leaves it, whatever the offsets are", () => {
   );
   const json = JSON.stringify(o);
   for (const n of ["7312", "9461", "7.3", "9.4"]) assert.ok(!json.includes(n), n);
+  assert.equal(o.biome, "plains");
+  assert.equal(o.under, "grass_block");
+  assert.equal(o.light, 15);
   const keys = new Set<string>();
   const walk = (v: unknown) => {
     if (Array.isArray(v)) v.forEach(walk);
@@ -311,7 +318,9 @@ test("compose: no coordinate leaves it, whatever the offsets are", () => {
       }
     }
   };
-  walk(o);
+  const { pos, ...rest } = o;
+  assert.deepEqual(pos, { x: 12, y: 68, z: -30 });
+  walk(rest);
   for (const k of ["x", "y", "z", "dx", "dy", "dz", "pos", "position", "coords"]) assert.ok(!keys.has(k), `no ${k} key`);
   assert.equal(o.near[0].d, "very far");
 });
