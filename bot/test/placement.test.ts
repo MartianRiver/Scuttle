@@ -134,6 +134,13 @@ test("put-plan: here is the ground beside it, the way it faces first; the body's
   assert.equal(putWords("oak_bed", "beside it"), "an oak bed beside it");
 });
 
+test("put-plan: forest floor litter is built over like grass, a flower still blocks", () => {
+  const litter = okSpot(planPut("chest", { kind: "ahead" }, field({ "1,64,0": "leaf_litter" })));
+  assert.deepEqual(litter.spot.cell, { x: 1, y: 64, z: 0 });
+  const flower = planPut("chest", { kind: "ahead" }, field({ "1,64,0": "poppy" }));
+  assert.ok(!flower.ok && flower.reason === "no_room");
+});
+
 test("put-plan: ahead is one cell, and nothing free there is no_room with words", () => {
   assert.deepEqual(okSpot(planPut("furnace", { kind: "ahead" }, field())).spot.cell, { x: 1, y: 64, z: 0 });
   const blocked = planPut("furnace", { kind: "ahead" }, field({ "1,64,0": "stone" }));
