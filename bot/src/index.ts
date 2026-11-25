@@ -15,6 +15,7 @@ import { isTaskRunning } from "./behaviors/task";
 import { isFalling, startFall } from "./behaviors/fall";
 import { isInHazard, startSurvive } from "./behaviors/survive";
 import { watchHurt } from "./behaviors/hurt-watch";
+import { watchUpkeep } from "./behaviors/upkeep";
 import { startBedtime } from "./behaviors/bedtime";
 import { isGuardFighting, startGuard } from "./behaviors/guard";
 import { startBodyApi } from "./api";
@@ -86,6 +87,7 @@ bot.once("spawn", () => {
   stopTimers.push(
     startSurvival(bot, isTaskRunning, api.noFood, api.starving, api.reflex),
     watchHurt(bot, api.emit),
+    watchUpkeep(bot, api.emit),
     startGuard(bot, api.reflex),
     startDefence(bot, api.interrupt, api.reflex),
     startSurvive(bot, api.interrupt, api.reflex),

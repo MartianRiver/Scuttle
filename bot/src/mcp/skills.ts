@@ -14,16 +14,20 @@ export interface ActArgs {
   near?: string;
   dir?: string;
   far?: string;
-  to?: string;
+  to?: string | number;
   length?: number | string;
   through?: boolean;
+  torches?: boolean;
+  x?: number;
+  y?: number;
+  z?: number;
   where?: string;
   chest?: string;
 }
 
 // where each act argument goes on the wire
 const WIRE: Record<keyof ActArgs, string> = {
-  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through", where: "where", chest: "chest",
+  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through", torches: "torches", x: "x", y: "y", z: "z", where: "where", chest: "chest",
 };
 
 export interface ActionDef {
@@ -60,11 +64,11 @@ export const ACTIONS: Record<string, ActionDef> = {
     ends: "Never finishes on its own. Ends with stop, a newer order, task_failed lost_ward (player out of view or over 48 blocks for 15 s), died, disconnected. Reflexes (fleeing, fighting) pause it without ending it. Accepted even when mobs are near.",
   },
   go_to: {
-    does: "Walk to what a handle from observe points at (a mob, a player, a block), or to a place by name: home, table, stash, furnace, bed, and stair (the one dug with dig_down or tunnel, once there is one).",
-    required: ["handle"],
-    optional: [],
+    does: "Walk to what a handle from observe points at (a mob, a player, a block), or to a place by name: home, table, stash, furnace, bed, and stair (the one dug with dig_down or tunnel, once there is one), or to a cell: x, y and z, the same numbers as pos in observe (the cell the feet are in). Give a handle or the three numbers, never both. A cell is how you stand at a branch point along your own tunnel (a point a few blocks back from where you are). On foot only, always: it never digs and never sets a block down, so a cell behind rock it would have to dig through is stuck.",
+    required: [],
+    optional: ["handle", "x", "y", "z"],
     rejects: ["busy", "in_fight", "in_danger", "not_in_game", "stale_handle"],
-    ends: "task_finished within about 2 blocks of a block or place (home 4) or 3 of a mob or player, which it re-walks as they move; task_failed stale_handle (the mob went away mid-walk), stuck, interrupted, died. At most 90 s. Replaces a running come_to, follow, guard, give or go_to.",
+    ends: "task_finished within about 2 blocks of a block, a place (home 4) or a cell, or 3 of a mob or player, which it re-walks as they move; task_failed stale_handle (the mob went away mid-walk), refused (a cell where its digs were undone or beside something a player built; detail says which, and it does not go there), stuck (no way there on foot, the cell is too far to see, or it ran out of time), interrupted, died. At most 90 s. Replaces a running come_to, follow, guard, give or go_to.",
   },
   give: {
     does: "Walk to a player and throw items at their feet, one stack at a time, up to count (default everything held, max 64). Never throws a held tool, weapon or shield.",
@@ -144,18 +148,18 @@ export const ACTIONS: Record<string, ActionDef> = {
     ends: "task_finished with detail= this is its base now; task_failed not_ready (detail names what it lacks: a bed, a crafting table, a chest within a few blocks), refused (something a player built is too close, or not in the overworld), protected (a place where its digs were undone), interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
   dig_down: {
-    does: "Cut a one-block-wide staircase down from where it stands, toward natural stone (to: stone, the only target and the default), facing whichever way is clear. It stops on stone, at most twelve steps down, and remembers the stair. observe then lists that stair among the places (go_to stair walks to its top, climb_up goes there) and the stone it stopped at as a block with a handle, so collect or get_stone can take it; tunnel then digs sideways from its foot. Refuses at once on or beside anything a player built, in a place where digs were undone, or with water or lava beside the way; stops before sand or gravel overhead. Never digs where it would let water or lava in.",
+    does: "Cut a one-block-wide staircase down from where it stands, facing whichever way is clear. to: stone (the default) stops on natural stone, at most twelve steps down. to: a y (a whole number, like -50) digs on through stone, deepslate and whatever else it may dig, with the pickaxe the rock needs, to the step at that y: at most sixty-four steps a call, so a long way down is two calls in a row from the foot of the stair (the second goes on the same way, and the stair is remembered as one). A y above where it stands is refused, and so is one below the bottom of the world. torches: true sets a torch on the wall every eight blocks of the way (and one at the start when it is dark there), from the torches it carries; it never runs short silently (see ends). It remembers the stair: observe lists it among the places (go_to stair walks to its top, climb_up goes there over its whole length) and the stone it stopped at as a block with a handle, so collect or get_stone can take it; tunnel then digs sideways from its foot. Refuses at once on or beside anything a player built, in a place where digs were undone, or with water or lava beside the way; stops before sand or gravel overhead, a hollow below, a cave opened into, water or lava. Never digs where it would let water or lava in. It stops with pack full rather than dig on into drops it has no room for.",
     required: [],
-    optional: ["to"],
-    rejects: ACT_REJECTS,
-    ends: "task_finished with detail= where it stopped (stone ahead, a few blocks down); task_progress digging down, N steps in words; task_failed refused or blocked with detail= why, protected (the server undid a dig), stuck (no stone within twelve steps, or could not step down), interrupted, died, disconnected. Like a task: busy while anything runs.",
+    optional: ["to", "torches"],
+    rejects: [...ACT_REJECTS, "no_torches"],
+    ends: "task_finished with detail= where it stopped (stone ahead, a few blocks down; at the depth asked; pack full: go back to your chest and store, then call again), and when torches ran out on the way, out of torches six blocks back; task_progress digging down, N steps in words; task_failed refused or blocked with detail= why (a build, bedrock is in the way, below the bottom of the world, sand or gravel overhead, a cave opens ahead, water or lava below), no_tool (detail says the pickaxe the rock needs), protected (the server undid a dig), stuck (no stone within twelve steps, no further within sixty-four steps, or could not step down), interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
   tunnel: {
-    does: `Dig a branch mine as a player does: a tunnel one block wide and two high at the level of its feet, in a compass direction (dir: ${CARDINALS.join(", ")}; default the way the stair it stands at the foot of faces, else the way it faces), up to length blocks (a count to ${TUNNEL_MAX}, or ${EXPLORE_BANDS.join(", ")}; default ${TUNNEL_DEFAULT}), walking in as it digs. It needs a pickaxe for stone. It looks at the walls as they open: it stops at the first ore it sees (coal, iron, copper, gold, redstone, lapis, diamond, emerald), so you can observe (the ore is listed with a handle) and collect it with the right pickaxe; call tunnel again to go on, or pass through: true to dig on past ore and have the kinds listed at the end. It takes what it digs (cobblestone, dirt). The tunnel is remembered with the stair: observe lists it among the places as the stair (go_to stair or climb_up walks back to its top, tunnel and stair). Refuses at once on or beside anything a player built, in a place where digs were undone; stops before water or lava (it never breaks into them), a drop or hole ahead, or sand or gravel overhead.`,
+    does: `Dig a branch mine as a player does: a tunnel one block wide and two high at the level of its feet, in a compass direction (dir: ${CARDINALS.join(", ")}; default the way the stair it stands at the foot of faces, else the way it faces), up to length blocks (a count to ${TUNNEL_MAX}, or ${EXPLORE_BANDS.join(", ")}; default ${TUNNEL_DEFAULT}), walking in as it digs. It needs a pickaxe for stone. It looks at the walls as they open: it stops at the first ore it sees (coal, iron, copper, gold, redstone, lapis, diamond, emerald), so you can observe (the ore is listed with a handle) and collect it with the right pickaxe; call tunnel again to go on, or pass through: true to dig on past ore and have the kinds listed at the end. It takes what it digs (cobblestone, dirt). The tunnel is remembered with the stair: observe lists it among the places as the stair (go_to stair or climb_up walks back to its top, tunnel and stair). Refuses at once on or beside anything a player built, in a place where digs were undone; stops before water or lava (it never breaks into them), a drop or hole ahead, or sand or gravel overhead. torches: true sets a torch on the wall every eight blocks of tunnel (and one at the start when it is dark there), from the torches it carries. It stops with pack full rather than dig on into drops it has no room for. Branches: go_to a cell back along your own tunnel (x, y, z; pos in observe is where you are now), then tunnel with a dir across it.`,
     required: [],
-    optional: ["dir", "length", "through"],
-    rejects: ACT_REJECTS,
-    ends: "task_finished with detail= why it stopped (ran out of length, or iron ore in the wall) and got= what it dug up; with through, saw= the ore it passed (two coal ore, iron ore). task_progress tunnelling, six blocks (in words). task_failed blocked (detail: water ahead, lava behind the wall, a drop ahead, sand or gravel overhead, rock it cannot break), refused (a build in the way or too close, or digs undone there), no_tool (detail says the pickaxe it lacks), protected (the server undid a dig), stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+    optional: ["dir", "length", "through", "torches"],
+    rejects: [...ACT_REJECTS, "no_torches"],
+    ends: "task_finished with detail= why it stopped (ran out of length, iron ore in the wall, or pack full: go back to your chest and store, then call again), plus out of torches six blocks back when they ran out on the way, and got= what it dug up; with through, saw= the ore it passed (two coal ore, iron ore). task_progress tunnelling, six blocks (in words). task_failed blocked (detail: water ahead, lava behind the wall, a drop ahead, sand or gravel overhead, rock it cannot break), refused (a build in the way or too close, or digs undone there), no_tool (detail says the pickaxe it lacks), protected (the server undid a dig), stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
   climb_up: {
     does: "Walk back up the stair dig_down cut, to the cell it started from; after a tunnel, back along it and up the stair.",
@@ -181,6 +185,7 @@ export const REJECTS: Record<string, string> = {
   unknown_item: "the game has no item by that name (lowercase_with_underscores, no namespace, like oak_planks)",
   none_held: "it does not carry that item",
   not_enabled: "placing is switched off in this world: place, pick_up and make_base are not taken here",
+  no_torches: "torches: true was asked and it carries none; craft or take some (a torch is coal or charcoal on a stick), or leave torches off",
   too_far: "the end point would be more than 160 blocks from home",
   stale_handle: "the body no longer has that handle (expired after 10 min unseen, from before a restart, the mob is gone, the block was mined); observe again for fresh ones",
   unknown_player: "that player is not in the body's loaded view (name wrong, offline or far away)",
@@ -254,6 +259,15 @@ export function buildIntent(action: string, args: ActArgs): Built {
   if (action === "task" && !(TASKS as readonly string[]).includes(args.task ?? "")) {
     return { ok: false, detail: `task must be one of ${TASKS.join(", ")}` };
   }
+  if (action === "go_to") {
+    const point = [args.x, args.y, args.z].filter((v) => v !== undefined).length;
+    if (args.handle !== undefined && point > 0) return { ok: false, detail: "go_to takes a handle or x, y and z, not both" };
+    if (args.handle === undefined && point !== 3) return { ok: false, detail: "go_to needs a handle, or all of x, y and z" };
+    if (point === 3 && ![args.x, args.y, args.z].every((v) => Number.isInteger(v))) return { ok: false, detail: "go_to x, y and z are whole numbers" };
+  }
+  if (action === "dig_down" && args.to !== undefined && args.to !== "stone" && !Number.isInteger(args.to)) {
+    return { ok: false, detail: "dig_down to is stone, or a y as a whole number" };
+  }
   if (action === "tunnel") {
     if (args.dir !== undefined && !(CARDINALS as readonly string[]).includes(args.dir)) return { ok: false, detail: `tunnel dir is one of ${CARDINALS.join(", ")}` };
     const len = args.length;
@@ -286,8 +300,10 @@ export function skillsTable() {
       say: "say(text): one public chat line, up to 100 printable ASCII characters, one per 2 s, 12 a minute.",
       recipe: "recipe(item): what crafting an item takes, answered at once: makes, needs, whether it needs a table, what it holds of that (have) and what is missing for one craft. A named kind of planks or logs fits only what it holds; with none it says planks for any wood.",
       stash: "stash(): what its own stash chests held when it last looked, counts per item, fresh (every chest looked at within 10 minutes), looked (just now, minutes ago, a while ago, never), unseen (chests it never opened). Answered from memory at once.",
+      strip_mine: "A strip mine is built from the actions, not one command: dig_down {to: y, torches: true} (twice for a long way) to the depth you pick (the ore you want is at the y you know it is; the body keeps no table of that), then tunnel {dir, torches: true} for the main tunnel, go_to {x, y, z} a few blocks back along it (pos in observe says where you are), and tunnel again sideways for a branch. You choose the depth, the pattern and when to turn back. tunnel stops at the first ore in a wall unless through: true; observe lists the ore with a handle for collect. climb_up walks back along the tunnel and up the whole stair.",
+      upkeep: "Two events wake wait while you dig. pack_full: the pack has no room for what it digs (the usual answer: climb_up or go_to stair, store at your chest, come back); it is told once, until a slot frees. tool_worn {item, left}: the pickaxe or sword in hand is at about a tenth of its life, once per tool (the usual answer: craft another pickaxe or equip a spare; observe tools has the percentages).",
       reasons: REJECTS,
     },
-    not_possible: "Anything not listed. There are no coordinates, commands or free movement. If you need something that is not here, say so in your own notes as a skill request instead of retrying.",
+    not_possible: "Anything not listed. There are no commands or free movement: a cell goes through go_to {x, y, z} on foot, and the way down through dig_down. If you need something that is not here, say so in your own notes as a skill request instead of retrying.",
   };
 }

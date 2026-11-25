@@ -12,6 +12,9 @@ import { facingsFrom, type Facing } from "./dig-down-plan";
 import { breakBlock, canBreak, cellOf, grid, same } from "./dig-down";
 import { TaskError } from "./fail";
 import { missingTool } from "./harvest";
+import { lightAtHead, torchIfDue } from "./torches";
+import { TorchPacer, withTorchNote } from "./torch-plan";
+import { noRoomFor } from "./upkeep";
 import type { MineCtx } from "./mine";
 import { reverted } from "./refused";
 import { addTunnelCell, beginStair, inWay, noteOre, oreKnown, wayFacing } from "./stair";
@@ -26,6 +29,7 @@ export interface TunnelOpts {
   dir?: Cardinal;
   length?: number | string;
   through?: boolean;
+  torches?: boolean;
 }
 
 const key = (p: Pos) => `${p.x},${p.y},${p.z}`;
@@ -51,6 +55,8 @@ export async function tunnel(bot: Bot, ctx: MineCtx, opts: TunnelOpts): Promise<
   bot.pathfinder.setMovements(safeMovements(bot));
   const deadline = Date.now() + RUN_MS;
   const seen: string[] = [];
+  const pacer = opts.torches ? new TorchPacer(lightAtHead(bot)) : null;
+  const job = `torch@${Date.now()}`;
   let stopped: string | null = null;
   let dug = 0;
   try {
@@ -65,6 +71,12 @@ export async function tunnel(bot: Bot, ctx: MineCtx, opts: TunnelOpts): Promise<
         for (const o of start) noteOre(key(o.pos));
       }
 
+      await torchIfDue(bot, ctx, pacer, job);
+      // drops with nowhere to go are left where they fall: it stops here and the mind empties the pack
+      if (noRoomFor(bot, plan.dig.filter((p) => g.solid(p)).map((p) => g.name(p) as string))) {
+        stopped = "pack full";
+        break;
+      }
       await setStatus({ task: tunnelStatus(dug) });
       for (const p of plan.dig) await breakBlock(bot, ctx, p, true, "tunnel");
       await walkWithin(bot, new goals.GoalBlock(plan.to.x, plan.to.y, plan.to.z), STEP_WALK_MS);
@@ -73,6 +85,7 @@ export async function tunnel(bot: Bot, ctx: MineCtx, opts: TunnelOpts): Promise<
       addTunnelCell(plan.to, facing);
       cur = plan.to;
       dug++;
+      pacer?.step();
 
       const found = wallOres(g, [cur, over(cur)]).filter((o) => !oreKnown(key(o.pos)));
       for (const o of found) noteOre(key(o.pos));
@@ -84,5 +97,5 @@ export async function tunnel(bot: Bot, ctx: MineCtx, opts: TunnelOpts): Promise<
     // what fell from the last blocks is picked up whichever way it ends
     if (!ctx.stopping()) await pickUp(bot, new Vec3(cur.x + 0.5, cur.y + 0.5, cur.z + 0.5), ctx.stopping, () => true);
   }
-  return { detail: stopped ?? "ran out of length", ...(seen.length > 0 && { saw: sawWords(seen) }) };
+  return { detail: withTorchNote(stopped ?? "ran out of length", pacer), ...(seen.length > 0 && { saw: sawWords(seen) }) };
 }

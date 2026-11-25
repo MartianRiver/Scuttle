@@ -29,7 +29,7 @@ const vecOf = (p: { x: number; y: number; z: number }): Vec3 => new Vec3(p.x, p.
 
 export type WhereWord = { word: "here" | "ahead" | "wall" } | { word: "on"; target: Vec3 };
 
-function viewOf(bot: Bot) {
+export function viewOf(bot: Bot) {
   const entities = Object.values(bot.entities).filter((e) => e !== bot.entity && ["player", "mob", "hostile", "animal", "passive"].includes(e.type ?? ""));
   return {
     eye: bot.entity.position.offset(0, 1.62, 0),
@@ -42,7 +42,7 @@ function viewOf(bot: Bot) {
 }
 
 // the gate's word on setting `item` in `cell`, as words, or null when it is fine
-function vetter(bot: Bot, item: string, job: string) {
+export function vetter(bot: Bot, item: string, job: string) {
   return (cell: { x: number; y: number; z: number }, against: { x: number; y: number; z: number }): string | null => {
     const op: Op = { kind: "place", pos: cell, against, block: item, job };
     const v = check(op, worldOf(bot, op), { strict: true });

@@ -112,8 +112,11 @@ test("the words a tunnel ends with carry no digit and survive the way out", () =
   assert.equal(tunnelStatus(1), "tunnelling, one block");
   assert.equal(tunnelStatus(6), "tunnelling, six blocks");
   assert.equal(tunnelStatus(21), "tunnelling, twenty-one blocks");
-  for (let n = 0; n <= TUNNEL_MAX; n++) assert.ok(!/\d/.test(numberWords(n)) && numberWords(n) !== "many", String(n));
-  assert.equal(numberWords(TUNNEL_MAX + 1), "many");
+  for (let n = 0; n <= 64; n++) assert.ok(!/\d/.test(numberWords(n)) && numberWords(n) !== "many", String(n));
+  assert.equal(numberWords(33), "thirty-three");
+  assert.equal(numberWords(40), "forty");
+  assert.equal(numberWords(64), "sixty-four");
+  assert.equal(numberWords(65), "many");
   assert.equal(digStatus(4), "digging down, four steps");
 });
 

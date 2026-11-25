@@ -5,7 +5,7 @@ import { yieldToOrder } from "../behaviors/bedtime";
 import { isFleeing, mobsNearWords, noteStop } from "../behaviors/defence";
 import { beginEscort, endEscort } from "../behaviors/escort";
 import { giveItem } from "../behaviors/give";
-import { destination, goTo } from "../behaviors/goto";
+import { destination, goTo, goToPoint } from "../behaviors/goto";
 import { isGuardFighting } from "../behaviors/guard";
 import { craft, recipeAnswer } from "../behaviors/craft";
 import { climbUp, digDown } from "../behaviors/dig-down";
@@ -20,6 +20,7 @@ import { hazardWords, isInHazard } from "../behaviors/survive";
 import { actionCtx, isTaskRunning, requestStop, runAction, startTask, type TaskResult } from "../behaviors/task";
 import { StuckError, walkTo } from "../behaviors/unstuck";
 import { config } from "../lib/config";
+import { itemCount } from "../lib/inventory";
 import { speak } from "../lib/speech";
 import { setStatus } from "../lib/status";
 import { HandleTable } from "../senses/handles";
@@ -113,6 +114,12 @@ export function createBody(bot: Bot): BodyControl {
       await yieldToOrder(bot);
       return goTo(bot, handles, handle);
     },
+    async goToPoint(x, y, z) {
+      endEscort();
+      await yieldToOrder(bot);
+      return goToPoint(bot, { x, y, z });
+    },
+    carries: (item) => itemCount(bot, item),
     handleLabel: (handle) => destination(bot, handles, handle)?.label ?? null,
     observe,
 
@@ -157,9 +164,9 @@ export function createBody(bot: Bot): BodyControl {
         case "explore":
           return run("explore", () => explore(bot, ctx, a.dir, a.far, lookAround));
         case "dig_down":
-          return run("dig_down", () => digDown(bot, ctx));
+          return run("dig_down", () => digDown(bot, ctx, { to: a.to, torches: a.torches }));
         case "tunnel":
-          return run("tunnel", () => tunnel(bot, ctx, { dir: a.dir, length: a.length, through: a.through }));
+          return run("tunnel", () => tunnel(bot, ctx, { dir: a.dir, length: a.length, through: a.through, torches: a.torches }));
         case "climb_up":
           return run("climb_up", () => climbUp(bot, ctx));
         case "collect": {

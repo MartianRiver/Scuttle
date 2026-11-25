@@ -82,7 +82,8 @@ export default [
         c.check(obs?.time === "day" && obs?.weather === "clear", `time day, weather clear (${obs?.time} ${obs?.weather})`);
         c.check(obs?.health === 20, `health 20 (${obs?.health})`);
         c.check(json.length <= 1200, `fits the budget: ${json.length} chars`);
-        c.check(!/"(x|y|z|dx|dy|dz|pos|position)"/.test(json), "no coordinate key");
+        const { pos: _own, ...rest } = obs as unknown as Record<string, unknown>;
+        c.check(!/"(x|y|z|dx|dy|dz|position)"/.test(JSON.stringify(rest)), "no coordinate key beyond the body's own pos");
       },
       async cleanup(c) {
         await c.world.run(`clear ${c.bot}`);

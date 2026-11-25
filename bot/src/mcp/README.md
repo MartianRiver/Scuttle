@@ -1,7 +1,7 @@
 # MCP adapter
 
 Lets an LLM session play through the body API (`../../API.md`) with these tools: `status`, `act`,
-`wait`, `events`, `observe`, `recipe`, `stash`, `say`, `skills`. It adds nothing the API doesn't have: no coordinates, no commands.
+`wait`, `events`, `observe`, `recipe`, `stash`, `say`, `skills`. It adds nothing the API doesn't have: no commands, and coordinates only where the API has them (`pos` in observe, `go_to {x,y,z}`, `dig_down {to: y}`).
 `rationale` on `act` is logged by the adapter and never sent to the body.
 
 Run it from the mind's own directory, not the repo. In that directory's `.mcp.json`, with the

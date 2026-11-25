@@ -48,6 +48,9 @@ export interface BodyControl {
   give(player: string, item: string, count?: number): Promise<void>;
   // walks to what a handle points at; rejects "stale_handle" if it is gone by the time the walk starts or during it
   goTo(handle: string): Promise<void>;
+  // walks to a cell, on foot only; rejects "refused" (a build too close, digs undone there) or "stuck" with a detail
+  goToPoint(x: number, y: number, z: number): Promise<void>;
+  carries(item: string): number; // how many of an item are in the pack
   // the handle's words for the status text, or null when it is unknown, expired or points at nothing now
   handleLabel(handle: string): string | null;
   observe(): Observation; // what it can see, in words (senses/)
@@ -79,6 +82,7 @@ export type Reject =
   | "unknown_item"
   | "none_held"
   | "not_enabled"
+  | "no_torches"
   | "too_far";
 export type Outcome =
   | { kind: "accepted"; taskId?: string }
@@ -207,6 +211,8 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
       const named = i.intent === "collect" || i.intent === "pick_up" ? i.handle : i.intent === "place" && i.where?.startsWith("on ") ? i.where.slice(3) : i.intent === "store" || i.intent === "take" ? i.chest : undefined;
       if (named !== undefined && !body.handleLabel(named)) return { kind: "rejected", reason: "stale_handle" };
       if (i.intent === "explore" && !body.canExplore(i.dir, i.far)) return { kind: "rejected", reason: "too_far" };
+      // torches asked for and none carried: said at once, not after the first stretch in the dark
+      if ((i.intent === "dig_down" || i.intent === "tunnel") && i.torches && body.carries("torch") === 0) return { kind: "rejected", reason: "no_torches" };
       const what =
         i.intent === "collect" || i.intent === "pick_up" ? i.handle
         : i.intent === "make_base" ? "base"
@@ -227,9 +233,13 @@ export function createDispatcher(body: BodyControl, log: EventLog, now: () => nu
 
     if (current?.isTask || body.busy()) return { kind: "rejected", reason: "busy" };
     if (i.intent === "go_to") {
-      if (!body.handleLabel(i.handle)) return { kind: "rejected", reason: "stale_handle" };
-      endCurrent("task_stopped"); // replaced by this one
-      return { kind: "accepted", taskId: begin(`go_to:${i.handle}`, false, body.goTo(i.handle)) };
+      if ("handle" in i) {
+        if (!body.handleLabel(i.handle)) return { kind: "rejected", reason: "stale_handle" };
+        endCurrent("task_stopped"); // replaced by this one
+        return { kind: "accepted", taskId: begin(`go_to:${i.handle}`, false, body.goTo(i.handle)) };
+      }
+      endCurrent("task_stopped");
+      return { kind: "accepted", taskId: begin("go_to:point", false, body.goToPoint(i.x, i.y, i.z)) };
     }
     if (!body.canSee(i.player)) return { kind: "rejected", reason: "unknown_player" };
     endCurrent("task_stopped"); // replaced by this one

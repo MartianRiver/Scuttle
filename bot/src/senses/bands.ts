@@ -1,5 +1,5 @@
-// Numbers into words for the observation. Pure. The mind never gets a coordinate or an exact
-// distance: a band, a compass point and up or down.
+// Numbers into words for the observation. Pure. The mind gets no exact distance to anything: a band, a compass
+// point and up or down. (Its own cell, `pos`, is the one coordinate, and goes through compose.ts as it is.)
 import { direction, distanceBand } from "../behaviors/place";
 
 export { distanceBand };

@@ -12,19 +12,25 @@ import { logger } from "../lib/logger";
 import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { madeBlocksNear, type Pos } from "./dig-safety";
-import { chooseFacing, depthWords, digStatus, facingsFrom, MAX_STEPS, numberWords, planStep, type Facing, type Grid } from "./dig-down-plan";
+import { chooseFacing, depthWords, digStatus, facingsFrom, MAX_DEPTH_STEPS, MAX_STEPS, numberWords, planStep, type Facing, type Grid, type StepOpts } from "./dig-down-plan";
 import { TaskError } from "./fail";
+import { missingTool } from "./harvest";
 import { nameAtOf, type MineCtx } from "./mine";
 import { noteRefused, refusedNow, reverted, undoneWords } from "./refused";
-import { addStep, beginStair, stairBottom, stairFacing, stairTop } from "./stair";
+import { addStep, beginStair, stairBottom, stairFacing, stairSize, stairTop } from "./stair";
 import { inWater } from "./swim";
+import { lightAtHead, torchIfDue } from "./torches";
+import { TorchPacer, withTorchNote } from "./torch-plan";
+import { noRoomFor } from "./upkeep";
 import { walkWithin } from "./walk";
 
 const log = logger("dig-down");
 
 const STEP_WALK_MS = 25_000;
 const CLIMB_MS = 60_000;
+const CLIMB_STEP_MS = 2_000; // a stair of a hundred steps and a tunnel off it take longer than a minute to climb
 const RUN_MS = 5 * 60_000;
+const DEPTH_RUN_MS = 10 * 60_000; // a call that digs through rock to a depth
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export const grid = (bot: Bot): Grid => ({
@@ -82,13 +88,25 @@ export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest 
   throw new TaskError("stuck", "it could not break the ground in front");
 }
 
-// Throws `refused`, `blocked`, `protected` or `stuck`; returns where it ended up in words.
-export async function digDown(bot: Bot, ctx: MineCtx): Promise<{ detail: string }> {
+export interface DigDownOpts {
+  to?: number | "stone"; // stone (the default), or the y of the step to stop on
+  torches?: boolean;
+}
+
+// Throws `refused`, `blocked`, `no_tool`, `protected` or `stuck`; returns where it ended up in words.
+export async function digDown(bot: Bot, ctx: MineCtx, opts: DigDownOpts = {}): Promise<{ detail: string }> {
   const g = grid(bot);
   const breakable = canBreak(bot);
   if (inWater(bot) || !bot.entity.onGround) throw new TaskError("stuck", "it is not standing on firm ground");
 
+  const toY = typeof opts.to === "number" ? opts.to : null;
+  const through = toY !== null;
+  const stepOpts: StepOpts = { through, missingTool: (name) => missingTool(bot, name) };
   let cur = cellOf(bot);
+  if (toY !== null) {
+    if (toY < ((bot.game as { minY?: number }).minY ?? -64)) throw new TaskError("refused", "that is below the bottom of the world");
+    if (toY > cur.y) throw new TaskError("refused", "that is up, not down");
+  }
   if (reverted.covers(cur)) throw new TaskError("refused", "that spot is where its digs were undone");
   if (madeBlocksNear(cur, g.name).length > 0) throw new TaskError("refused", "something a player built is too close to start here");
   // a stair it is at the foot of goes on in the same direction
@@ -97,27 +115,35 @@ export async function digDown(bot: Bot, ctx: MineCtx): Promise<{ detail: string 
   let facing: Facing;
   if (goingOn) facing = stairFacing() as Facing;
   else {
-    const chosen = chooseFacing(g, cur, facingsFrom(bot.entity.yaw), breakable);
+    const chosen = chooseFacing(g, cur, facingsFrom(bot.entity.yaw), breakable, stepOpts);
     facing = chosen.facing;
-    if (chosen.steps === 0 && (chosen.first.kind === "blocked" || chosen.first.kind === "refused")) {
+    if (chosen.steps === 0 && chosen.first.kind !== "step" && chosen.first.kind !== "stop") {
       throw new TaskError(chosen.first.kind, chosen.first.detail);
     }
   }
 
   bot.pathfinder.setMovements(safeMovements(bot));
-  const deadline = Date.now() + RUN_MS;
-  const topY = goingOn ? (stairTop() as Pos).y : cur.y; // how far down it is counts from the top of the stair
+  const deadline = Date.now() + (through ? DEPTH_RUN_MS : RUN_MS);
+  const cap = through ? MAX_DEPTH_STEPS : MAX_STEPS;
+  const topY = goingOn ? (stairTop() as Pos).y : cur.y; // how far down it comes is counted from the top of the stair
+  const pacer = opts.torches ? new TorchPacer(lightAtHead(bot)) : null;
+  const job = `torch@${Date.now()}`;
+  const ended = (detail: string) => ({ detail: withTorchNote(detail, pacer) });
   let steps = 0;
   for (;;) {
     await ctx.pause();
     if (Date.now() > deadline) throw new TaskError("stuck", "ran out of time on the way");
-    const plan = planStep(g, cur, facing, breakable);
-    if (plan.kind === "stop") return { detail: `stone ahead, ${depthWords(topY - cur.y)}` };
+    if (toY !== null && cur.y <= toY) return ended("at the depth asked");
+    await torchIfDue(bot, ctx, pacer, job);
+    const plan = planStep(g, cur, facing, breakable, stepOpts);
+    if (plan.kind === "stop") return ended(`stone ahead, ${depthWords(topY - cur.y)}`);
     if (plan.kind !== "step") throw new TaskError(plan.kind, plan.detail);
-    if (steps >= MAX_STEPS) throw new TaskError("stuck", `no stone within ${numberWords(MAX_STEPS)} steps`);
+    if (steps >= cap) throw new TaskError("stuck", through ? `no further within ${numberWords(cap)} steps` : `no stone within ${numberWords(cap)} steps`);
+    // drops with nowhere to go are left where they fall: it stops here and the mind empties the pack
+    if (noRoomFor(bot, plan.dig.filter((p) => g.solid(p)).map((p) => g.name(p) as string))) return ended("pack full");
 
     await setStatus({ task: digStatus(steps) });
-    for (const p of plan.dig) if (g.solid(p)) await breakBlock(bot, ctx, p);
+    for (const p of plan.dig) if (g.solid(p)) await breakBlock(bot, ctx, p, through);
     if (steps === 0 && !goingOn) beginStair(cur, facing);
 
     await walkWithin(bot, new goals.GoalBlock(plan.to.x, plan.to.y, plan.to.z), STEP_WALK_MS);
@@ -126,6 +152,7 @@ export async function digDown(bot: Bot, ctx: MineCtx): Promise<{ detail: string 
     addStep(plan.to);
     cur = plan.to;
     steps++;
+    pacer?.step();
   }
 }
 
@@ -177,7 +204,7 @@ export async function climbUp(bot: Bot, ctx: MineCtx): Promise<void> {
   ctx.checkStop();
   const foot = stairBottom();
   if (foot && me.x === foot.x && me.z === foot.z && me.y === foot.y - 1) await fillPit(bot, ctx, foot);
-  await walkWithin(bot, new goals.GoalBlock(top.x, top.y, top.z), CLIMB_MS);
+  await walkWithin(bot, new goals.GoalBlock(top.x, top.y, top.z), Math.max(CLIMB_MS, CLIMB_STEP_MS * stairSize()));
   ctx.checkStop();
   if (!out()) throw new TaskError("stuck", "it could not get back up the stair");
   log.info("climbed out", { from: me.y - top.y });

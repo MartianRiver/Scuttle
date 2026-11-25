@@ -1,8 +1,8 @@
 // What the body can see right now, as the observation the mind reads (compose.ts shapes it). Mineflayer
 // holds every loaded chunk and entity whether a player could see them or not, so everything listed
 // here has to pass a ray from the eyes (sight.ts); blocks also need an open face. SCUTTLE_XRAY, which
-// the mining loop has for tests, plays no part here. Positions go into handles and offsets and no
-// further.
+// the mining loop has for tests, plays no part here. A block's position goes into its handle and an
+// offset band and no further; the body's own cell is `pos` (D12), the one coordinate that is sent.
 import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { Vec3 } from "vec3";
@@ -14,6 +14,7 @@ import { STONE_STOP } from "../behaviors/dig-down-plan";
 import { isStairStep, stairFacing, stairLeads, stairTop } from "../behaviors/stair";
 import { armourPoints } from "../behaviors/stance";
 import { base } from "../lib/base";
+import { blockLightAt } from "../lib/light";
 import { journal } from "../lib/journal";
 import { spotKey, stashMemory, stashSummary } from "../behaviors/stash-plan";
 import { isPlainLogName } from "../lib/movement";
@@ -102,11 +103,12 @@ function gather(v: View): RawSense {
 
   // the stone it would take is also a block it can be pointed at, for `collect`; at the foot of a stair it dug, the
   // stone that stopped it comes first, wherever that is from home
-  const stone = stairStone(v) ?? seenStone(v);
+  const stone = stairStone(v) ?? seenStone(v) ?? localStone(v);
   const blocks = [...seenBlocks(v), ...seenTrees(v)];
   if (stone) blocks.push({ handle: v.handles.mint({ kind: "block", ...stone.at, name: stone.name }), what: stone.name, ...stone.rel });
 
   return {
+    ...localView(bot, feet),
     health: typeof bot.health === "number" ? bot.health : null,
     food: typeof bot.food === "number" ? bot.food : null,
     armor: armourPoints(worn),
@@ -122,6 +124,19 @@ function gather(v: View): RawSense {
     stone: stone?.rel,
     refused: nearestRefused(refusedNow(), feet).map((z) => ({ dx: z.x - feet.x, dz: z.z - feet.z, r: z.r })),
     places: overworld ? seenPlaces(v) : null,
+  };
+}
+
+// where the feet are and what is round them: the cell, the biome, the block underfoot and the light at the head
+function localView(bot: Bot, feet: Vec3): Pick<RawSense, "pos" | "biome" | "under" | "light"> {
+  const cell = feet.floored();
+  // the block's own biome object has no name on 26.3 (its registry is another copy); the id is the server's
+  const biomeId = bot.blockAt(cell)?.biome?.id;
+  return {
+    pos: { x: cell.x, y: cell.y, z: cell.z },
+    biome: (biomeId !== undefined && bot.registry.biomes[biomeId]?.name) || null,
+    under: bot.blockAt(feet.offset(0, -0.01, 0))?.name ?? null,
+    light: blockLightAt(bot, cell.offset(0, 1, 0)),
   };
 }
 
@@ -250,6 +265,23 @@ function seenStone({ bot, opaque, feet, eye, rel }: View): { rel: { dx: number; 
     if (!hasOpenFace(pos, opaque)) continue;
     if (++tested > 20) break;
     if (blockVisible(eye, pos, opaque) && safeToDig(pos, nameAt)) return { rel: rel(centre(pos)), at: pos, name: "stone" };
+  }
+  return undefined;
+}
+
+// the rock a strip mine is cut in: stone and deepslate, with the plain variants between them
+const LOCAL_ROCK = ["stone", "deepslate", "andesite", "diorite", "granite", "tuff"];
+
+// The nearest natural stone or deepslate it could dig from here, in view, wherever it is: seenStone is get_stone's,
+// held to home's range and above y 30, and finds nothing at strip-mine depth.
+function localStone({ bot, opaque, feet, eye, rel }: View): { rel: { dx: number; dy: number; dz: number }; at: Vec3; name: string } | undefined {
+  const ids = LOCAL_ROCK.map((n) => bot.registry.blocksByName[n]?.id).filter((id): id is number => id !== undefined);
+  const nameAt = (p: { x: number; y: number; z: number }) => bot.blockAt(new Vec3(p.x, p.y, p.z), false)?.name ?? null;
+  let tested = 0;
+  for (const pos of bot.findBlocks({ matching: ids, maxDistance: SIGHT_BLOCKS, count: 64 }).sort((a, b) => a.distanceTo(feet) - b.distanceTo(feet))) {
+    if (reverted.covers(pos) || !hasOpenFace(pos, opaque)) continue;
+    if (++tested > 20) break;
+    if (blockVisible(eye, pos, opaque) && safeToDig(pos, nameAt)) return { rel: rel(centre(pos)), at: pos, name: nameAt(pos) ?? "stone" };
   }
   return undefined;
 }
