@@ -307,6 +307,7 @@ function stub(over: Partial<BodyControl> = {}): BodyControl {
     placementOn: () => true,
     canExplore: () => true,
     say: () => "sent",
+    announce: () => {},
     stop: () => {},
     interrupt: () => {},
     ...over,

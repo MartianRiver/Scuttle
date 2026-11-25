@@ -42,6 +42,7 @@ function stubBody(over: Partial<BodyControl> = {}) {
       calls.push(`say:${t}`);
       return "sent";
     },
+    announce: (t) => void calls.push(`announce:${t}`),
     stop: () => void calls.push("stop"),
     interrupt: () => void calls.push("interrupt"),
     ...over,

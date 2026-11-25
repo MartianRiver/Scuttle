@@ -3,55 +3,19 @@
 // events (a guard that a reflex ended would have said so). The bot has an iron sword and axe in the
 // inventory and iron armour on; equipping the weapon is its own job. The Ward is in survival and not
 // buffed: a guard that fails here really does lose it.
-import mineflayer from "mineflayer";
-import { mcPort } from "../slot";
 import { arena, C, leave, rel } from "./arena";
 import { sleep, type Ctx, type Scenario } from "./lib";
+import { WardBot } from "./ward";
 
 const WARD = "Ward";
+const KIT = "Kit"; // the second player, for the queue
 const ARMOUR = ["head helmet", "chest chestplate", "legs leggings", "feet boots"];
-
-// the Ward's own connection; quit() is safe to call any number of times and from cleanup after a failure
-class WardBot {
-  private bot: mineflayer.Bot | null = null;
-
-  async join(): Promise<void> {
-    const bot = mineflayer.createBot({ host: "127.0.0.1", port: mcPort, username: WARD, auth: "offline" });
-    this.bot = bot; // kept before spawn, so a join that times out is still quit by cleanup
-    bot.on("error", () => {});
-    bot.on("kicked", () => {});
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Ward did not spawn within 20 s")), 20_000);
-      bot.once("spawn", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      bot.once("end", () => {
-        clearTimeout(timer);
-        reject(new Error("Ward's connection ended before it spawned"));
-      });
-    });
-  }
-
-  say(msg: string): void {
-    this.bot?.chat(msg);
-  }
-
-  async quit(): Promise<void> {
-    const bot = this.bot;
-    this.bot = null;
-    if (!bot) return;
-    const ended = new Promise<void>((resolve) => bot.once("end", () => resolve()));
-    bot.quit();
-    // a socket that never closes must not hold the next scenario up
-    await Promise.race([ended, sleep(5000)]);
-  }
-}
 
 const wardSpot = (dx: number, dz: number) => `${C.x + dx + 0.5} ${C.y} ${C.z + dz + 0.5}`;
 const aliveNear = (c: Ctx, type: string) =>
   c.world.passes(`execute if entity @e[type=${type},x=${C.x},y=${C.y},z=${C.z},distance=..60]`);
-const botNearWard = (c: Ctx, blocks: number) => c.world.passes(`execute at ${WARD} if entity @a[name=${c.bot},distance=..${blocks}]`);
+const botNear = (c: Ctx, who: string, blocks: number) => c.world.passes(`execute at ${who} if entity @a[name=${c.bot},distance=..${blocks}]`);
+const botNearWard = (c: Ctx, blocks: number) => botNear(c, WARD, blocks);
 
 async function until(ms: number, test: () => Promise<boolean>): Promise<number | null> {
   const t0 = Date.now();
@@ -64,6 +28,7 @@ async function until(ms: number, test: () => Promise<boolean>): Promise<number |
 
 interface Opts {
   timeoutMs?: number;
+  second?: boolean; // a second player, Kit, joins beside the Ward
   run(c: Ctx, g: Guard): Promise<void>;
   verify(c: Ctx, g: Guard): void | Promise<void>;
 }
@@ -71,15 +36,18 @@ interface Opts {
 // what a scenario can do once the Ward is in place; `mark` is where the body's events start
 interface Guard {
   ward: WardBot;
+  kit: WardBot;
   mark: number;
   taskId?: string;
   start(c: Ctx, how: "chat" | "intent"): Promise<void>;
 }
 
 function scenario(name: string, o: Opts): Scenario {
-  const ward = new WardBot();
+  const ward = new WardBot(WARD);
+  const kit = new WardBot(KIT);
   const g: Guard = {
     ward,
+    kit,
     mark: 0,
     start: async (c, how) => {
       g.mark = c.body.mark();
@@ -122,7 +90,12 @@ function scenario(name: string, o: Opts): Scenario {
       await c.world.run(`gamemode survival ${WARD}`);
       await c.world.run(`tp ${WARD} ${wardSpot(3, 0)}`);
       await c.world.trackDeaths(WARD);
-      await sleep(1500); // the bot has to have the Ward in view
+      if (o.second) {
+        await kit.join();
+        await c.world.run(`gamemode survival ${KIT}`);
+        await c.world.run(`tp ${KIT} ${wardSpot(3, 3)}`);
+      }
+      await sleep(1500); // the bot has to have the Ward and Kit in view
     },
     async act(c) {
       await o.run(c, g);
@@ -131,6 +104,7 @@ function scenario(name: string, o: Opts): Scenario {
       await o.verify(c, g);
     },
     async cleanup(c) {
+      await kit.quit();
       await ward.quit();
       await c.world.run(`clear ${c.bot}`);
       await leave(c);
@@ -261,6 +235,90 @@ export default [
         c.check(failure !== null, "task_failed within 22 s of the Ward leaving");
         c.check(failure?.reason === "lost_ward", `the reason was lost_ward (got ${failure?.reason})`);
         c.check(failure?.taskId === g.taskId, "it ended the guard's own task");
+      },
+    });
+  })(),
+
+  // Kit asks while the Ward is guarded: the body says its one line and keeps following the Ward
+  (() => {
+    let queueLine = false;
+    let startedAgain = false;
+    let repeated = false;
+    let stopped = false;
+    let comingLine = false;
+    let handedTo = "";
+    let arrivedAtKit: number | null = null;
+    return scenario("guard: a second player queues, the ward's stop hands the guard to them", {
+      second: true,
+      timeoutMs: 90_000,
+      async run(c, g) {
+        await g.start(c, "chat");
+        await sleep(1500);
+        const mark = c.body.mark();
+        const heardFrom = g.ward.heard.length;
+        // the body may not have Kit in view yet, and then says nothing: ask again until it answers
+        for (let i = 0; i < 3 && !queueLine; i++) {
+          g.kit.say("guard me");
+          queueLine = await g.ward.hears(`I'm with ${WARD} right now, ${KIT}. You're next.`, heardFrom, 3000);
+        }
+        startedAgain = (await c.body.waitEvent("task_started", mark, 1500)) !== null;
+        // past the speech clock's 4 s gap, so a second line would be said if the repeat were not ignored
+        await sleep(4500);
+        const said = g.ward.heard.length;
+        g.kit.say("guard me");
+        await sleep(2500);
+        repeated = g.ward.heard.slice(said).some((h) => h.from !== KIT);
+        const stopMark = c.body.mark();
+        g.ward.say("stop");
+        stopped = (await c.body.waitEvent("task_stopped", stopMark, 3000))?.taskId === g.taskId;
+        handedTo = String((await c.body.waitEvent("task_started", stopMark, 3000))?.kind);
+        comingLine = await g.ward.hears(`Coming, ${KIT}.`, heardFrom, 6000);
+        await c.world.run(`tp ${KIT} ${wardSpot(18, 3)}`);
+        arrivedAtKit = await until(15_000, () => botNear(c, KIT, 4));
+      },
+      verify(c, g) {
+        c.check(queueLine, `the body told Kit "You're next"`);
+        c.check(!startedAgain, "the second request started nothing");
+        c.check(!repeated, "Kit asking twice was answered once");
+        c.check(stopped, "the Ward's stop ended the Ward's guard with task_stopped");
+        c.check(handedTo === `guard:${KIT}`, `the guard went on to Kit (got ${handedTo})`);
+        c.check(comingLine, `the body said "Coming, ${KIT}."`);
+        c.check(arrivedAtKit !== null, "within 4 blocks of Kit within 15 s");
+        c.check(ended(c, g).filter((e) => e.event === "task_failed").length === 0, "no guard failed on the way");
+      },
+    });
+  })(),
+
+  // Kit gives up their place: the Ward's guard is untouched, and nobody is left to take it over
+  (() => {
+    let queueLine = false;
+    let early = false;
+    let stopped = false;
+    let startedAfter = false;
+    return scenario("guard: a waiting player's stop leaves the ward's guard running", {
+      second: true,
+      timeoutMs: 90_000,
+      async run(c, g) {
+        await g.start(c, "chat");
+        await sleep(1500);
+        const heardFrom = g.ward.heard.length;
+        for (let i = 0; i < 3 && !queueLine; i++) {
+          g.kit.say("guard me");
+          queueLine = await g.ward.hears(`I'm with ${WARD} right now, ${KIT}. You're next.`, heardFrom, 3000);
+        }
+        const mark = c.body.mark();
+        g.kit.say("stop");
+        early = (await c.body.waitEvent("task_stopped", mark, 3000)) !== null;
+        const stopMark = c.body.mark();
+        g.ward.say("stop");
+        stopped = (await c.body.waitEvent("task_stopped", stopMark, 3000))?.taskId === g.taskId;
+        startedAfter = (await c.body.waitEvent("task_started", stopMark, 2500)) !== null;
+      },
+      verify(c) {
+        c.check(queueLine, `the body told Kit "You're next"`);
+        c.check(!early, "Kit's stop ended nothing");
+        c.check(stopped, "the Ward's stop still ended the guard");
+        c.check(!startedAfter, "no guard started for Kit after the Ward's stop");
       },
     });
   })(),

@@ -98,6 +98,7 @@ function stubBody(calls: string[]): BodyControl {
     observe: () => ({ health: 20, food: 20, weather: "clear", where: "", held: null, inv: {}, near: [], blocks: [] }),
     runTask: () => new Promise(() => {}),
     say: () => "sent",
+    announce: () => {},
     stop: () => void calls.push("stop"),
     interrupt: () => void calls.push("interrupt"),
   };

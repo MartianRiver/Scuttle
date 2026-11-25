@@ -329,6 +329,19 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   `interrupted`, the guard follows the player again when the reflex lets go. Only `stop`, a newer
   order, `lost_ward`, `died` or `disconnected` end it. Status text: `guarding <name>` and
   `fighting for <name>`.
+  - One ward at a time, shared fairly in public chat (2026-11-25). `guard me` from a second player while
+    the body guards someone else does not replace the guard: the player joins a first-come queue (4 at most,
+    no duplicates), the body says one fixed line (`I'm with Sam right now, Kit. You're next.`, or `I've got a
+    few waiting already, Kit, try again in a bit.` when it is full and they are not kept), and the request is
+    `accepted` with no `taskId`. A repeat from a queued player, or `guard me` from the player already guarded,
+    changes nothing and says nothing (the second is `accepted` with the running `taskId`; no restart, no new
+    callout throttle, over the WebSocket too). When the guard ends because the ward said `stop`, is `lost_ward`, or the body died, the first
+    queued player in view gets it (`task_started` `guard:<name>` after the old task's own end event, and the line
+    `Coming, Kit.`); queued players out of view are dropped, and with nobody waiting it idles as before. After a death the
+    hand-over comes a couple of seconds later, once the body is back. A disconnect forgets the queue. `stop` from a
+    queued player only removes them (`accepted`, no `taskId`, no event). `stop` from anyone else, and any `stop` over the WebSocket
+    (it names no speaker), ends everything and empties the queue. A `come_to`/`follow`/`go_to`/`give` also empties it. A `guard`
+    over the WebSocket for another player still replaces the running one (it also empties the queue); only chat queues.
 - Water: a body that is deep in water with its air running low gets itself out by hand, to the nearest bank it can reach
   by swimming (searching up to 24 blocks out, through the water; a shore flush with the surface or one block above it,
   with 2 air over it), ending whatever it was doing as `interrupted` (`detail` `in deep water, swimming for the bank`). A
@@ -346,7 +359,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   first (`woke`), then proceeds as normal; after one it waits 30 s idle before trying again that night.
   Sleeping also sets the body's spawn point.
 - Public chat goes through the same path: `come here` becomes `come_to` (the speaker), `guard me` becomes
-  `guard` (the speaker), `stop` becomes `stop`, `get wood` becomes `task get_wood`, `get stone` becomes `task get_stone`, `get iron` becomes `task get_iron`, spelled exactly. Actions started that way are ordinary
+  `guard` (the speaker), `stop` becomes `stop` (the speaker is known to the body, which matters for the guard queue), `get wood` becomes `task get_wood`, `get stone` becomes `task get_stone`, `get iron` becomes `task get_iron`, spelled exactly. Actions started that way are ordinary
   tasks with ordinary events, and get the same `busy` / `in_fight` / `unknown_player` checks. This works with
   the WebSocket server off; it is the only optional part.
 - The bot validates every intent against this list itself. Nothing upstream is trusted to have.

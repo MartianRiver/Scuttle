@@ -110,7 +110,7 @@ bot.once("spawn", () => {
 
     const intent = chatIntent(username, message);
     if (!intent) return;
-    const outcome = api.dispatch(intent);
+    const outcome = api.dispatch(intent, username);
     const reason = outcome.kind === "rejected" ? outcome.reason : undefined;
     log.info("chat command", { username, intent: intent.intent, outcome: outcome.kind, reason });
   });
