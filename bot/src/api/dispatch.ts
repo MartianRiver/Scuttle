@@ -263,6 +263,7 @@ export function createDispatcher(
         : i.intent === "dig_down" ? (i.to ?? "stone")
         : i.intent === "tunnel" ? (i.dir ?? "ahead")
         : i.intent === "climb_up" ? "up"
+        : i.intent === "clear_trees" ? "trees"
         : i.item;
       return { kind: "accepted", taskId: begin(`${i.intent}:${what}`, true, body.runAction(i, progress)) };
     }

@@ -265,7 +265,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   keeps 4 coal and stashes the rest of the coal and any raw iron. `no_ore` when it got no iron; if iron ran out
   before the tools were covered it makes what it can and finishes. A `stop` mid-smelt closes the furnace and leaves
   what is in it there. Status text: `looking for ore`, `mining ore`, `smelting`, `crafting iron tools`, `stashing ore`.
-- The hands, which a mind uses for what the three tasks do not cover. `craft`, `collect`, `store`, `take`, `explore`, `dig_down`, `tunnel` and `climb_up` run like a
+- The hands, which a mind uses for what the three tasks do not cover. `craft`, `collect`, `store`, `take`, `explore`, `dig_down`, `tunnel`, `climb_up` and `clear_trees` run like a
   `task`: `busy` while anything runs (even a `follow`), `in_fight`, `in_danger`, `not_in_game`, one at a time, stoppable with
   `stop`, a `task_progress` line on each change of step (`walking to the crafting table`, `crafting stick`, `digging two of three`, `cutting the tree`,
   `taking from the stash`, `exploring east`), `task_finished` with `got` (and `stored` or `saw`) or `task_failed` with `detail`, `got`, `missing`. Rejected
@@ -348,6 +348,21 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   - **Upkeep.** A `tunnel` or `dig_down` that would dig into drops it has no room for ends `task_finished` `detail` `pack full` before it digs on; the usual answer is to `climb_up` or `go_to` the
     chest and `store`. The `pack_full` and `tool_worn` events (see Events) say it while the action runs, and `wait` wakes on them.
   - `climb_up` walks back along the tunnel and up the stair to where it started; `task_failed` `no_stair` when it has dug none. If the stair's last floor was taken for stone and it stands in that hole, it jumps and sets a block under itself first (`stuck` when it carries none).
+  - `clear_trees {radius?}` clears a building site (2026-11-25): `radius` a whole number 3 to 16, default 9, the half-width of a square (19 across) centred on the base's
+    crafting table (`lib/base.ts`, so the home table until `make_base`); the square is held body-side, never on the wire. It fells every natural tree whose whole trunk is
+    inside it, nearest the body first (`collect` of each trunk: dig rules, gate and journal unchanged) and never one outside, however far its leaves reach in: the
+    pathfinder's own digging is bounded to the square too (logs) and a few blocks past it (leaves). After each tree it breaks the natural leaves of that tree it can reach
+    from the ground (24 and 25 s at most, none that a standing log is next to) and sweeps the dropped logs, saplings, apples and sticks in the square and 4 blocks past it
+    (20 s; nothing else lying there is taken). At the end it sweeps once more (40 s), breaks the small plants on the ground in the square (flowers, tall ones too, mushrooms,
+    saplings, berry bushes, leaf litter; 150 and 3 min at most, same dig door; grass and ferns need no breaking) and sweeps again. When its pack has two free slots or fewer it walks
+    to the base chests and stores logs, sticks, saplings past four of each kind and apples past sixteen. It stops by itself about 20 min in (the ground pass is cut to the time left; the sweeps may add a minute). `task_finished` `got` ranks a kind of
+    log, then saplings, apples and sticks, before the rest (the 4 biggest would hide them), and `detail` reads `felled six trees, cleared twelve plants, left two at the edge, one
+    refused; about three minutes` (edge: natural trees just outside the square; not natural; refused; out of reach; `N tall, tops left` for trunks whose upper logs are past the
+    reach from the ground; an early stop adds why: `ran out of time`, `three trees in a row would not come down`, `the server keeps undoing its digs here`, or the pack words below).
+    `task_failed` `no_trees` (nothing in the square, only edge trees, or only logs that are no tree), `refused`, `protected`, `stuck`, `too_far` (the body is more than 160 blocks from
+    its base), `inventory_full` (nothing felled and the pack full of what it does not stash, the stash full, or the base too far to walk back; with trees felled the same words end
+    `task_finished` in `detail`). Needs no switch (`PLACEMENT` is not involved). `task_progress`: `clearing trees`, `cutting the tree`, `taking down the leaves`, `picking up what
+    dropped`, `clearing the ground`, `stashing items`. Per-tree timing and the call counts go to the log (`clear`, INFO).
   - A `collect` that gets fewer blocks than `count` says why in `detail`: `no more in reach`, `the rest is under a build`, `the rest is where digs are undone`.
 - `guard` is `follow` that also protects: the body keeps near the player, counts hostile mobs within
   10 blocks of the player as threats as well as the ones near itself, and fights them (creepers and

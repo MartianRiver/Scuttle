@@ -1,4 +1,5 @@
 import { COMPASS_POINTS, EXPLORE_BANDS, TASKS, type TaskName } from "../api/protocol";
+import { CLEAR_DEFAULT, CLEAR_MAX, CLEAR_MIN } from "../behaviors/clear-plan";
 import { CARDINALS, isLengthBand, TUNNEL_DEFAULT, TUNNEL_MAX } from "../behaviors/tunnel-plan";
 
 // What the mind is told it can do, kept by hand next to the API. test/mcp-skills.test.ts fails when
@@ -21,13 +22,14 @@ export interface ActArgs {
   x?: number;
   y?: number;
   z?: number;
+  radius?: number;
   where?: string;
   chest?: string;
 }
 
 // where each act argument goes on the wire
 const WIRE: Record<keyof ActArgs, string> = {
-  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through", torches: "torches", x: "x", y: "y", z: "z", where: "where", chest: "chest",
+  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through", torches: "torches", radius: "radius", x: "x", y: "y", z: "z", where: "where", chest: "chest",
 };
 
 export interface ActionDef {
@@ -161,6 +163,13 @@ export const ACTIONS: Record<string, ActionDef> = {
     rejects: [...ACT_REJECTS, "no_torches"],
     ends: "task_finished with detail= why it stopped (ran out of length, iron ore in the wall, or pack full: go back to your chest and store, then call again), plus out of torches six blocks back when they ran out on the way, and got= what it dug up; with through, saw= the ore it passed (two coal ore, iron ore). task_progress tunnelling, six blocks (in words). task_failed blocked (detail: water ahead, lava behind the wall, a drop ahead, sand or gravel overhead, rock it cannot break), refused (a build in the way or too close, or digs undone there), no_tool (detail says the pickaxe it lacks), protected (the server undid a dig), stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
+  clear_trees: {
+    does: `Clear a building site of trees: fell every natural tree whose trunk stands inside a square around the base's crafting table (radius: ${CLEAR_MIN} to ${CLEAR_MAX}, default ${CLEAR_DEFAULT}, the half-width, so nineteen across by default), nearest first, and leave every tree outside it standing, however far its leaves reach in. It keeps the wood: after each tree it walks to what dropped (logs, saplings, apples, sticks) inside the square and a few blocks past it, takes down the felled tree's natural leaves it can reach from the ground, and at the end breaks the small plants on the ground inside the square (flowers of every kind, mushrooms, saplings, berry bushes) so a block can be set down there. It stashes logs, sticks, spare saplings and apples in the base chests when its pack is nearly full, and keeps a few saplings and food. A tree is a plain log with natural leaves near it: a post, a stripped trunk or a trunk under placed leaves is no tree and stays. It takes the dig rules as they are: nothing near something a player built, nothing where digs were undone. A very tall trunk keeps the logs above its reach (told in the end). Stops by itself about twenty minutes in.`,
+    required: [],
+    optional: ["radius"],
+    rejects: ACT_REJECTS,
+    ends: "task_finished with got= the net items (a kind of log, then saplings, apples and sticks before other things) and detail= trees felled, plants cleared, what was left and why (at the edge, not natural, refused, out of reach, tall ones with tops left), why it stopped early if it did, and the time in words. task_progress says what it is doing (clearing trees, taking down the leaves, picking up what dropped, clearing the ground, stashing items). task_failed no_trees (detail: none in the square, only edge trees, or only logs that are no tree), refused (every tree has something a player built near it), protected (the server undid digs), stuck (the trees would not come down), too_far (the body is over 160 blocks from its base), inventory_full (pack full and nothing it could stash, no room in the stash, or the base too far to walk back), interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
   climb_up: {
     does: "Walk back up the stair dig_down cut, to the cell it started from; after a tunnel, back along it and up the stair.",
     required: [],
@@ -274,6 +283,9 @@ export function buildIntent(action: string, args: ActArgs): Built {
     if (len !== undefined && !(typeof len === "number" ? Number.isInteger(len) && len >= 1 && len <= TUNNEL_MAX : isLengthBand(len))) {
       return { ok: false, detail: `tunnel length is a count from 1 to ${TUNNEL_MAX}, or one of ${EXPLORE_BANDS.join(", ")}` };
     }
+  }
+  if (action === "clear_trees" && args.radius !== undefined && !(Number.isInteger(args.radius) && args.radius >= CLEAR_MIN && args.radius <= CLEAR_MAX)) {
+    return { ok: false, detail: `clear_trees radius is a whole number from ${CLEAR_MIN} to ${CLEAR_MAX}` };
   }
   const fields: Record<string, unknown> = { intent: action };
   for (const k of allowed) if (args[k] !== undefined) fields[WIRE[k]] = args[k];
