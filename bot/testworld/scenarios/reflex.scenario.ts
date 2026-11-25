@@ -378,6 +378,8 @@ const guardHouse = (name: string, armed: boolean, knownFailing?: string): Scenar
       built = await houseBlocks(c);
       await ward.join();
       await c.world.run(`gamemode survival Ward`);
+      await c.world.run("effect give Ward minecraft:instant_health 1 10 true"); // the offline player keeps the health it quit with
+      await sleep(500);
       await c.world.run(`tp Ward ${HOUSE.x - 1}.5 ${C.y} ${C.z}.5`); // against the west wall
       await c.world.trackDeaths("Ward");
       await sleep(1500);
