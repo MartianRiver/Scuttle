@@ -3,6 +3,7 @@
 // 2026-11-24: the mind plans a strip mine by position). See ../../API.md.
 import { CLEAR_MAX, CLEAR_MIN } from "../behaviors/clear-plan";
 import { CARDINALS, isLengthBand, TUNNEL_MAX, type Cardinal } from "../behaviors/tunnel-plan";
+import { UNDO_KINDS, type UndoKind } from "../behaviors/undo-plan";
 import { BLOCK_SHAPE, ENTITY_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
 import { sayable } from "../lib/speech";
 
@@ -42,6 +43,9 @@ export type Intent =
   | { intent: "pick_up"; handle: string }
   | { intent: "make_base" }
   | { intent: "shear"; handle: string }
+  | { intent: "dig_shaft"; to: number; torches?: boolean }
+  | { intent: "make_mine" }
+  | { intent: "undo"; job?: UndoKind }
   | { intent: "stash" }
   | { intent: "explore"; dir: CompassPoint; far?: ExploreBand }
   | { intent: "dig_down"; to?: DigTarget; torches?: boolean }
@@ -54,10 +58,13 @@ export type Intent =
   | { intent: "observe" };
 
 // the actions that run like a task: one at a time, with task events
-export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "clear_trees" | "place" | "pick_up" | "make_base" | "shear" }>;
-export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "clear_trees", "place", "pick_up", "make_base", "shear"] as const;
+export type ActionIntent = Extract<
+  Intent,
+  { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "clear_trees" | "place" | "pick_up" | "make_base" | "shear" | "dig_shaft" | "make_mine" | "undo" }
+>;
+export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "clear_trees", "place", "pick_up", "make_base", "shear", "dig_shaft", "make_mine", "undo"] as const;
 // the intents that change the world with the hands; off unless the body's placement switch is on
-export const PLACING_INTENTS = ["place", "pick_up", "make_base", "shear"] as const;
+export const PLACING_INTENTS = ["place", "pick_up", "make_base", "shear", "make_mine", "undo"] as const;
 
 // where a `place` goes, in words: never a position
 export const WHERE_SHAPE = /^(?:here|ahead|wall|on (?:b[0-9]{1,9}[a-z]{2}|table|stash|furnace|bed))$/;
@@ -173,6 +180,14 @@ export function parseFrame(raw: string): Parsed {
       if (m.to !== undefined && !(DIG_TARGETS as readonly unknown[]).includes(m.to) && !isY(m.to)) return bad;
       if (m.torches !== undefined && typeof m.torches !== "boolean") return bad;
       return { ok: true, msg: m as ClientMsg };
+    case "dig_shaft":
+      if (!onlyKeys(m, ["type", "id", "intent", "to", "torches"])) return bad;
+      if (!isY(m.to) || (m.torches !== undefined && typeof m.torches !== "boolean")) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "undo":
+      if (!onlyKeys(m, ["type", "id", "intent", "job"])) return bad;
+      if (m.job !== undefined && !(UNDO_KINDS as readonly unknown[]).includes(m.job)) return bad;
+      return { ok: true, msg: m as ClientMsg };
     case "tunnel":
       if (!onlyKeys(m, ["type", "id", "intent", "dir", "length", "through", "torches"])) return bad;
       if (m.torches !== undefined && typeof m.torches !== "boolean") return bad;
@@ -194,6 +209,7 @@ export function parseFrame(raw: string): Parsed {
     case "stash":
     case "climb_up":
     case "make_base":
+    case "make_mine":
       if (!onlyKeys(m, ["type", "id", "intent"])) return bad;
       return { ok: true, msg: m as ClientMsg };
     default:

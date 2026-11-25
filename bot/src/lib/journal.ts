@@ -38,21 +38,47 @@ export function parseLines(text: string): Entry[] {
   return out;
 }
 
+// the job key of a run that undoes `job`: `undo|<job>|<ts>`. Its places are not for the body's own use, and what it
+// takes out supersedes the original entries for those cells
+export const UNDO_PREFIX = "undo|";
+export const undoJob = (job: string, now: number): string => `${UNDO_PREFIX}${job}|${now}`;
+export const isUndoJob = (job: string): boolean => job.startsWith(UNDO_PREFIX);
+
+const HISTORY_CAP = 20_000;
+
 export class Journal {
   private latest = new Map<string, Entry>();
+  private log: Entry[] = []; // every entry, oldest first, for `undo`
 
   load(entries: readonly Entry[]): void {
-    for (const e of entries) this.latest.set(keyOf(e.pos), e);
+    for (const e of entries) this.add(e);
   }
 
   add(e: Entry): void {
     this.latest.set(keyOf(e.pos), e);
+    this.log.push(e);
+    if (this.log.length > HISTORY_CAP * 2) this.log.splice(0, this.log.length - HISTORY_CAP);
+  }
+
+  history(): readonly Entry[] {
+    return this.log;
+  }
+
+  latestAt(pos: Pos): Entry | undefined {
+    return this.latest.get(keyOf(pos));
   }
 
   // the body placed this block for its own use, nothing has been journalled there since, and it is still what it placed
   ownAt(pos: Pos, blockNow: string): boolean {
     const e = this.latest.get(keyOf(pos));
     return e !== undefined && e.op === "place" && e.own && e.after === blockNow;
+  }
+
+  // an undo set this block back where it had been dug: not for the body's own use (nothing can pick it up as its own
+  // table), but cobblestone and the like read as a build, and the body's own work must not look like one to its next dig
+  restoredAt(pos: Pos, blockNow: string): boolean {
+    const e = this.latest.get(keyOf(pos));
+    return e !== undefined && e.op === "place" && isUndoJob(e.job) && e.after === blockNow;
   }
 
   // the cells the body placed and still owns, for the names `match` takes (observe, make_base, chest lookups)

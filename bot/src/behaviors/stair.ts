@@ -26,6 +26,13 @@ export const wayEnd = (): Pos | null => (stair ? (stair.tunnel[stair.tunnel.leng
 // the way a tunnel run from the end of the way goes on: the tunnel's own, else the stair's
 export const wayFacing = (): Facing | null => stair?.tunnelFacing ?? stair?.facing ?? null;
 
+// A saved mine site's shaft put back in memory after a restart, so the body can walk it and `dig_down` goes on from its
+// foot. Left alone when the stair in memory already starts at the same top (a tunnel it is extending stays)
+export function seedStair(steps: readonly Pos[], facing: Facing): void {
+  if (steps.length === 0 || (stair && same(stair.steps[0], steps[0]))) return;
+  stair = { facing, steps: steps.map((p) => ({ ...p })), tunnel: [], tunnelFacing: null, ores: new Set() };
+}
+
 export function addTunnelCell(p: Pos, facing: Facing): void {
   if (!stair) return;
   stair.tunnelFacing = facing;
@@ -53,6 +60,7 @@ export const hasStair = (): boolean => stair !== null;
 export const stairSize = (): number => (stair ? stair.steps.length + stair.tunnel.length : 0);
 export const stairTop = (): Pos | null => stair?.steps[0] ?? null;
 export const stairFacing = (): Facing | null => stair?.facing ?? null;
+export const stairSteps = (): readonly Pos[] | null => stair?.steps ?? null;
 export const stairBottom = (): Pos | null => (stair ? stair.steps[stair.steps.length - 1] : null);
 export const isStairStep = (p: Pos): boolean => stair?.steps.some((s) => same(s, p)) ?? false;
 export const forgetStair = (): void => {

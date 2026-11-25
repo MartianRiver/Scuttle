@@ -5,6 +5,7 @@ import { Vec3 } from "vec3";
 import "mineflayer-tool"; // types for bot.tool
 import { nameAtOf } from "../lib/gate";
 import { base } from "../lib/base";
+import { mineCentre, MINE_FLOOR_BELOW } from "../lib/sites";
 import { itemCount } from "../lib/inventory";
 import { dig, inReach, pickUp } from "../lib/collect";
 import { safeMovements } from "../lib/movement";
@@ -173,7 +174,10 @@ export async function mineBlock(bot: Bot, ctx: MineCtx, spec: MineSpec, pick: Pi
 }
 
 // Returns how many of the drop it gained; throws `protected` or `stuck`. Nothing mined is not an error here, the caller names it.
-export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promise<number> {
+export async function mineBlocks(bot: Bot, ctx: MineCtx, spec0: MineSpec): Promise<number> {
+  // a task that begins in the mine, or is aimed at its landing, works from the landing and not from the surface table
+  const landing = mineCentre(ctx.centre ? { x: ctx.centre.x, y: ctx.centre.y, z: ctx.centre.z } : undefined, bot.entity.position.floored());
+  const spec = landing ? { ...spec0, minY: Math.min(spec0.minY, landing.y - MINE_FLOOR_BELOW) } : spec0;
   const have = () => itemCount(bot, spec.drop);
   const start = have();
   await setStatus({ task: spec.looking });
@@ -183,7 +187,7 @@ export async function mineBlocks(bot: Bot, ctx: MineCtx, spec: MineSpec): Promis
   let reverts = 0;
   const builds = new NoDigMap();
   refusedNow(); // forgets what has faded
-  const centre = ctx.centre ?? base.craftingTable;
+  const centre = ctx.centre ?? (landing ? new Vec3(landing.x, landing.y, landing.z) : base.craftingTable);
   let list: Vec3[] = [];
   let fresh = false; // the list came from a search with nothing mined since
   let searches = 0;

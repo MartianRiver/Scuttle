@@ -254,13 +254,16 @@ export function createDispatcher(
       if (named !== undefined && !body.handleLabel(named)) return { kind: "rejected", reason: "stale_handle" };
       if (i.intent === "explore" && !body.canExplore(i.dir, i.far)) return { kind: "rejected", reason: "too_far" };
       // torches asked for and none carried: said at once, not after the first stretch in the dark
-      if ((i.intent === "dig_down" || i.intent === "tunnel") && i.torches && body.carries("torch") === 0) return { kind: "rejected", reason: "no_torches" };
+      if ((i.intent === "dig_down" || i.intent === "dig_shaft" || i.intent === "tunnel") && i.torches && body.carries("torch") === 0) return { kind: "rejected", reason: "no_torches" };
       const what =
         i.intent === "collect" || i.intent === "pick_up" || i.intent === "shear" ? i.handle
         : i.intent === "make_base" ? "base"
         : i.intent === "explore" ? i.dir
         : i.intent === "store" ? (i.item ?? "all")
         : i.intent === "dig_down" ? (i.to ?? "stone")
+        : i.intent === "dig_shaft" ? i.to
+        : i.intent === "make_mine" ? "landing"
+        : i.intent === "undo" ? (i.job ?? "last")
         : i.intent === "tunnel" ? (i.dir ?? "ahead")
         : i.intent === "climb_up" ? "up"
         : i.intent === "clear_trees" ? "trees"

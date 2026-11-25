@@ -30,5 +30,5 @@ export function madeBlocksNear(target: Pos, nameAt: NameAt): Pos[] {
 
 export function safeToDig(target: Pos, nameAt: NameAt, stand?: Pos, opts: DigOpts = {}): boolean {
   const op: Op = { kind: "dig", pos: target, job: "plan" };
-  return check(op, { nameAt, isOwn: (p, n) => journal.ownAt(p, n), granted: opts.allowMade && ((p) => opts.allowMade?.(p) === true) }, { stand }).ok;
+  return check(op, { nameAt, isOwn: (p, n) => journal.ownAt(p, n) || journal.restoredAt(p, n), granted: opts.allowMade && ((p) => opts.allowMade?.(p) === true) }, { stand }).ok;
 }

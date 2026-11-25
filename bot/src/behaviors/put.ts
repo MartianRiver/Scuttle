@@ -85,6 +85,9 @@ export async function put(bot: Bot, ctx: MineCtx, item: string, where: WhereWord
   return { detail: putWords(item, plan.where), at: vecOf(plan.spot.cell) };
 }
 
+// blocks a plain right-click opens or uses instead of building against: set against one of these, it sneaks
+const USABLE = /(crafting_table|furnace|chest|barrel|anvil|_door$|button|lever|_bed$|trapdoor|fence_gate|smoker)/;
+
 // equips, sets the block down through the one place door, and tells a server that undid it from one that took it
 export async function setDown(bot: Bot, item: string, spot: Spot, job: string): Promise<void> {
   const held = bot.inventory.items().find((i) => i.name === item);
@@ -93,6 +96,12 @@ export async function setDown(bot: Bot, item: string, spot: Spot, job: string): 
   const ref = bot.blockAt(vecOf(spot.ref));
   if (!ref) throw new TaskError("no_room", "it cannot see what to set it on");
   const cell = vecOf(spot.cell);
+  // a right-click on a table or chest opens it instead of building against it, unless sneaking
+  const sneak = USABLE.test(ref.name);
+  if (sneak) {
+    bot.setControlState("sneak", true);
+    await sleep(150);
+  }
   try {
     await placeBlock(bot, ref, vecOf(spot.face), item, job, { swingArm: "right" }, { strict: true });
   } catch (err) {
@@ -100,6 +109,8 @@ export async function setDown(bot: Bot, item: string, spot: Spot, job: string): 
     log.warn("place failed", { item, message: (err as Error).message });
     if (undone(bot, cell)) throw reverted_(cell);
     throw new TaskError("stuck", "the server would not take it");
+  } finally {
+    if (sneak) bot.setControlState("sneak", false);
   }
   // WorldGuard puts the old block back a moment after the packet: a place that does not stay is a refusal like a dig's
   await sleep(500);
@@ -120,7 +131,7 @@ const dropName = (block: string): string => (block === "wall_torch" ? "torch" : 
 
 // Throws its reason as the message: stale_handle, not_yours, not_empty, no_tool, refused, protected, stuck. The block has to be
 // one the journal says it set down and that is still what it set down.
-export async function pickUpBlock(bot: Bot, ctx: MineCtx, at: Vec3): Promise<{ detail: string }> {
+export async function pickUpBlock(bot: Bot, ctx: MineCtx, at: Vec3, job = "pick_up"): Promise<{ detail: string }> {
   const block = bot.blockAt(at);
   if (!block) throw new TaskError("stale_handle", "that block is gone");
   if (!journal.ownAt(at, block.name)) throw new TaskError("not_yours", "it only picks up what it set down itself");
@@ -141,7 +152,7 @@ export async function pickUpBlock(bot: Bot, ctx: MineCtx, at: Vec3): Promise<{ d
     // dig with what is in hand
   }
   const before = itemCount(bot, dropName(block.name));
-  const verdict = await dig(bot, live, ctx.stopping, "pick_up", { physical: false });
+  const verdict = await dig(bot, live, ctx.stopping, job, { physical: false });
   if (!verdict.ok) throw taskErrorOf(verdict);
   if (bot.blockAt(at)?.name === block.name) throw new TaskError("protected", "the server put it back");
   const drop = dropName(block.name);

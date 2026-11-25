@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { distinctChests, FRESH_MS, StashMemory, storeAll, storeOne, type Carried } from "../src/behaviors/stash-plan";
+import { distinctChests, FRESH_MS, StashMemory, storeAll, storeOne, worthOpening, type Carried } from "../src/behaviors/stash-plan";
 
 const it = (name: string, count: number, o: Partial<Carried> = {}): Carried => ({ name, count, durable: false, food: 0, ...o });
 
@@ -69,4 +69,14 @@ test("the halves of a double chest are one place", () => {
   assert.deepEqual(distinctChests([{ x: -4, y: 68, z: -28 }, { x: 4, y: 68, z: -25 }, { x: 4, y: 68, z: -24 }]), [0, 1]);
   assert.deepEqual(distinctChests([{ x: 0, y: 0, z: 0 }, { x: 2, y: 0, z: 0 }]), [0, 1]);
   assert.deepEqual(distinctChests([]), []);
+});
+
+test("a take skips a chest seen without the item only when it is a walk away", () => {
+  const me = { x: 100, y: 10, z: 100 };
+  const beside = { x: 101, y: 10, z: 100 };
+  const far = { x: 350, y: 10, z: 100 };
+  assert.equal(worthOpening(0, beside, me), true, "the memory may be stale, a look costs nothing");
+  assert.equal(worthOpening(0, far, me), false);
+  assert.equal(worthOpening(3, far, me), true);
+  assert.equal(worthOpening(null, far, me), true, "never seen, or seen too long ago");
 });

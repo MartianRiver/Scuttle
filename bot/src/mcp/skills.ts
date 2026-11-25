@@ -1,6 +1,7 @@
 import { COMPASS_POINTS, EXPLORE_BANDS, TASKS, type TaskName } from "../api/protocol";
 import { CLEAR_DEFAULT, CLEAR_MAX, CLEAR_MIN } from "../behaviors/clear-plan";
 import { CARDINALS, isLengthBand, TUNNEL_DEFAULT, TUNNEL_MAX } from "../behaviors/tunnel-plan";
+import { UNDO_KINDS } from "../behaviors/undo-plan";
 
 // What the mind is told it can do, kept by hand next to the API. test/mcp-skills.test.ts fails when
 // a task in TASKS has no entry here. To add an action: one entry in ACTIONS, its argument names in
@@ -25,11 +26,12 @@ export interface ActArgs {
   radius?: number;
   where?: string;
   chest?: string;
+  job?: string;
 }
 
 // where each act argument goes on the wire
 const WIRE: Record<keyof ActArgs, string> = {
-  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through", torches: "torches", radius: "radius", x: "x", y: "y", z: "z", where: "where", chest: "chest",
+  player: "player", item: "item", count: "count", task: "name", handle: "handle", near: "near", dir: "dir", far: "far", to: "to", length: "length", through: "through", torches: "torches", radius: "radius", x: "x", y: "y", z: "z", where: "where", chest: "chest", job: "job",
 };
 
 export interface ActionDef {
@@ -177,6 +179,27 @@ export const ACTIONS: Record<string, ActionDef> = {
     rejects: ACT_REJECTS,
     ends: "task_finished with got= the net items (a kind of log, then saplings, apples and sticks before other things) and detail= trees felled, plants cleared, what was left and why (at the edge, not natural, refused, out of reach, tall ones with tops left), why it stopped early if it did, and the time in words. task_progress says what it is doing (clearing trees, taking down the leaves, picking up what dropped, clearing the ground, stashing items). task_failed no_trees (detail: none in the square, only edge trees, or only logs that are no tree), refused (every tree has something a player built near it), protected (the server undid digs), stuck (the trees would not come down), too_far (the body is over 160 blocks from its base), inventory_full (pack full and nothing it could stash, no room in the stash, or the base too far to walk back), interrupted, died, disconnected. Like a task: busy while anything runs.",
   },
+  dig_shaft: {
+    does: "Dig the mine's permanent way down: a one-block-wide staircase from where it stands (the surface, by your base) to the step at the y you give, like dig_down with to: a y, but the shaft is kept as the mine's, across restarts. At most sixty-four steps a call: call again to go on, and it first walks down to the foot of what is dug (from the top, or from wherever it is) and carries on the same way, so a half-dug shaft is never dug twice. It sets torches as dig_down does (torches: true). Later trips do not dig: go_to mine walks down the finished shaft, go_to shaft walks back up to its top. Refused once the mine has its landing (make_mine). Every dig and torch is in the journal under this run, so undo can take it back (only blocks it may put back: dirt, not stone).",
+    required: ["to"],
+    optional: ["torches"],
+    rejects: [...ACT_REJECTS, "no_torches"],
+    ends: "As dig_down: task_finished with detail= where it stopped (at the depth asked, pack full, out of torches); task_failed refused (the landing is already down, a build, bedrock, below the bottom of the world), blocked, no_tool, protected, stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
+  make_mine: {
+    does: "Set up the landing at the foot of the mine's shaft: walks down to the foot if it is not there, cuts room beside it, and sets down a chest, a crafting table, a furnace and a wall torch from what it carries, then puts half of its torches in the chest (the depot: store and take use it when it is the nearest own chest, so pack_full at depth is answered there). The kit is set only where it is safe to cut and the floor is solid. What it lacks it says, and what is already down stays: asking again once it has the rest finishes the kit. After this go_to mine walks to the landing, and tasks begun in the mine measure from it instead of home (explore's leash, the search for stone), without changing your base. Needs a shaft (dig_shaft), the items, and placing switched on.",
+    required: [],
+    optional: [],
+    rejects: [...ACT_REJECTS, "not_enabled"],
+    ends: "task_finished with detail= the landing is ready and what is down; task_failed no_mine (no shaft yet), not_ready (detail says what it lacks or has no room for, and what is down so far; missing= the items), no_tool (cutting room wants a pickaxe), refused or protected (the gate or the server said no), stuck, interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
+  undo: {
+    does: `Take back what its own last job did, newest block first, through the same checks as the job: what it set down it takes up again (a chest or furnace with things in it is left, never emptied or broken), what it dug out it puts back as what that block drops when dug, when it carries that and may set it down (stone comes back as cobblestone, deepslate as cobbled deepslate, grass as dirt; an ore or anything else it cannot set down is left). job (one of ${UNDO_KINDS.join(", ")}) picks the newest run of that kind; without it, the newest run of any of them. A cell that changed since (a player's work, or its own later work) is left alone. At most sixteen cells a call: it says so when more are left, call again. Never touches anything it did not do. Needs placing switched on.`,
+    required: [],
+    optional: ["job"],
+    rejects: [...ACT_REJECTS, "not_enabled"],
+    ends: "task_finished with detail= what was put back and taken up, and what it could not undo and why (changed since, held things, had none of what that block drops to put back, gave nothing it can set down again, was standing there), and more to undo, ask again; task_failed nothing_to_undo (it has done nothing of that kind), nothing_undone (detail says why no cell could be), interrupted, died, disconnected. Like a task: busy while anything runs.",
+  },
   climb_up: {
     does: "Walk back up the stair dig_down cut, to the cell it started from; after a tunnel, back along it and up the stair.",
     required: [],
@@ -200,7 +223,7 @@ export const REJECTS: Record<string, string> = {
   not_in_game: "the body is not connected to the game server",
   unknown_item: "the game has no item by that name (lowercase_with_underscores, no namespace, like oak_planks)",
   none_held: "it does not carry that item",
-  not_enabled: "placing is switched off in this world: place, pick_up, make_base and shear are not taken here",
+  not_enabled: "placing is switched off in this world: place, pick_up, make_base, shear, make_mine and undo are not taken here",
   no_torches: "torches: true was asked and it carries none; craft or take some (a torch is coal or charcoal on a stick), or leave torches off",
   too_far: "the end point would be more than 160 blocks from home",
   stale_handle: "the body no longer has that handle (expired after 10 min unseen, from before a restart, the mob is gone, the block was mined); observe again for fresh ones",
@@ -281,6 +304,8 @@ export function buildIntent(action: string, args: ActArgs): Built {
     if (args.handle === undefined && point !== 3) return { ok: false, detail: "go_to needs a handle, or all of x, y and z" };
     if (point === 3 && ![args.x, args.y, args.z].every((v) => Number.isInteger(v))) return { ok: false, detail: "go_to x, y and z are whole numbers" };
   }
+  if (action === "dig_shaft" && !Number.isInteger(args.to)) return { ok: false, detail: "dig_shaft to is a y as a whole number" };
+  if (action === "undo" && args.job !== undefined && !(UNDO_KINDS as readonly string[]).includes(args.job)) return { ok: false, detail: `undo job is one of ${UNDO_KINDS.join(", ")}` };
   if (action === "dig_down" && args.to !== undefined && args.to !== "stone" && !Number.isInteger(args.to)) {
     return { ok: false, detail: "dig_down to is stone, or a y as a whole number" };
   }

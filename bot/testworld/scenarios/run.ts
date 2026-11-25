@@ -1,7 +1,8 @@
 // Scenario runner: set up, act, verify, one pass/fail line per scenario, exit 1 if any failed.
 // Needs the test server (start.sh, build_home.py --member) and the bot (bot.sh) running.
 // Run from bot/: npx tsx testworld/scenarios/run.ts [name-filter] [--file=stem] [--checks] [--watch] [--verbose]
-//   --file=danger runs only danger.scenario.ts (many scenarios have no common name prefix); the count is printed
+//   --file=danger runs only danger.scenario.ts (many scenarios have no common name prefix); the count is printed.
+//   Files named *.manual.scenario.ts (a 12-minute dig) only run when named: --file=minefull.manual
 //   --watch announces each scenario in chat and pauses a few seconds first; with WATCHER=<your name> set it
 //   also teleports that player beside each scenario. Creative mode recommended.
 //   --checks also runs the older check_*.ts scripts, each as one pass/fail line.
@@ -18,7 +19,7 @@ const out = (s: string) => process.stdout.write(s + "\n");
 
 async function load(stem?: string): Promise<Scenario[]> {
   const found: Scenario[] = [];
-  for (const file of readdirSync(__dirname).filter((f) => f.endsWith(".scenario.ts") && (!stem || f === `${stem}.scenario.ts`)).sort()) {
+  for (const file of readdirSync(__dirname).filter((f) => f.endsWith(".scenario.ts") && (stem ? f === `${stem}.scenario.ts` : !f.includes(".manual."))).sort()) {
     const mod = await import(path.join(__dirname, file));
     found.push(...[mod.default].flat());
   }
