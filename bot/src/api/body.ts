@@ -10,6 +10,7 @@ import { isGuardFighting } from "../behaviors/guard";
 import { craft, recipeAnswer } from "../behaviors/craft";
 import { climbUp, digDown } from "../behaviors/dig-down";
 import { tunnel } from "../behaviors/tunnel";
+import { clearTrees } from "../behaviors/clear";
 import { equipItem, equipSlot } from "../behaviors/equip";
 import { pinHand } from "../behaviors/idle-hand";
 import { canExplore, explore } from "../behaviors/explore";
@@ -145,7 +146,7 @@ export function createBody(bot: Bot): BodyControl {
     async runAction(a: ActionIntent, report) {
       endEscort();
       await yieldToOrder(bot);
-      const run = (name: string, work: () => Promise<{ stored?: Record<string, number>; saw?: string; detail?: string } | void>) =>
+      const run = (name: string, work: () => Promise<{ stored?: Record<string, number>; saw?: string; detail?: string; got?: Record<string, number> } | void>) =>
         runAction(bot, name, work, { onProgress: report }).then(outcomeOf);
       const ctx = actionCtx(bot);
       switch (a.intent) {
@@ -169,6 +170,8 @@ export function createBody(bot: Bot): BodyControl {
           return run("tunnel", () => tunnel(bot, ctx, { dir: a.dir, length: a.length, through: a.through, torches: a.torches }));
         case "climb_up":
           return run("climb_up", () => climbUp(bot, ctx));
+        case "clear_trees":
+          return run("clear_trees", () => clearTrees(bot, ctx, a.radius));
         case "collect": {
           const t = handles.resolve(a.handle);
           if (t?.kind !== "block") throw new Error("stale_handle");

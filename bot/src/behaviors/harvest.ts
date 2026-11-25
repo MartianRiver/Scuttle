@@ -23,6 +23,8 @@ const LOG_ATTEMPT_MS = 40_000;
 const BLOCK_ATTEMPT_MS = 45_000;
 const STUCK_CAP = 3; // attempts in a row that gained nothing
 
+export type Within = (p: Vec3, log: boolean) => boolean;
+
 export interface BlockTarget {
   pos: Vec3;
   name: string;
@@ -51,13 +53,14 @@ export function missingTool(bot: Bot, name: string): string | null {
 
 // Throws its reason as the message: stale_handle, refused, no_tool, protected, stuck. A run that ends short of `count`
 // says why in `detail`.
-export async function collect(bot: Bot, ctx: MineCtx, target: BlockTarget, count = 1): Promise<{ detail?: string } | void> {
+// `within` (a tree only) keeps the walk from breaking anything outside a place: see gatherMovements.
+export async function collect(bot: Bot, ctx: MineCtx, target: BlockTarget, count = 1, within?: Within): Promise<{ detail?: string } | void> {
   const live = bot.blockAt(target.pos);
   if (!live || live.name !== target.name) throw new TaskError("stale_handle");
   const kind = collectKind(live.name);
   if (!kind) throw new TaskError("refused", "that is not a natural block, so it stays");
   if (reverted.covers(target.pos)) throw new TaskError("refused", "that spot is where its digs were undone");
-  if (kind === "log") return collectTree(bot, ctx, target);
+  if (kind === "log") return collectTree(bot, ctx, target, within);
 
   const need = missingTool(bot, live.name);
   if (need) throw new TaskError("no_tool", `it needs ${need}`);
@@ -153,9 +156,9 @@ async function collectBlocks(bot: Bot, ctx: MineCtx, target: BlockTarget, count:
 }
 
 // one tree: the logs of its trunk from the base up, those within reach
-async function collectTree(bot: Bot, ctx: MineCtx, target: BlockTarget): Promise<void> {
+async function collectTree(bot: Bot, ctx: MineCtx, target: BlockTarget, within?: Within): Promise<void> {
   const nameAt = nameAtOf(bot);
-  const movements = gatherMovements(bot);
+  const movements = gatherMovements(bot, within);
   bot.pathfinder.setMovements(movements);
   const logs = trunkLogs(target.pos, nameAt).map((p) => new Vec3(p.x, p.y, p.z));
   const skipped = new Set<string>();
