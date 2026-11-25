@@ -6,7 +6,7 @@ import { EventLog } from "../src/api/events";
 import { parseFrame } from "../src/api/protocol";
 import { planPut, type PutView } from "../src/behaviors/put-plan";
 import { readSheep, shearRefusal } from "../src/behaviors/shear-plan";
-import { overheadOf, skyNow, SCAN } from "../src/lib/cell-light";
+import { overheadOf, skyNow, SCAN } from "../src/lib/light";
 import { check, handsPlaceable, isSapling, PLACEABLE, placeable, SAPLINGS, type Op, type Pos, type World } from "../src/lib/policy";
 
 // ---- the allowlist: saplings and nothing else ----

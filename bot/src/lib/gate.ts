@@ -6,7 +6,7 @@ import type { Block } from "prismarine-block";
 import { Vec3 } from "vec3";
 import { TaskError } from "../behaviors/fail";
 import { refusedNow, reverted } from "../behaviors/refused";
-import { cellLight } from "./cell-light";
+import { cellLight } from "./light";
 import { journal, record } from "./journal";
 import { check, GrantStore, memoNames, PlaceBudget, type CheckOpts, type Op, type Refusal, type Verdict, type World } from "./policy";
 import type { NameAt, Pos } from "./block-rules";

@@ -218,6 +218,30 @@ const stash: Scenario = {
   cleanup: tidy,
 };
 
+const replant: Scenario = {
+  name: "clear_trees: a sapling the body planted itself stays, a natural one goes",
+  timeoutMs: 420_000,
+  async setup(c) {
+    await site(c, { give: ["oak_sapling 1"], grove: false });
+    await tree(c, at(TREES[0]));
+    await c.world.run(`setblock ${cell(at(SAPLING))} oak_sapling`);
+    const r = await run(c, { intent: "place", item: "oak_sapling", where: "here" });
+    c.check(r.end?.event === "task_finished", `place sapling: ${said(r.end)}`);
+    await sleep(3000);
+  },
+  async act(c) {
+    const r = await run(c, { intent: "clear_trees", radius: RADIUS }, 360_000);
+    c.check(r.end?.event === "task_finished", `ends finished (${r.reply}, ${said(r.end)})`);
+  },
+  async verify(c) {
+    const near = await c.world.countBlocks({ x: S.x - 4, y: S.y, z: S.z - 4 }, { x: S.x + 4, y: S.y, z: S.z + 4 }, "oak_sapling");
+    c.check(near === 1, `the one it planted is still beside the base (${near})`);
+    c.check(await air(c, at(SAPLING)), "the natural one on the ground is gone");
+    c.check((await trunkLogs(c, TREES[0])) === 0, "and the tree is down");
+  },
+  cleanup: tidy,
+};
+
 const stop: Scenario = {
   name: "clear_trees: stop ends it at once, nothing walks or digs after",
   timeoutMs: 240_000,
@@ -245,4 +269,4 @@ const stop: Scenario = {
   cleanup: tidy,
 };
 
-export default [clear, stash, stop];
+export default [clear, stash, replant, stop];

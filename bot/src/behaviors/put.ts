@@ -12,7 +12,7 @@ import { itemCount } from "../lib/inventory";
 import { journal } from "../lib/journal";
 import { logger } from "../lib/logger";
 import { placeBlock } from "../lib/place-block";
-import { cellLight } from "../lib/cell-light";
+import { cellLight } from "../lib/light";
 import { check, handsPlaceable, madeNear, type Op } from "../lib/policy";
 import { setStatus } from "../lib/status";
 import { isOverworld } from "../senses/observe";

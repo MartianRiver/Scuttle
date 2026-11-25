@@ -7,6 +7,7 @@ import { Vec3 } from "vec3";
 import { base } from "../lib/base";
 import { dig, inReach, pickUp } from "../lib/collect";
 import { nameAtOf } from "../lib/gate";
+import { journal } from "../lib/journal";
 import { logger } from "../lib/logger";
 import { gatherMovements, isPlainLogName, safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
@@ -280,7 +281,9 @@ async function clearGround(run: Run): Promise<void> {
   const { bot, box } = run;
   const ids = bot.registry.blocksArray.filter((b) => isGroundPlant(b.name)).map((b) => b.id);
   if (ids.length === 0) return;
-  const cells = bot.findBlocks({ matching: ids, point: vec(box), maxDistance: Math.ceil(box.r * 1.42) + 8, count: 600 }).filter((p) => inBox(box, p));
+  // a sapling the body planted is its own: a clear does not undo a replant
+  const planted = (p: Pos) => journal.ownAt(p, run.nameAt(p) ?? "");
+  const cells = bot.findBlocks({ matching: ids, point: vec(box), maxDistance: Math.ceil(box.r * 1.42) + 8, count: 600 }).filter((p) => inBox(box, p) && !planted(p));
   if (cells.length === 0) return;
   await setStatus({ task: "clearing the ground" });
   const still = (p: Pos) => isGroundPlant(run.nameAt(p) ?? "");
