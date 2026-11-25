@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COMPASS_POINTS, DIG_TARGETS, EXPLORE_BANDS } from "../api/protocol";
+import { CLEAR_DEFAULT, CLEAR_MAX, CLEAR_MIN } from "../behaviors/clear-plan";
 import { TUNNEL_MAX } from "../behaviors/tunnel-plan";
 import type { BotEvent } from "../api/events";
 import type { BodyClient } from "./client";
@@ -99,7 +100,7 @@ export const TOOLS: ToolDef[] = [
   tool({
     name: "act",
     description:
-      "Give the body one order. It does one thing at a time. action: come_to or follow (walk to a player), go_to (walk to a handle from observe, or a place: home, table, stash, furnace, bed, stair), guard (follow and fight mobs near them), give (throw items to a player), task (a named long job, see skills; near aims it at a tree or place), craft (item, count), collect (dig the block or tree a handle points at), equip (item: armour to its slot, else the hand; taken at once, no taskId), store and take (its own chests), place (set down a table, furnace, chest, torch, bed or scaffolding block: item, where), pick_up (take back what it placed), make_base (home becomes the base it built here), explore (walk dir for far, to look around), dig_down (a staircase down to stone), tunnel (a branch mine from where it stands: dir, length, through) and climb_up (back out of the stair and tunnel), stop (end whatever is running). A refusal comes back as data ({accepted:false, reason, hint}), not as an error, e.g. busy when something is already running: stop it or wait for it. An accepted order returns a taskId: call wait with it to block until it ends. follow and guard never end by themselves. Call skills for what each action and task does and how it can fail. There are no coordinates; the body decides how to get there. rationale is required.",
+      "Give the body one order. It does one thing at a time. action: come_to or follow (walk to a player), go_to (walk to a handle from observe, or a place: home, table, stash, furnace, bed, stair), guard (follow and fight mobs near them), give (throw items to a player), task (a named long job, see skills; near aims it at a tree or place), craft (item, count), collect (dig the block or tree a handle points at), equip (item: armour to its slot, else the hand; taken at once, no taskId), store and take (its own chests), place (set down a table, furnace, chest, torch, bed or scaffolding block: item, where), pick_up (take back what it placed), make_base (home becomes the base it built here), explore (walk dir for far, to look around), dig_down (a staircase down to stone), tunnel (a branch mine from where it stands: dir, length, through), clear_trees (fell the natural trees in a square around its base, take what drops and the small plants, leave the forest outside: radius) and climb_up (back out of the stair and tunnel), stop (end whatever is running). A refusal comes back as data ({accepted:false, reason, hint}), not as an error, e.g. busy when something is already running: stop it or wait for it. An accepted order returns a taskId: call wait with it to block until it ends. follow and guard never end by themselves. Call skills for what each action and task does and how it can fail. There are no coordinates; the body decides how to get there. rationale is required.",
     shape: {
       action: z.enum(Object.keys(ACTIONS) as [string, ...string[]]),
       player: z.string().optional().describe("a player's Minecraft name, for come_to, follow, guard, give"),
@@ -110,6 +111,7 @@ export const TOOLS: ToolDef[] = [
       dir: z.enum(COMPASS_POINTS).optional().describe("for explore: one of the eight compass points; for tunnel: north, east, south or west"),
       length: z.union([z.number().int().min(1).max(TUNNEL_MAX), z.enum(EXPLORE_BANDS)]).optional().describe(`for tunnel: how many blocks (1 to ${TUNNEL_MAX}) or a band like explore's, default 16`),
       through: z.boolean().optional().describe("for tunnel: dig on past ore instead of stopping at the first, and list what it passed"),
+      radius: z.number().int().min(CLEAR_MIN).max(CLEAR_MAX).optional().describe(`for clear_trees: the half-width of the square around its base (${CLEAR_MIN} to ${CLEAR_MAX}), default ${CLEAR_DEFAULT}`),
       far: z.enum(EXPLORE_BANDS).optional().describe("for explore: how far, default a short walk"),
       to: z.enum(DIG_TARGETS).optional().describe("for dig_down: what to dig toward, only stone (the default)"),
       where: z.string().optional().describe("for place: here (default, beside it), ahead, wall (a torch) or on <block handle>, e.g. 'on b17kq' or 'on table'"),

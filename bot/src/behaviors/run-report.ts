@@ -34,9 +34,9 @@ export function noteStashed(item: string, count: number): void {
   if (run && count > 0) run.stashed[item] = (run.stashed[item] ?? 0) + count;
 }
 
-export function gotNow(bot: Bot): Counts | undefined {
+export function gotNow(bot: Bot, max = GOT_LISTED): Counts | undefined {
   if (!run) return undefined;
-  const got = gained(run.start, carried(bot), run.stashed);
+  const got = gained(run.start, carried(bot), run.stashed, max);
   return Object.keys(got).length > 0 ? got : undefined;
 }
 

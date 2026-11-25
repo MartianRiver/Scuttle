@@ -1,6 +1,7 @@
 import type { Bot } from "mineflayer";
 import type { Block } from "prismarine-block";
 import { Movements } from "mineflayer-pathfinder";
+import type { Vec3 } from "vec3";
 import { breakGate } from "./gate";
 
 // plain logs only: stripped ones are something a player made
@@ -55,15 +56,17 @@ export function dryMovements(bot: Bot): Movements {
 // nothing else, and nothing the policy refuses (a tree beside a build stays). A canopy is a wall to the
 // pathfinder otherwise. collectLog asks safeToBreak before every dig and dig() asks the gate again, so this is
 // also the gate for the dig itself. Made per task, so the memos never outlive the trees they describe.
-export function gatherMovements(bot: Bot): Movements {
+// `within` bounds a job to a place (clear_trees): a block it says no to is never broken on the way, log or leaf.
+export function gatherMovements(bot: Bot, within?: (p: Vec3, log: boolean) => boolean): Movements {
   const m = safeMovements(bot);
   m.canDig = true;
   const gate = breakGate(bot, "gather");
   const memo = new Map<string, boolean>();
   m.safeToBreak = (block) => {
     const b = block as Block;
-    if (b.name.endsWith("_leaves")) return b.getProperties().persistent === false && gate(b);
+    if (b.name.endsWith("_leaves")) return b.getProperties().persistent === false && (within?.(b.position, false) ?? true) && gate(b);
     if (!isPlainLogName(b.name)) return false;
+    if (within && !within(b.position, true)) return false;
     const key = b.position.toString();
     let ok = memo.get(key);
     if (ok === undefined) {

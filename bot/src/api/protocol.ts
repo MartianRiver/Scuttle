@@ -1,5 +1,6 @@
 // Everything a client may send. Strict on purpose: unknown fields are an error, and there is
 // no coordinate or command field anywhere; `say` is the one free-text field. See ../../API.md.
+import { CLEAR_MAX, CLEAR_MIN } from "../behaviors/clear-plan";
 import { CARDINALS, isLengthBand, TUNNEL_MAX, type Cardinal } from "../behaviors/tunnel-plan";
 import { BLOCK_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
 import { sayable } from "../lib/speech";
@@ -36,14 +37,15 @@ export type Intent =
   | { intent: "dig_down"; to?: DigTarget }
   | { intent: "tunnel"; dir?: Cardinal; length?: number | ExploreBand; through?: boolean }
   | { intent: "climb_up" }
+  | { intent: "clear_trees"; radius?: number }
   | { intent: "say"; text: string }
   | { intent: "stop" }
   | { intent: "status" }
   | { intent: "observe" };
 
 // the actions that run like a task: one at a time, with task events
-export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "place" | "pick_up" | "make_base" }>;
-export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "place", "pick_up", "make_base"] as const;
+export type ActionIntent = Extract<Intent, { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "clear_trees" | "place" | "pick_up" | "make_base" }>;
+export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "clear_trees", "place", "pick_up", "make_base"] as const;
 // the intents that change the world with the hands; off unless the body's placement switch is on
 export const PLACING_INTENTS = ["place", "pick_up", "make_base"] as const;
 
@@ -157,6 +159,10 @@ export function parseFrame(raw: string): Parsed {
       if (m.dir !== undefined && !(CARDINALS as readonly unknown[]).includes(m.dir)) return bad;
       if (m.length !== undefined && !countIn(m.length, TUNNEL_MAX) && !isLengthBand(m.length)) return bad;
       if (m.through !== undefined && typeof m.through !== "boolean") return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "clear_trees":
+      if (!onlyKeys(m, ["type", "id", "intent", "radius"])) return bad;
+      if (m.radius !== undefined && !(Number.isInteger(m.radius) && (m.radius as number) >= CLEAR_MIN && (m.radius as number) <= CLEAR_MAX)) return bad;
       return { ok: true, msg: m as ClientMsg };
     case "say":
       if (!onlyKeys(m, ["type", "id", "intent", "text"])) return bad;

@@ -77,6 +77,7 @@ export interface ActionDone {
   stored?: Counts;
   saw?: string;
   detail?: string; // where a `dig_down` ended up
+  got?: Counts; // a run that ranks its own gains (clear_trees); otherwise the runner counts them
 }
 
 export type TaskResult = ({ ok: true } & ActionDone | ({ ok: false; reason: string } & FailInfo)) & { got?: Counts };
