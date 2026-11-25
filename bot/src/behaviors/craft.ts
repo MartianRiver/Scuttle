@@ -4,9 +4,10 @@ import type { Bot } from "mineflayer";
 import type { Block } from "prismarine-block";
 import type { Recipe } from "prismarine-recipe";
 import { goals } from "mineflayer-pathfinder";
-import type { Vec3 } from "vec3";
+import { Vec3 } from "vec3";
 import { base } from "../lib/base";
 import { config } from "../lib/config";
+import { journal } from "../lib/journal";
 import { craftItem, inventoryReply, itemCount } from "../lib/inventory";
 import { logger } from "../lib/logger";
 import { setStatus } from "../lib/status";
@@ -22,6 +23,7 @@ const log = logger("craft");
 const TABLE_SEARCH = 16; // blocks: a table this near is walked to
 const TABLE_REACH = 4; // blocks from the eye, close enough to open it
 const HOME_TABLE_MAX = 160; // blocks: a home table farther than this is no table to go to
+const OWN_TABLE_MAX = 64; // blocks: a table it set down itself (the mine landing's) this near is walked to
 
 interface Live {
   lite: RecipeLite;
@@ -73,6 +75,17 @@ function baseTable(bot: Bot): Block | null {
   return spot?.name === "crafting_table" ? spot : null;
 }
 
+// the nearest table it set down itself and still owns, like the one at the mine's landing
+function ownTable(bot: Bot): Block | null {
+  const me = bot.entity.position;
+  const spot = journal
+    .ownCells((n) => n === "crafting_table")
+    .map((p) => bot.blockAt(new Vec3(p.x, p.y, p.z)))
+    .filter((b): b is Block => b?.name === "crafting_table" && b.position.distanceTo(me) <= OWN_TABLE_MAX)
+    .sort((a, b) => a.position.distanceTo(me) - b.position.distanceTo(me))[0];
+  return spot ?? null;
+}
+
 const inReachOf = (bot: Bot, b: Block) => bot.entity.position.offset(0, 1.62, 0).distanceTo(b.position.offset(0.5, 0.5, 0.5)) <= TABLE_REACH;
 
 const words = (c: Counts) => `short of ${Object.keys(c).join(" and ")}`;
@@ -107,8 +120,8 @@ export async function craft(bot: Bot, ctx: MineCtx, item: string, count = 1): Pr
       field = (await put(bot, ctx, "crafting_table", { word: "here" })).at;
       table = bot.blockAt(field);
     }
-    table ??= baseTable(bot);
-    if (!table) throw new TaskError("no_table", "no crafting table in reach, none in its pack to set down, and none at its base");
+    table ??= ownTable(bot) ?? baseTable(bot);
+    if (!table) throw new TaskError("no_table", "no crafting table in reach, none in its pack to set down, none of its own near, and none at its base");
     if (!inReachOf(bot, table)) {
       await setStatus({ task: "walking to the crafting table" });
       const p = table.position;

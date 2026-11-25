@@ -278,7 +278,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   - `craft {item, count?}` makes `count` of the item (default 1, max 64, rounded up to whole recipe batches) with `recipe`'s choice of recipe.
     It checks the whole count first (`missing`, before any walking) and again at the table. A recipe that fits 2x2 is made in the
     inventory; otherwise at a crafting table: the nearest within 16 blocks, else one it carries (only where placing is on: it sets the table down beside
-    itself, crafts, and picks it up again; a table it did not set down is never taken), else the base's table (not past 160 blocks), else `no_table`. It never
+    itself, crafts, and picks it up again; a table it did not set down is never taken), else a table it set down itself within 64 blocks (the mine landing's), else the base's table (not past 160 blocks), else `no_table`. It never
     makes ingredients for another craft: planks from logs, sticks from planks are separate calls. Clicks are paced (see QUIRKS).
   - `collect {handle, count?}` digs what a block handle points at, with the best tool carried, and picks up the drops. A tree handle (the base log)
     takes the logs of that trunk, bottom first, those within reach (a 2 by 2 trunk is one tree; a post or wall touching the trunk is not part of it).
@@ -291,7 +291,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   - `store {item?, count?, chest?}` walks to one of its own chests and puts items in: a chest it set down itself or the base's stash chests, never anyone else's.
     `chest` (a block handle, `your chest` in `blocks`, or the place `stash`) names one, `not_yours` for any other chest; without it the own chests within 16 blocks
     (nearest first), else the base's stash. No item: everything except what it works with: tools, weapons and armour it
-    carries, food up to 16 (the best first), 4 cobblestone and 4 coal. With an item it stores that, up to `count` (all by default), a tool too. Ends
+    carries, food up to 16 (the best first), 4 cobblestone, 4 coal, 8 sticks and every torch. With an item it stores that, up to `count` (all by default), a tool too. Ends
     `task_finished` with `stored`; `none_held` when there is nothing to put, `stash_full` when nothing fit.
   - `take {item, count?, chest?}` takes up to `count` (default a stack) from the chests that may hold it (its own chests nearest first, then the base's stash; a chest last seen without the item is skipped only when it is more than 16 blocks away; or only
     `chest`, `not_yours` if that is not its own). Ends `task_finished` with `got` (maybe less than asked), or `none_stashed`, `inventory_full`.
@@ -340,7 +340,7 @@ an `epoch` from before a bot restart, gets `gap` and no replay).
   - `dig_down {to?, torches?}` cuts a one-block-wide staircase down from where it stands, facing whichever of the four ways is clear (the way it looks first). `to` is `stone`
     (the default: down to natural stone, at most twelve steps, `stuck` `no stone within twelve steps`) or a whole y (`-50`): the same stair cut through stone and deepslate, at most sixty-four
     steps a call, stopping on the step whose feet are at that y with `task_finished` `detail` `at the depth asked`. A y above where it stands is `refused` (`that is up, not down`), as is a y under
-    the world (`that is below the bottom of the world`) and bedrock in the way (`bedrock is in the way`). Sixty-four steps without reaching the y end `stuck` `no further within sixty-four steps`
+    the world (`that is below the bottom of the world`) and bedrock in the way (`bedrock is in the way`). Sixty-four steps without reaching the y end `task_finished` with `sixty-four steps down, not at the depth yet: call again to go on`
     and the mind calls again: two calls make one stair, and the stair memory, `go_to stair` and `climb_up` cover the whole length. With a y, a block that needs a better pickaxe than it holds
     is `no_tool`, and a cell under cover that turns out to be open air stops it `blocked` `a cave opens ahead`. `torches: true`: see Torches below.
     Every block goes through the dig rules; it is refused at once (`task_failed` `refused`, `detail` in

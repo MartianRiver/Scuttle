@@ -46,7 +46,7 @@ const full: Scenario = (() => {
       end = await feet(c);
     },
     async verify(c) {
-      c.check(first?.event === "task_failed" && /no further within sixty-four steps/.test(String(first.detail ?? "")), `the first call stops at sixty-four steps (${said(first)})`);
+      c.check(first?.event === "task_finished" && /sixty-four steps down, not at the depth yet/.test(String(first.detail ?? "")), `the first call stops at sixty-four steps (${said(first)})`);
       c.check(second?.event === "task_finished" && /at the depth asked/.test(String(second.detail ?? "")), `the second goes on from the foot and finishes (${said(second)})`);
       c.check(foot.y === -50 && foot.x === X0 + (TOP + 50), `it stands on y -50 (${JSON.stringify(foot)})`);
       c.check(site?.shaft.length === TOP + 50 + 1 && site.shaft[0].x === X0 && site.shaft[site.shaft.length - 1].y === -50, `the site file has every step (${site?.shaft.length})`);

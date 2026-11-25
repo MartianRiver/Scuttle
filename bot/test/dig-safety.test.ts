@@ -62,8 +62,11 @@ test("the standing spot is beside the target at its level or one under, never in
   assert.equal(safeToDig(T, w, at(2, 0, 1)), true);
   assert.equal(safeToDig(T, w, at(0, 1, 0)), false); // standing on it: digging down
   assert.equal(safeToDig(T, w, at(0, -1, 0)), false); // standing under it: digging up
-  assert.equal(safeToDig(T, w, at(1, 1, 0)), false); // target would be the floor
-  assert.equal(safeToDig(T, w, at(1, -2, 0)), false); // target would be the roof
+  assert.equal(safeToDig(T, w, at(1, 1, 0)), true); // the floor of the cell beside: an ore under a tunnel's next step
+  assert.equal(safeToDig(T, w, at(1, -2, 0)), true); // the ceiling of the cell beside
+  assert.equal(safeToDig(T, w, at(2, 1, 0)), false); // a floor further off
+  assert.equal(safeToDig(T, w, at(1, 1, 1)), false); // a floor on the diagonal
+  assert.equal(safeToDig(T, w, at(1, -3, 0)), false); // above the ceiling
   assert.equal(safeToDig(T, w, at(3, 0, 0)), false); // out of reach
   assert.equal(standOk(T, at(1, 0, 0)), true);
 });

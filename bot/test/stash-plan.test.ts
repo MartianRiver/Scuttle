@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { distinctChests, FRESH_MS, StashMemory, storeAll, storeOne, worthOpening, type Carried } from "../src/behaviors/stash-plan";
+import { distinctChests, FRESH_MS, StashMemory, storeAll, storeOne, walkOnFor, worthOpening, type Carried } from "../src/behaviors/stash-plan";
 
 const it = (name: string, count: number, o: Partial<Carried> = {}): Carried => ({ name, count, durable: false, food: 0, ...o });
 
@@ -15,6 +15,10 @@ test("store everything keeps tools, food up to 16, 4 cobblestone and 4 coal", ()
     it("raw_iron", 3),
   ]);
   assert.deepEqual(out, { oak_log: 40, cobblestone: 26, bread: 4, raw_iron: 3 });
+});
+
+test("store everything keeps 8 sticks and every torch, for picks and light below ground", () => {
+  assert.deepEqual(storeAll([it("stick", 12), it("torch", 20), it("cobbled_deepslate", 64)]), { stick: 4, cobbled_deepslate: 64 });
 });
 
 test("the best food stays first, and 16 is the total", () => {
@@ -79,4 +83,11 @@ test("a take skips a chest seen without the item only when it is a walk away", (
   assert.equal(worthOpening(0, far, me), false);
   assert.equal(worthOpening(3, far, me), true);
   assert.equal(worthOpening(null, far, me), true, "never seen, or seen too long ago");
+});
+
+test("a take that holds some does not walk far for the rest", () => {
+  const here = { x: 0, y: -50, z: 0 };
+  assert.equal(walkOnFor(0, { x: 400, y: 67, z: 0 }, here), true); // none yet: the base chest is worth the walk
+  assert.equal(walkOnFor(4, { x: 400, y: 67, z: 0 }, here), false);
+  assert.equal(walkOnFor(4, { x: 20, y: -50, z: 0 }, here), true);
 });

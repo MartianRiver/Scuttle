@@ -141,7 +141,9 @@ export async function digDown(bot: Bot, ctx: MineCtx, opts: DigDownOpts = {}): P
     const plan = planStep(g, cur, facing, breakable, stepOpts);
     if (plan.kind === "stop") return ended(`stone ahead, ${depthWords(topY - cur.y)}`);
     if (plan.kind !== "step") throw new TaskError(plan.kind, plan.detail);
-    if (steps >= cap) throw new TaskError("stuck", through ? `no further within ${numberWords(cap)} steps` : `no stone within ${numberWords(cap)} steps`);
+    // a depth call stops at its cap as a finished leg the mind calls again, not as a failure
+    if (steps >= cap && through) return ended(`${numberWords(cap)} steps down, not at the depth yet: call again to go on`);
+    if (steps >= cap) throw new TaskError("stuck", `no stone within ${numberWords(cap)} steps`);
     // drops with nowhere to go are left where they fall: it stops here and the mind empties the pack
     if (noRoomFor(bot, plan.dig.filter((p) => g.solid(p)).map((p) => g.name(p) as string))) return ended("pack full");
 

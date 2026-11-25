@@ -53,11 +53,13 @@ export const SIX: ReadonlyArray<readonly [number, number, number]> = [
 
 // Where the feet may be to dig `target`: beside it, never in its column (no digging down at the
 // floor, none up at a roof), and at its level or one below, so the target is at the feet or the
-// head and never the floor or the ceiling.
+// head. Right next to it the floor and the ceiling of the cell beside are fine too: an ore under
+// the next step of a 1x2 tunnel, or over it, leaves a hole beside the body, never under it.
 export function standOk(target: Pos, stand: Pos): boolean {
   const dx = Math.abs(stand.x - target.x);
   const dz = Math.abs(stand.z - target.z);
   if (dx === 0 && dz === 0) return false;
   if (dx > 2 || dz > 2) return false;
-  return stand.y === target.y || stand.y === target.y - 1;
+  if (stand.y === target.y || stand.y === target.y - 1) return true;
+  return dx + dz === 1 && (stand.y === target.y + 1 || stand.y === target.y - 2);
 }
