@@ -3,8 +3,9 @@
 //
 // From the feet cell `cur` facing f, the next column c holds A (head height) and B (feet); the floor F under B is never
 // dug, only walked on, so a hole or a drop there stops it. Each cell goes through the same dig rules as every other dig:
-// liquid in or beside it, a build in it or near it, sand or gravel over it, rock the game will not break, a tool it lacks.
-import { isFalling, isLiquid, isMade, isStandHazard, madeBlocksNear, safeToDig, type Pos } from "./dig-safety";
+// liquid in or beside it, a build in it or near it, sand or gravel over it (brought down from beside it when the column is
+// capped and dry, see `settle`), rock the game will not break, a tool it lacks.
+import { fallingWhy, fallsOver, isLiquid, isMade, isStandHazard, madeBlocksNear, safeToDig, type Pos } from "./dig-safety";
 import { numberWords, type Facing, type Grid } from "./dig-down-plan";
 
 export const TUNNEL_DEFAULT = 16;
@@ -30,7 +31,9 @@ export type TunnelStep =
   | { kind: "blocked"; detail: string } // liquid, a drop, rock it cannot break, sand or gravel over it
   | { kind: "refused"; detail: string } // a build, or a place where digs were undone
   | { kind: "no_tool"; detail: string } // rock that wants a pickaxe it does not carry
-  | { kind: "step"; dig: Pos[]; to: Pos }; // head cell first, then the feet cell, which is where it ends up
+  // head cell first, then the feet cell, which is where it ends up. `settle`: the last cell of `dig` has a column of sand or
+  // gravel over it that comes down once it is dug; the plan stops there, the column is cleared, and the step is planned again
+  | { kind: "step"; dig: Pos[]; to: Pos; settle?: Pos };
 
 export interface Rules {
   canBreak(name: string): boolean; // whether the game lets a body break it at all
@@ -92,14 +95,17 @@ export function planTunnelStep(g: Grid, cur: Pos, f: Facing, rules: Rules): Tunn
     if (!rules.canBreak(n)) return { kind: "blocked", detail: "rock it cannot break is in the way" };
     const tool = rules.missingTool(n);
     if (tool) return { kind: "no_tool", detail: `it needs ${tool}` };
-    if (!safeToDig(p, grid.name)) {
-      if (madeBlocksNear(p, grid.name).length > 0) return { kind: "refused", detail: "something a player built is too close" };
-      const falling = [1, 2].some((dy) => {
-        const over = grid.name(at(p, 0, dy, 0));
-        return over !== null && isFalling(over);
-      });
-      return { kind: "blocked", detail: falling ? "sand or gravel overhead" : "it cannot see far enough ahead" };
+    // the body stands at `cur`, beside the column, never under it
+    const falls = fallsOver(grid.name, p);
+    if (falls) {
+      const why = fallingWhy(p, grid.name);
+      if (why) return { kind: "blocked", detail: why };
     }
+    if (!safeToDig(p, grid.name, falls ? cur : undefined, { clearFalling: falls })) {
+      if (madeBlocksNear(p, grid.name).length > 0) return { kind: "refused", detail: "something a player built is too close" };
+      return { kind: "blocked", detail: "it cannot see far enough ahead" };
+    }
+    if (falls) return { kind: "step", dig: [...dig, p], to: B, settle: p };
     dig.push(p);
     grid = withDug(grid, p);
   }

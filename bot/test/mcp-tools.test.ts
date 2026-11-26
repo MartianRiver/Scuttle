@@ -246,7 +246,7 @@ test("skills: every task in TASKS has an entry and failure reasons, every action
     assert.ok(t.does.length > 20 && t.needs.length > 0, name);
     assert.ok(Object.keys(t.fails).length > 0 && Object.values(t.fails).every((s) => s.length > 0), name);
   }
-  assert.deepEqual(Object.keys(ACTIONS).sort(), ["clear_trees", "climb_up", "collect", "come_to", "craft", "dig_down", "dig_shaft", "equip", "explore", "follow", "give", "go_to", "guard", "make_base", "make_mine", "pick_up", "place", "shear", "stop", "store", "take", "task", "tunnel", "undo"]);
+  assert.deepEqual(Object.keys(ACTIONS).sort(), ["clear_trees", "climb_up", "collect", "come_to", "craft", "dig_down", "dig_shaft", "ensure", "equip", "explore", "follow", "give", "go_to", "guard", "make_base", "make_mine", "pick_up", "place", "shear", "stop", "store", "take", "task", "tunnel", "undo"]);
   for (const [name, a] of Object.entries(ACTIONS)) {
     assert.ok(a.does.length > 0 && a.ends.length > 0, name);
     for (const r of a.rejects) assert.ok(REJECTS[r], `${name}: no hint for ${r}`);
@@ -283,6 +283,33 @@ test("through MCP: tools list, an audit line per call with the rationale and no 
     const recs = raw.trim().split("\n").map((l) => JSON.parse(l));
     assert.deepEqual(recs.map((r) => r.tool), ["act", "wait"]);
     assert.deepEqual(recs[1].outcome.events, { chat: 1 });
+  } finally {
+    body.close();
+    await mcp.close();
+    await fake.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an argument a tool does not have is refused in words, not dropped: wait seconds names timeout_s", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "mind-audit-"));
+  const fake = await FakeBody.start();
+  const body = await connected(fake);
+  const server = buildServer(body, new Audit(dir));
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  const mcp = new Client({ name: "t", version: "0" });
+  try {
+    await Promise.all([server.connect(a), mcp.connect(b)]);
+    const r: any = await mcp.callTool({ name: "wait", arguments: { seconds: 90 } });
+    const out = JSON.parse(r.content[0].text);
+    assert.equal(out.accepted, false);
+    assert.equal(out.reason, "bad_args");
+    assert.match(out.hint, /timeout_s/);
+    assert.match(out.hint, /not seconds/);
+    const ok: any = await mcp.callTool({ name: "wait", arguments: { timeout_s: 1 } });
+    assert.equal(JSON.parse(ok.content[0].text).reason, "timeout");
+    const act: any = await mcp.callTool({ name: "act", arguments: { action: "stop", rationale: "r", flavour: "x" } });
+    assert.equal(JSON.parse(act.content[0].text).reason, "bad_args");
   } finally {
     body.close();
     await mcp.close();

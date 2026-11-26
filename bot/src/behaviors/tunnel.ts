@@ -9,7 +9,7 @@ import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { madeBlocksNear, type Pos } from "./dig-safety";
 import { facingsFrom, type Facing } from "./dig-down-plan";
-import { breakBlock, canBreak, cellOf, grid, same } from "./dig-down";
+import { breakBlock, canBreak, cellOf, grid, same, settleColumn } from "./dig-down";
 import { TaskError } from "./fail";
 import { missingTool } from "./harvest";
 import { lightAtHead, torchIfDue } from "./torches";
@@ -78,7 +78,17 @@ export async function tunnel(bot: Bot, ctx: MineCtx, opts: TunnelOpts): Promise<
         break;
       }
       await setStatus({ task: tunnelStatus(dug) });
-      for (const p of plan.dig) await breakBlock(bot, ctx, p, true, job);
+      for (const p of plan.dig) {
+        if (plan.settle !== p) {
+          await breakBlock(bot, ctx, p, true, job);
+          continue;
+        }
+        const before = g.name(p) as string;
+        await breakBlock(bot, ctx, p, true, job, { clearFalling: true, stand: cur });
+        if ((await settleColumn(bot, ctx, p, before, job)) === "pack full") stopped = "pack full";
+      }
+      if (stopped) break;
+      if (plan.settle) continue; // the column is down and cleared: the step is planned again, now with the cell open
       await walkWithin(bot, new goals.GoalBlock(plan.to.x, plan.to.y, plan.to.z), STEP_WALK_MS);
       ctx.checkStop();
       if (!same(cellOf(bot), plan.to)) throw new TaskError("stuck", "it could not walk on into the tunnel");

@@ -7,7 +7,7 @@ import { parseFrame } from "../src/api/protocol";
 import { chooseFacing, planStep, type Facing, type Grid, type StepOpts } from "../src/behaviors/dig-down-plan";
 import { planPut } from "../src/behaviors/put-plan";
 import { TorchPacer, withTorchNote } from "../src/behaviors/torch-plan";
-import { PackEpisode, roomFor, WearWatch, WEAR_AT, isWatchedTool } from "../src/behaviors/upkeep-plan";
+import { PackEpisode, roomFor, TorchWatch, WearWatch, WEAR_AT, isWatchedTool } from "../src/behaviors/upkeep-plan";
 import { buildIntent, skillsTable } from "../src/mcp/skills";
 import { wakeReason } from "../src/mcp/wait";
 import { LIGHT_SWAP } from "../src/lib/light";
@@ -29,6 +29,26 @@ function ground(extra: Record<string, string> = {}): Grid {
   };
   return { name, solid: (p) => !["air", "water", "lava", "cobweb"].includes(name(p)) };
 }
+
+test("a stair step under a column of gravel stops at that cell to bring it down, and the open cell it leaves is not a cave", () => {
+  const cur = { x: 0, y: 40, z: 0 };
+  const base = { "0,40,0": "air", "0,41,0": "air", "0,42,0": "air" };
+  const g = ground({ ...base, "1,42,0": "gravel" });
+  const first = planStep(g, cur, east, canBreak, through);
+  assert.equal(first.kind, "step");
+  if (first.kind === "step") {
+    assert.deepEqual(first.dig, [{ x: 1, y: 41, z: 0 }]);
+    assert.deepEqual(first.settle, { x: 1, y: 41, z: 0 });
+  }
+  // the column is down and cleared: the head cell reads as air under rock, which is a cave unless it is its own doing
+  const open = ground({ ...base, "1,41,0": "air", "1,42,0": "stone" });
+  assert.deepEqual(planStep(open, cur, east, canBreak, through), { kind: "blocked", detail: "a cave opens ahead" });
+  const mine = planStep(open, cur, east, canBreak, { ...through, cleared: (p) => p.x === 1 && p.y === 41 });
+  assert.equal(mine.kind === "step" && mine.settle, undefined);
+  assert.equal(mine.kind === "step" && mine.dig.length, 3);
+  // water over the gravel is a refusal in words
+  assert.deepEqual(planStep(ground({ ...base, "1,42,0": "gravel", "1,43,0": "water" }), cur, east, canBreak, through), { kind: "blocked", detail: "water above the sand or gravel" });
+});
 
 test("through: a stair step digs stone and deepslate where the stone mode stops", () => {
   const down = { x: 0, y: 40, z: 0 };
@@ -64,11 +84,12 @@ test("through: a pickaxe the rock needs, bedrock, and a cave opened into each st
   assert.equal(top.kind, "step");
 });
 
-test("through: lava and gravel keep their stops all the way down", () => {
+test("through: lava keeps its stop, and gravel stops unless it is a capped column it can bring down", () => {
   const cur = { x: 0, y: 30, z: 0 };
   assert.deepEqual(planStep(ground({ "1,28,0": "lava" }), cur, east, canBreak, through), { kind: "blocked", detail: "lava below" });
-  const gravel = planStep(ground({ "1,32,0": "gravel" }), cur, east, canBreak, through);
-  assert.deepEqual(gravel, { kind: "blocked", detail: "sand or gravel overhead" });
+  const gravel = planStep(ground({ "1,32,0": "gravel", "1,33,0": "air" }), cur, east, canBreak, through);
+  assert.deepEqual(gravel, { kind: "blocked", detail: "an open space above the sand or gravel" });
+  assert.deepEqual(planStep(ground({ "1,33,0": "gravel", "1,34,0": "gravel" }), cur, east, canBreak, through), { kind: "blocked", detail: "sand or gravel overhead" }); // two over: a stone between
   assert.deepEqual(planStep(ground({ "1,28,0": "air", "1,27,0": "air" }), cur, east, canBreak, through).kind, "blocked");
 });
 
@@ -178,10 +199,41 @@ test("tool_worn is told once per tool, and again for a fresh one of the same kin
   assert.ok(isWatchedTool("diamond_pickaxe") && isWatchedTool("stone_sword") && !isWatchedTool("iron_axe") && !isWatchedTool("shears"));
 });
 
+test("torches_low at three or fewer and torches_out at none, underground, once an episode", () => {
+  const w = new TorchWatch();
+  const under = () => true;
+  assert.equal(w.check(24, under), null);
+  assert.equal(w.check(4, under), null);
+  assert.equal(w.check(3, under), "torches_low");
+  assert.equal(w.check(3, under), null);
+  assert.equal(w.check(2, under), null); // the same episode
+  assert.equal(w.check(0, under), "torches_out"); // out is its own news
+  assert.equal(w.check(0, under), null);
+  assert.equal(w.check(4, under), null); // took some from the chest: a new episode begins
+  assert.equal(w.check(3, under), "torches_low");
+  // more than it had when told, but still few: a new episode too
+  assert.equal(w.check(2, under), null);
+  assert.equal(w.check(3, under), null);
+  assert.equal(w.check(8, under), null);
+  assert.equal(w.check(1, under), "torches_low");
+});
+
+test("torches_low waits for the dark: nothing on the surface, and the cave check only runs when one is due", () => {
+  const w = new TorchWatch();
+  let asked = 0;
+  const surface = () => (asked++, false);
+  assert.equal(w.check(20, surface), null);
+  assert.equal(asked, 0);
+  assert.equal(w.check(0, surface), null); // none on the surface is not news
+  assert.equal(w.check(0, () => true), "torches_out"); // until it goes under rock
+});
+
 test("wait wakes on pack_full and tool_worn", () => {
   const ev = (event: string, f: object = {}) => ({ seq: 1, ts: 0, event, ...f });
   assert.equal(wakeReason(ev("pack_full")), "pack_full");
   assert.equal(wakeReason(ev("tool_worn", { item: "iron_pickaxe", left: "a few uses left" })), "tool_worn");
+  assert.equal(wakeReason(ev("torches_low", { left: 3 })), "torches_low");
+  assert.equal(wakeReason(ev("torches_out", { left: 0 })), "torches_out");
 });
 
 // ---- the wire ----

@@ -263,6 +263,7 @@ export function createDispatcher(
         : i.intent === "dig_down" ? (i.to ?? "stone")
         : i.intent === "dig_shaft" ? i.to
         : i.intent === "make_mine" ? "landing"
+        : i.intent === "ensure" ? i.what
         : i.intent === "undo" ? (i.job ?? "last")
         : i.intent === "tunnel" ? (i.dir ?? "ahead")
         : i.intent === "climb_up" ? "up"

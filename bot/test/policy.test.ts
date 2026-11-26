@@ -43,6 +43,45 @@ test("a stand the planner gives is geometry, the doors leave it out", () => {
   assert.equal(reason(check(dig1, { nameAt: grid() })), "ok");
 });
 
+test("clearFalling lets a capped, dry column of sand or gravel come down, only from a stand beside the cell", () => {
+  const col = (extra: Array<[Pos, string]> = []) => grid([[at(0, 1, 0), "gravel"], [at(0, 2, 0), "gravel"], ...extra]); // stone over it
+  const beside = at(1, -1, 0);
+  const clear = { clearFalling: true, stand: beside };
+  assert.equal(reason(check(dig1, { nameAt: col() })), "unsafe"); // without the field the refusal stands
+  assert.equal(reason(check(dig1, { nameAt: col() }, { clearFalling: true })), "unsafe"); // no stand: it will not say it is safe
+  assert.equal(reason(check(dig1, { nameAt: col() }, { clearFalling: true, stand: at(0, -1, 0) })), "unsafe"); // under the column
+  assert.equal(reason(check(dig1, { nameAt: col() }, clear)), "ok");
+  // what must still refuse with the field: liquid or a cave in the column, liquid beside it, a column with no cap, the rest of the dig rules
+  assert.equal(reason(check(dig1, { nameAt: col([[at(0, 3, 0), "water"]]) }, clear)), "unsafe");
+  assert.equal(reason(check(dig1, { nameAt: col([[at(0, 3, 0), "lava"]]) }, clear)), "unsafe");
+  assert.equal(reason(check(dig1, { nameAt: col([[at(0, 3, 0), "air"]]) }, clear)), "unsafe");
+  assert.equal(reason(check(dig1, { nameAt: col([[at(1, 2, 0), "water"]]) }, clear)), "unsafe");
+  assert.equal(reason(check(dig1, { nameAt: col([[at(0, 1, 1), "lava"]]) }, clear)), "unsafe");
+  assert.equal(reason(check(dig1, { nameAt: col([[at(1, 0, 0), "water"]]) }, clear)), "unsafe"); // beside the target itself
+  assert.equal(reason(check(dig1, { nameAt: col([[at(0, 4, 0), "lava"]]) }, clear)), "ok"); // above the cap is not read
+  assert.equal(reason(check(dig1, { nameAt: grid([[at(0, 1, 0), "gravel"], [at(0, 2, 0), "gravel"]], [at(0, 3, 0)]) }, clear)), "unsafe"); // the cap is not loaded
+  assert.equal(reason(check(dig1, { nameAt: col([[at(2, 0, 0), "oak_planks"]]) }, clear)), "player_built");
+  assert.equal(reason(check(dig1, { nameAt: col(), zonesAt: () => ["reverted" as const] }, clear)), "protected");
+  // gravel two over with air between is not a column that starts over the cell
+  assert.equal(reason(check(dig1, { nameAt: grid([[at(0, 1, 0), "air"], [at(0, 2, 0), "gravel"]]) }, clear)), "unsafe");
+});
+
+test("settling: clearing a column that already came down does not read the cells it left as a cave", () => {
+  const beside = at(1, -1, 0);
+  const clear = { clearFalling: true, stand: beside };
+  const settle = { ...clear, settling: true };
+  // two gravel came down into the cell: one is in it, one over it, and the cell it fell from is air under the same stone
+  const pile = (extra: Array<[Pos, string]> = []) => grid([[at(0, 1, 0), "gravel"], [at(0, 2, 0), "gravel"], [at(0, 3, 0), "air"], ...extra]);
+  assert.equal(reason(check(dig1, { nameAt: pile() }, clear)), "unsafe"); // the first, strict probe still calls it open
+  assert.equal(reason(check(dig1, { nameAt: pile() }, settle)), "ok");
+  // what still refuses while settling: liquid in or beside the vacated cell, no cap in reach, no stand beside
+  assert.equal(reason(check(dig1, { nameAt: pile([[at(1, 3, 0), "water"]]) }, settle)), "unsafe");
+  assert.equal(reason(check(dig1, { nameAt: pile([[at(0, 4, 0), "lava"]]) }, settle)), "unsafe");
+  const cave = grid([[at(0, 1, 0), "gravel"], ...[2, 3, 4, 5, 6, 7, 8, 9].map((dy): [Pos, string] => [at(0, dy, 0), "air"])]);
+  assert.equal(reason(check(dig1, { nameAt: cave }, settle)), "unsafe"); // air all the way up is not a vacated column
+  assert.equal(reason(check(dig1, { nameAt: pile() }, { clearFalling: true, settling: true, stand: at(0, -1, 0) })), "unsafe");
+});
+
 test("physical: false asks only that the block is loaded", () => {
   const wet = grid([[at(1, 0, 0), "water"], [at(0, 2, 0), "sand"]], [at(0, 1, 0)]);
   assert.equal(reason(check(dig1, { nameAt: wet })), "unknown");

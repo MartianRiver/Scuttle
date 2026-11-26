@@ -10,6 +10,7 @@ import { digShaft, goToSite, makeMine } from "../behaviors/mine-site";
 import { undo } from "../behaviors/undo";
 import { isGuardFighting } from "../behaviors/guard";
 import { craft, recipeAnswer } from "../behaviors/craft";
+import { ensure } from "../behaviors/ensure";
 import { climbUp, digDown } from "../behaviors/dig-down";
 import { tunnel } from "../behaviors/tunnel";
 import { clearTrees } from "../behaviors/clear";
@@ -179,6 +180,8 @@ export function createBody(bot: Bot): BodyControl {
           return run("dig_shaft", () => digShaft(bot, ctx, { to: a.to, torches: a.torches }));
         case "make_mine":
           return run("make_mine", () => makeMine(bot, ctx));
+        case "ensure":
+          return run("ensure", () => ensure(bot, ctx, a.what, a.count));
         case "undo":
           return run("undo", () => undo(bot, ctx, a.job));
         case "explore":

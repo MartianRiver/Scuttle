@@ -5,7 +5,8 @@ import { goals } from "mineflayer-pathfinder";
 import { Vec3 } from "vec3";
 import "mineflayer-tool"; // types for bot.tool
 import { dig } from "../lib/collect";
-import { GateRefusal, taskErrorOf } from "../lib/gate";
+import { GateRefusal, nameAtOf as nameAt, taskErrorOf } from "../lib/gate";
+import type { CheckOpts } from "../lib/policy";
 import { PLACEABLE } from "../lib/policy";
 import { placeBlock } from "../lib/place-block";
 import { logger } from "../lib/logger";
@@ -13,6 +14,7 @@ import { safeMovements } from "../lib/movement";
 import { setStatus } from "../lib/status";
 import { madeBlocksNear, type Pos } from "./dig-safety";
 import { chooseFacing, depthWords, digStatus, facingsFrom, MAX_DEPTH_STEPS, MAX_STEPS, numberWords, planStep, type Facing, type Grid, type StepOpts } from "./dig-down-plan";
+import { FALL_SCAN, isFalling } from "../lib/block-rules";
 import { TaskError } from "./fail";
 import { missingTool } from "./harvest";
 import { nameAtOf, type MineCtx } from "./mine";
@@ -47,8 +49,10 @@ export const cellOf = (bot: Bot): Pos => {
   return { x: p.x, y: p.y, z: p.z };
 };
 
-// breaks one block, twice at most: a block that is back after the dig is a place the server protects
-export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest = false, job = "dig_down"): Promise<void> {
+// breaks one block, twice at most: a block that is back after the dig is a place the server protects. With
+// `clearFalling` (and the body's own cell as `stand`) it is the dig that brings a column of sand or gravel down: it
+// returns once the block is broken, since what comes in after it is `settleColumn`'s to read, not an undo.
+export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest = false, job = "dig_down", opts: CheckOpts = {}): Promise<void> {
   const at = new Vec3(p.x, p.y, p.z);
   let completed = false;
   const mark = (b: { position: { equals(o: unknown): boolean } }) => {
@@ -65,7 +69,7 @@ export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest 
         // bare hands then
       }
       ctx.checkStop();
-      const verdict = await dig(bot, block, ctx.stopping, job).catch((err: Error) => {
+      const verdict = await dig(bot, block, ctx.stopping, job, opts).catch((err: Error) => {
         log.warn("dig failed", { message: err.message });
         return undefined;
       });
@@ -75,6 +79,7 @@ export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest 
         throw taskErrorOf(verdict);
       }
       ctx.checkStop();
+      if (opts.clearFalling) return;
       await sleep(250); // a dig the server undoes shows as the block again a tick or two later
       if (bot.blockAt(at)?.boundingBox !== "block") return;
     }
@@ -86,6 +91,58 @@ export async function breakBlock(bot: Bot, ctx: MineCtx, p: Pos, requireHarvest 
     throw new TaskError("protected", undoneWords(1, "ground", bot.entity.position, refusedNow()));
   }
   throw new TaskError("stuck", "it could not break the ground in front");
+}
+
+const SETTLE_MIN_MS = 500;
+const SETTLE_MAX_MS = 4_000;
+
+// sand or gravel in flight over the cell: falling blocks are entities until they land
+const fallingNear = (bot: Bot, p: Pos): boolean =>
+  Object.values(bot.entities).some((e) => e.name === "falling_block" && Math.floor(e.position.x) === p.x && Math.floor(e.position.z) === p.z);
+
+// Waits for what came down after a dig to land: no falling block in the column, and the cell and the one over it read the
+// same twice running.
+async function settled(bot: Bot, ctx: MineCtx, p: Pos): Promise<void> {
+  const g = nameAt(bot);
+  const up = { x: p.x, y: p.y + 1, z: p.z };
+  const read = () => `${g(p)}|${g(up)}`;
+  const start = Date.now();
+  let last = read();
+  await sleep(SETTLE_MIN_MS);
+  while (Date.now() - start < SETTLE_MAX_MS) {
+    ctx.checkStop();
+    const now = read();
+    if (now === last && !fallingNear(bot, p)) return;
+    last = now;
+    await sleep(250);
+  }
+}
+
+// After the cell `p` was dug with a column of sand or gravel over it (the plan's `settle`): the column came down into it.
+// Breaks the lowest block, waits for the rest to land, and again, from where the body stands beside the cell, until the
+// cells over it hold nothing that falls. Each break goes through the door with `clearFalling`, which probes the column again and
+// needs the body's own cell as `stand`: the body is never under it. `before` is what the cell held before it was dug, to
+// tell a server that put it back. Returns "pack full" when the drops have no room. Throws `protected` or `blocked`.
+export async function settleColumn(bot: Bot, ctx: MineCtx, p: Pos, before: string, job: string): Promise<"pack full" | null> {
+  const g = nameAt(bot);
+  const up = { x: p.x, y: p.y + 1, z: p.z };
+  for (let round = 0; round <= FALL_SCAN + 1; round++) {
+    await settled(bot, ctx, p);
+    const now = g(p);
+    if (now !== null && isFalling(now)) {
+      if (noRoomFor(bot, [now])) return "pack full";
+      await breakBlock(bot, ctx, p, false, job, { clearFalling: true, settling: true, stand: cellOf(bot) });
+      continue;
+    }
+    if (now === before) {
+      noteRefused(p.x, p.z);
+      throw new TaskError("protected", undoneWords(1, "ground", bot.entity.position, refusedNow()));
+    }
+    const over = g(up);
+    if (over !== null && isFalling(over)) continue;
+    return null;
+  }
+  throw new TaskError("blocked", "sand or gravel keeps coming down");
 }
 
 export interface DigDownOpts {
@@ -133,6 +190,9 @@ export async function digDown(bot: Bot, ctx: MineCtx, opts: DigDownOpts = {}): P
   const job = opts.job ?? `dig_down@${Date.now()}`;
   const ended = (detail: string) => ({ detail: withTorchNote(detail, pacer) });
   let steps = 0;
+  const cleared = new Set<string>(); // cells a fallen column was cleared out of, in the step being planned
+  const key = (p: Pos) => `${p.x},${p.y},${p.z}`;
+  stepOpts.cleared = (p) => cleared.has(key(p));
   for (;;) {
     await ctx.pause();
     if (Date.now() > deadline) throw new TaskError("stuck", "ran out of time on the way");
@@ -148,7 +208,18 @@ export async function digDown(bot: Bot, ctx: MineCtx, opts: DigDownOpts = {}): P
     if (noRoomFor(bot, plan.dig.filter((p) => g.solid(p)).map((p) => g.name(p) as string))) return ended("pack full");
 
     await setStatus({ task: digStatus(steps) });
-    for (const p of plan.dig) if (g.solid(p)) await breakBlock(bot, ctx, p, through, job);
+    for (const p of plan.dig) {
+      if (!g.solid(p)) continue;
+      const falls = plan.settle === p;
+      const before = g.name(p) as string;
+      await breakBlock(bot, ctx, p, through, job, falls ? { clearFalling: true, stand: cur } : {});
+      if (falls) {
+        if ((await settleColumn(bot, ctx, p, before, job)) === "pack full") return ended("pack full");
+        cleared.add(key(p));
+      }
+    }
+    if (plan.settle) continue; // the column is down and cleared: the step is planned again, now with the cell open
+    cleared.clear();
     if (steps === 0 && !goingOn) {
       beginStair(cur, facing);
       opts.track?.begin(cur, facing);

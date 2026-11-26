@@ -407,15 +407,53 @@ function stop(name: string, plant: (c: Ctx) => Promise<void>, detail: RegExp, in
 // the stair at column x has its feet on y = 67 - (x - 400): head cell one up, and the cell over that
 const col = (x: number) => ({ c: TOP - (x - X0) });
 
+// gravel with open air over it is not a column it may bring down: the stair stops in front of it
 const gravel = stop(
-  "strip: gravel over the next step stops the stair, 'sand or gravel overhead', and leaves it in place",
+  "strip: gravel with open air over it stops the stair, 'an open space above the sand or gravel', and leaves it in place",
   async (c) => {
     const { c: y } = col(X0 + 5);
     await c.world.run(`setblock ${X0 + 5} ${y + 3} ${Z0} gravel`); // two over the head cell of that column
+    await c.world.run(`setblock ${X0 + 5} ${y + 4} ${Z0} air`); // the grass over it, so nothing caps it
   },
-  /sand or gravel overhead/,
+  /open space above the sand or gravel/,
   async (c) => c.world.blockIs({ x: X0 + 5, y: TOP - 5 + 3, z: Z0 }, "gravel")
 );
+
+// the same gravel under the grass is a capped, dry column: the stair brings it down from beside it and goes on
+const gravelCapped: Scenario = (() => {
+  let end: BodyEvent | null = null;
+  let at: Pos = { x: 0, y: 0, z: 0 };
+  let health = 0;
+  let left = true;
+  let got = 0;
+  return {
+    name: "strip: gravel under the grass is brought down from beside the stair and the stair goes on",
+    timeoutMs: 300_000,
+    view: { x: X0, y: 75, z: Z0 },
+    async setup(c) {
+      await checkpoint(c, KIT, 440);
+      const { c: y } = col(X0 + 5);
+      await c.world.run(`setblock ${X0 + 5} ${y + 3} ${Z0} gravel`);
+    },
+    async act(c) {
+      end = (await go(c, { intent: "dig_down", to: TOP - 14 }, 240_000)).end;
+      at = await feet(c);
+      health = await c.world.health(c.bot);
+      left = await c.world.blockIs({ x: X0 + 5, y: TOP - 5 + 3, z: Z0 }, "gravel");
+      got = (await c.world.count(c.bot, "gravel")) + (await c.world.count(c.bot, "flint"));
+    },
+    async verify(c) {
+      c.check(end?.event === "task_finished", `the stair finished (${said(end)})`);
+      c.check(at.x - X0 >= 12, `past the gravel (x ${at.x})`);
+      c.check(!left, "the gravel is gone from where it hung");
+      c.check(got >= 1, `and it is in the pack (${got})`);
+      c.check(health >= 19, `unhurt, so it never stood under it (${health})`);
+    },
+    async cleanup(c) {
+      await tidy(c, 440);
+    },
+  };
+})();
 
 const lava = stop(
   "strip: lava beside the way down stops the stair before it, 'lava behind the wall', and nothing runs",
@@ -519,4 +557,4 @@ const view: Scenario = (() => {
   };
 })();
 
-export default [view, cell, gravel, lava, worn, full, branch, deep];
+export default [view, cell, gravel, gravelCapped, lava, worn, full, branch, deep];

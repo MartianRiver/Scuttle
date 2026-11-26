@@ -1,12 +1,14 @@
 // Reads the body for upkeep-plan.ts: whether the pack has room for what a dig drops, and how worn the held tool is.
-// `pack_full` and `tool_worn` go out as events (the mind's `wait` wakes on both); a stair or tunnel asks `noRoomFor`
+// `pack_full`, `tool_worn`, `torches_low` and `torches_out` go out as events (the mind's `wait` wakes on them); a stair or tunnel asks `noRoomFor`
 // before each dig and ends `pack full` rather than dig on into drops it cannot pick up.
 import type { Bot } from "mineflayer";
 import type { Entity } from "prismarine-entity";
 import { durabilityLeft } from "../senses/bands";
+import { isUnderground } from "../senses/observe";
+import { itemCount } from "../lib/inventory";
 import { logger } from "../lib/logger";
 import { dropsOf } from "./harvest";
-import { isWatchedTool, PackEpisode, roomFor, WearWatch, wearWords, type Stack } from "./upkeep-plan";
+import { isWatchedTool, PackEpisode, roomFor, TorchWatch, WearWatch, wearWords, type Stack } from "./upkeep-plan";
 
 const log = logger("upkeep");
 const EVERY_MS = 1000;
@@ -14,6 +16,7 @@ const DROP_NEAR = 3; // an item this close to the body is one it would pick up
 
 const pack = new PackEpisode();
 const wear = new WearWatch();
+const torches = new TorchWatch();
 let emit: (event: string, fields: Record<string, unknown>) => void = () => {};
 
 const stacksOf = (bot: Bot): Stack[] => bot.inventory.items().map((i) => ({ name: i.name, count: i.count, stackSize: i.stackSize || 64 }));
@@ -44,13 +47,23 @@ function checkTool(bot: Bot): void {
   }
 }
 
-// `emit` is the API's; the events are `pack_full` and `tool_worn` { item, left }
+// the torches it carries, on the same tick as the tool: low (3 or fewer) and out, underground only
+function checkTorches(bot: Bot): void {
+  const left = itemCount(bot, "torch");
+  const told = torches.check(left, () => isUnderground(bot));
+  if (!told) return;
+  log.info(told.replace("_", " "), { left });
+  emit(told, { left });
+}
+
+// `emit` is the API's; the events are `pack_full`, `tool_worn` { item, left } and `torches_low` { left } / `torches_out` { left }
 export function watchUpkeep(bot: Bot, send: (event: string, fields: Record<string, unknown>) => void): () => void {
   emit = send;
   const timer = setInterval(() => {
     if (!bot.entity) return;
     if (pack.active && bot.inventory.emptySlotCount() > 0) pack.clear();
     checkTool(bot);
+    checkTorches(bot);
   }, EVERY_MS);
   // an item that fell beside it with nowhere to go (a mob's drop, a block it broke some other way)
   const onDrop = (entity: Entity): void => {

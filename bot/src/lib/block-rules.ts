@@ -15,6 +15,44 @@ export const isLiquid = (name: string): boolean =>
 const FALLING = /^(sand|red_sand|gravel|suspicious_sand|suspicious_gravel|dragon_egg|\w+_concrete_powder|(chipped_|damaged_)?anvil)$/;
 export const isFalling = (name: string): boolean => FALLING.test(name);
 
+// sand or gravel one or two cells over a cell: what comes down once it is dug
+export const fallsOver = (nameAt: NameAt, p: Pos): boolean =>
+  [1, 2].some((dy) => {
+    const n = nameAt({ x: p.x, y: p.y + dy, z: p.z });
+    return n !== null && isFalling(n);
+  });
+
+export const FALL_SCAN = 8; // the tallest column of sand or gravel it brings down
+// what a name alone says is no roof: air, plants and the small things fixed to a wall
+const NO_ROOF = /^(air|cave_air|void_air|short_grass|grass|tall_grass|fern|large_fern|dead_bush|snow|cobweb|fire|soul_fire)$|(lichen|vine|vines|carpet|sculk_vein|roots|sapling|flower|tulip|dandelion|poppy|orchid|allium|bluet|mushroom|torch|rail|sign|fungus|sprout|bush|azalea|dripleaf|candle|cluster|bud|button|lever|plate|wire)$/;
+
+// Whether the column of sand or gravel standing right over `target` may be brought down by digging the target, and if
+// not, why in words. It must start at the cell over the target, be capped by something that is not going to move within
+// FALL_SCAN cells, and have no liquid in it or beside it and no open space in it (water, lava or a cave would come down
+// the hole with it). null: it is safe to bring down. `settling`: the column was vetted before its first block came down, so
+// the cells it vacated are air under the same cap and are not open space; the cap and the liquid checks still hold.
+export function fallingWhy(target: Pos, nameAt: NameAt, settling = false): string | null {
+  const first = nameAt({ x: target.x, y: target.y + 1, z: target.z });
+  if (first === null) return "it cannot see far enough ahead";
+  if (!isFalling(first)) return "sand or gravel overhead";
+  for (let dy = 1; dy <= FALL_SCAN; dy++) {
+    const at = { x: target.x, y: target.y + dy, z: target.z };
+    const n = nameAt(at);
+    if (n === null) return "it cannot see far enough ahead";
+    if (isLiquid(n)) return `${n === "lava" ? "lava" : "water"} above the sand or gravel`;
+    if (!isFalling(n)) {
+      if (!NO_ROOF.test(n)) return null;
+      if (!settling) return "an open space above the sand or gravel";
+    }
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const side = nameAt({ x: at.x + dx, y: at.y, z: at.z + dz });
+      if (side === null) return "it cannot see far enough ahead";
+      if (isLiquid(side)) return `${side === "lava" ? "lava" : "water"} beside the sand or gravel`;
+    }
+  }
+  return "too much sand or gravel overhead to bring down";
+}
+
 // Nothing marks a block as player-placed, so this is a list of what players make and the world
 // doesn't. Logs aren't on it (trees stand next to stone); cobblestone is, since mined stone put
 // back is the commonest thing a kid builds with. Natural structures trip it too (mineshaft planks,

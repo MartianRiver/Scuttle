@@ -92,7 +92,7 @@ const walk: Scenario = (() => {
 
 // ---- the landing kit ----
 
-const KIT_ITEMS = ["iron_pickaxe 1", "chest 1", "crafting_table 1", "torch 16", "bread 4"];
+const KIT_ITEMS = ["iron_pickaxe 1", "chest 1", "crafting_table 1", "torch 24", "bread 4"];
 
 const kit: Scenario = (() => {
   const DEPTH = 40;
@@ -106,6 +106,7 @@ const kit: Scenario = (() => {
   let ready: BodyEvent | null = null;
   let afterSecond = { chest: false, table: false, furnace: false };
   let torchesIn = 0;
+  let heldAfter = 0;
   let torchWall = 0;
   let carried = { before: 0, after: 0 };
   let took: BodyEvent | null = null;
@@ -133,6 +134,7 @@ const kit: Scenario = (() => {
       ready = (await go(c, { intent: "make_mine" }, 120_000)).end;
       afterSecond = await blocks(c);
       torchesIn = await c.world.chestCount(chestAt, "torch");
+      heldAfter = await c.world.count(c.bot, "torch");
       for (let dy = -1; dy <= 3; dy++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) if (await c.world.blockIs({ x: foot.x + dx, y: foot.y + dy, z: foot.z + dz }, "wall_torch")) torchWall++;
       o = await observe(c);
       carried.before = await c.world.count(c.bot, "torch");
@@ -149,13 +151,13 @@ const kit: Scenario = (() => {
     async verify(c) {
       const first = lacking?.end;
       c.check(first?.event === "task_failed" && first.reason === "not_ready" && /furnace/.test(String(first.detail ?? "")) && words(first.detail), `without a furnace it says so, in words (${said(first ?? null)})`);
-      c.check(first?.missing && (first.missing as Record<string, number>).furnace === 1, `and names it in missing (${JSON.stringify(first?.missing)})`);
+      c.check(!!first?.missing && (first.missing as Record<string, number>).furnace === 1, `and names it in missing (${JSON.stringify(first?.missing)})`);
       c.check(near(at1, foot, 1), `it walked down to the foot to do it (${JSON.stringify(at1)})`);
       c.check(afterFirst.chest && afterFirst.table && !afterFirst.furnace, `the chest and table are down, the furnace is not (${JSON.stringify(afterFirst)})`);
       c.check(ready?.event === "task_finished" && /landing is ready/.test(String(ready.detail ?? "")), `asked again with a furnace it finishes (${said(ready)})`);
       c.check(afterSecond.chest && afterSecond.table && afterSecond.furnace, `chest, table and furnace stand beside the foot, the furnace on the table (${JSON.stringify(afterSecond)})`);
       c.check(torchWall >= 1, `a torch is on a wall at the landing (${torchWall})`);
-      c.check(torchesIn >= 6 && torchesIn <= 8, `half of its torches went into the chest (${torchesIn})`);
+      c.check(torchesIn >= 6 && torchesIn <= 8 && heldAfter === 16, `only what is over sixteen went into the chest, the body keeps sixteen (${torchesIn} in, ${heldAfter} held)`);
       c.check(!!o?.places?.mine, `go_to mine is a place now (${JSON.stringify(o?.places)})`);
       c.check(!!o?.blocks.find((b) => b.what === "your chest"), `the landing chest is its own, with a handle (${(o?.blocks ?? []).map((b) => b.what).join(", ")})`);
       c.check(took?.event === "task_finished" && carried.after - carried.before === 3, `take got three torches from the landing chest, the nearest one (${said(took)}, ${carried.before} to ${carried.after})`);
