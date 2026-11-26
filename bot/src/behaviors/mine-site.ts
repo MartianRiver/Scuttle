@@ -16,6 +16,7 @@ import { setStatus } from "../lib/status";
 import { breakBlock, cellOf, digDown } from "./dig-down";
 import type { Facing } from "./dig-down-plan";
 import { safeToDig, type Pos } from "./dig-safety";
+import { KEEP_TORCHES } from "./ensure-plan";
 import { TaskError } from "./fail";
 import { missingTool } from "./harvest";
 import type { MineCtx } from "./mine";
@@ -164,9 +165,9 @@ const torchNear = (bot: Bot, foot: Pos): boolean => {
   return false;
 };
 
-// the torches it carries beyond a few go into the landing chest, where `take` finds them again
+// the torches it carries beyond what a strip needs on the body go into the landing chest, where `take` finds them again
 async function stock(bot: Bot, chestAt: Pos): Promise<boolean> {
-  const spare = Math.floor(itemCount(bot, "torch") / 2);
+  const spare = itemCount(bot, "torch") - KEEP_TORCHES;
   if (spare < 1) return false;
   const block = bot.blockAt(new Vec3(chestAt.x, chestAt.y, chestAt.z));
   if (!block || !block.name.endsWith("chest")) return false;
@@ -243,7 +244,7 @@ export async function makeMine(bot: Bot, ctx: MineCtx): Promise<{ detail: string
       }
     }
   }
-  // stocked once, when the chest is new: asking again for the rest of the kit does not empty the pack into it
+  // stocked once, when the chest is new (only what is over KEEP_TORCHES): asking again for the rest of the kit does not empty the pack into it
   const stocked = newChest && kit.chest ? await stock(bot, kit.chest) : false;
 
   setMine({ ...m, landing: plain(foot), kit });

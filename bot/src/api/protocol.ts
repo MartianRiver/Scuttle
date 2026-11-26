@@ -2,6 +2,7 @@
 // `say` is the one free-text field. The only coordinates are `go_to {x,y,z}` and a y for `dig_down {to}` (D12,
 // 2026-11-24: the mind plans a strip mine by position). See ../../API.md.
 import { CLEAR_MAX, CLEAR_MIN } from "../behaviors/clear-plan";
+import { ENSURE_WHATS, type EnsureWhat } from "../behaviors/ensure-plan";
 import { CARDINALS, isLengthBand, TUNNEL_MAX, type Cardinal } from "../behaviors/tunnel-plan";
 import { UNDO_KINDS, type UndoKind } from "../behaviors/undo-plan";
 import { BLOCK_SHAPE, ENTITY_SHAPE, HANDLE_SHAPE, NEAR_SHAPE } from "../senses/handles";
@@ -45,6 +46,7 @@ export type Intent =
   | { intent: "shear"; handle: string }
   | { intent: "dig_shaft"; to: number; torches?: boolean }
   | { intent: "make_mine" }
+  | { intent: "ensure"; what: EnsureWhat; count?: number }
   | { intent: "undo"; job?: UndoKind }
   | { intent: "stash" }
   | { intent: "explore"; dir: CompassPoint; far?: ExploreBand }
@@ -60,9 +62,9 @@ export type Intent =
 // the actions that run like a task: one at a time, with task events
 export type ActionIntent = Extract<
   Intent,
-  { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "clear_trees" | "place" | "pick_up" | "make_base" | "shear" | "dig_shaft" | "make_mine" | "undo" }
+  { intent: "craft" | "collect" | "store" | "take" | "explore" | "dig_down" | "tunnel" | "climb_up" | "clear_trees" | "place" | "pick_up" | "make_base" | "shear" | "dig_shaft" | "make_mine" | "ensure" | "undo" }
 >;
-export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "clear_trees", "place", "pick_up", "make_base", "shear", "dig_shaft", "make_mine", "undo"] as const;
+export const ACTION_INTENTS = ["craft", "collect", "store", "take", "explore", "dig_down", "tunnel", "climb_up", "clear_trees", "place", "pick_up", "make_base", "shear", "dig_shaft", "make_mine", "ensure", "undo"] as const;
 // the intents that change the world with the hands; off unless the body's placement switch is on
 export const PLACING_INTENTS = ["place", "pick_up", "make_base", "shear", "make_mine", "undo"] as const;
 
@@ -183,6 +185,11 @@ export function parseFrame(raw: string): Parsed {
     case "dig_shaft":
       if (!onlyKeys(m, ["type", "id", "intent", "to", "torches"])) return bad;
       if (!isY(m.to) || (m.torches !== undefined && typeof m.torches !== "boolean")) return bad;
+      return { ok: true, msg: m as ClientMsg };
+    case "ensure":
+      if (!onlyKeys(m, ["type", "id", "intent", "what", "count"])) return bad;
+      if (!(ENSURE_WHATS as readonly unknown[]).includes(m.what) || !countIn(m.count, 64)) return bad;
+      if (m.what === "kit" && m.count !== undefined) return bad; // a kit is fixed: a spare pickaxe, sixteen torches, sixteen food
       return { ok: true, msg: m as ClientMsg };
     case "undo":
       if (!onlyKeys(m, ["type", "id", "intent", "job"])) return bad;

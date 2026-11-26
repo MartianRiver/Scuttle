@@ -10,7 +10,7 @@ export * from "../lib/block-rules";
 
 // A position test lifts the made-block rules for the blocks a player pointed at: a grant, as far as a planner
 // can see. There is no "all of it" form. It never touches liquid, falling or standing checks.
-export type DigOpts = { allowMade?: (p: Pos) => boolean };
+export type DigOpts = { allowMade?: (p: Pos) => boolean; clearFalling?: boolean };
 
 // the made blocks that make safeToDig refuse a target: within the radius, or above it in its column; the body's own
 // (the journal's word) are not builds
@@ -30,5 +30,5 @@ export function madeBlocksNear(target: Pos, nameAt: NameAt): Pos[] {
 
 export function safeToDig(target: Pos, nameAt: NameAt, stand?: Pos, opts: DigOpts = {}): boolean {
   const op: Op = { kind: "dig", pos: target, job: "plan" };
-  return check(op, { nameAt, isOwn: (p, n) => journal.ownAt(p, n) || journal.restoredAt(p, n), granted: opts.allowMade && ((p) => opts.allowMade?.(p) === true) }, { stand }).ok;
+  return check(op, { nameAt, isOwn: (p, n) => journal.ownAt(p, n) || journal.restoredAt(p, n), granted: opts.allowMade && ((p) => opts.allowMade?.(p) === true) }, { stand, clearFalling: opts.clearFalling }).ok;
 }

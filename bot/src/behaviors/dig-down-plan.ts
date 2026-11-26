@@ -6,7 +6,7 @@
 // into C. C then has B and A over it, two blocks of room, and the floor under C must already be solid. A step into stone
 // is never dug (that wants a pickaxe): it stops before. With `through` (a depth was asked for) stone and deepslate are
 // dug like any ground, under a tunnel's tool rules, and a cave opened into is a stop.
-import { isFalling, NATURAL_STONE, isLiquid, isMade, isStandHazard, madeBlocksNear, safeToDig, type NameAt, type Pos } from "./dig-safety";
+import { fallingWhy, fallsOver, NATURAL_STONE, isLiquid, isMade, isStandHazard, madeBlocksNear, safeToDig, type NameAt, type Pos } from "./dig-safety";
 
 export const MAX_STEPS = 12;
 export const MAX_DEPTH_STEPS = 64; // a call that was given a depth to reach
@@ -31,13 +31,16 @@ export type StepPlan =
   | { kind: "blocked"; detail: string } // water, lava, a hollow, a cave, something it cannot break
   | { kind: "refused"; detail: string } // a build, a place where digs were undone, bedrock
   | { kind: "no_tool"; detail: string } // through only: rock that wants a pickaxe it does not carry
-  | { kind: "step"; dig: Pos[]; to: Pos; level: boolean };
+  // `settle`: the last cell of `dig` has a column of sand or gravel over it that comes down once it is dug; the plan stops
+  // there, the column is cleared from beside it, and the step is planned again
+  | { kind: "step"; dig: Pos[]; to: Pos; level: boolean; settle?: Pos };
 
 // how a step is planned: `through` digs stone and deepslate instead of stopping at them, and `missingTool` is the
 // tunnel's tool rule (words for the pickaxe it lacks, null when it has what the block needs)
 export interface StepOpts {
   through?: boolean;
   missingTool?: (name: string) => string | null;
+  cleared?: (p: Pos) => boolean; // cells it opened itself by bringing a column down: air there is not a cave
 }
 
 const at = (p: Pos, dx: number, dy: number, dz: number): Pos => ({ x: p.x + dx, y: p.y + dy, z: p.z + dz });
@@ -104,21 +107,24 @@ export function planStep(g: Grid, cur: Pos, f: Facing, canBreak: (name: string) 
     const n = g.name(p) as string;
     if (!g.solid(p)) {
       if (isStandHazard(n)) return { kind: "blocked", detail: "something sticky or prickly in the way" };
-      if (covered) return { kind: "blocked", detail: "a cave opens ahead" };
+      if (covered && !opts.cleared?.(p)) return { kind: "blocked", detail: "a cave opens ahead" };
       continue; // air, or a plant it walks through
     }
     if (isMade(n)) return { kind: "refused", detail: "something a player built is in the way" };
     if (!canBreak(n)) return through ? { kind: "refused", detail: "bedrock is in the way" } : { kind: "blocked", detail: "rock it cannot break is in the way" };
     const tool = through ? opts.missingTool?.(n) : null;
     if (tool) return { kind: "no_tool", detail: `it needs ${tool}` };
-    if (!safeToDig(p, g.name)) {
-      if (madeBlocksNear(p, g.name).length > 0) return { kind: "refused", detail: "something a player built is too close" };
-      const falling = [1, 2].some((dy) => {
-        const over = g.name(at(p, 0, dy, 0));
-        return over !== null && isFalling(over);
-      });
-      return { kind: "blocked", detail: falling ? "sand or gravel overhead" : "it cannot see far enough ahead" };
+    // the body stands at `cur`, beside the column, never under it
+    const falls = fallsOver(g.name, p);
+    if (falls) {
+      const why = fallingWhy(p, g.name);
+      if (why) return { kind: "blocked", detail: why };
     }
+    if (!safeToDig(p, g.name, falls ? cur : undefined, { clearFalling: falls })) {
+      if (madeBlocksNear(p, g.name).length > 0) return { kind: "refused", detail: "something a player built is too close" };
+      return { kind: "blocked", detail: "it cannot see far enough ahead" };
+    }
+    if (falls) return { kind: "step", dig: dig.slice(0, dig.indexOf(p) + 1), to, level, settle: p };
   }
   return { kind: "step", dig, to, level };
 }

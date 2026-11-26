@@ -61,7 +61,7 @@ test("liquid ahead, beside, over or in the cells stops it before it breaks in, i
 test("a build in the way or near it refuses, sand or gravel overhead and unbreakable rock block", () => {
   assert.equal(planTunnelStep(rock({ "1,65,0": "oak_planks" }), cur, east, rules).kind, "refused");
   assert.equal(planTunnelStep(rock({ "4,66,0": "crafting_table" }), cur, east, rules).kind, "refused");
-  assert.equal(planTunnelStep(rock({ "1,67,0": "gravel" }), cur, east, rules).kind, "blocked");
+  assert.equal(planTunnelStep(rock({ "1,67,0": "gravel", "1,68,0": "air" }), cur, east, rules).kind, "blocked");
   assert.deepEqual(planTunnelStep(rock({ "1,65,0": "bedrock" }), cur, east, rules), { kind: "blocked", detail: "rock it cannot break is in the way" });
   const dark: Grid = { name: () => null, solid: () => false };
   assert.equal(planTunnelStep(dark, cur, east, rules).kind, "blocked");
@@ -71,7 +71,37 @@ test("a build in the way or near it refuses, sand or gravel overhead and unbreak
 
 test("gravel in the head cell with nothing over it is dug, and gravel over that is not", () => {
   assert.equal(planTunnelStep(rock({ "1,66,0": "gravel", "1,67,0": "air", "1,68,0": "air" }), cur, east, rules).kind, "step");
-  assert.equal(planTunnelStep(rock({ "1,66,0": "gravel", "1,67,0": "gravel" }), cur, east, rules).kind, "blocked");
+  assert.equal(planTunnelStep(rock({ "1,66,0": "gravel", "1,67,0": "gravel", "1,68,0": "air" }), cur, east, rules).kind, "blocked");
+});
+
+// ---- sand or gravel over the cell: brought down from beside it, when the column is capped and dry ----
+
+test("gravel over the head cell is brought down: the plan stops at that cell and says so", () => {
+  const p = planTunnelStep(rock({ "1,67,0": "gravel" }), cur, east, rules);
+  assert.equal(p.kind, "step");
+  if (p.kind === "step") {
+    assert.deepEqual(p.dig, [{ x: 1, y: 66, z: 0 }]); // the feet cell waits until the pile is cleared
+    assert.deepEqual(p.settle, { x: 1, y: 66, z: 0 });
+  }
+  // two or three of them, and sand, are the same: the rock over the column is its cap
+  assert.equal(planTunnelStep(rock({ "1,67,0": "sand", "1,68,0": "sand", "1,69,0": "stone" }), cur, east, rules).kind, "step");
+  // once the pile is cleared (the cell is open and the rock is over it) the step is a plain one
+  const clear = planTunnelStep(rock({ "1,66,0": "air" }), cur, east, rules);
+  assert.equal(clear.kind === "step" && clear.settle, undefined);
+});
+
+test("a column it must not bring down blocks, with the reason in words", () => {
+  const blocked = (extra: Record<string, string>) => planTunnelStep(rock(extra), cur, east, rules);
+  assert.deepEqual(blocked({ "1,67,0": "gravel", "1,68,0": "water" }), { kind: "blocked", detail: "water above the sand or gravel" });
+  assert.deepEqual(blocked({ "1,67,0": "gravel", "1,68,0": "gravel", "1,69,0": "lava" }), { kind: "blocked", detail: "lava above the sand or gravel" });
+  assert.deepEqual(blocked({ "1,67,0": "gravel", "1,68,0": "air" }), { kind: "blocked", detail: "an open space above the sand or gravel" });
+  assert.deepEqual(blocked({ "1,67,0": "gravel", "2,67,0": "water" }), { kind: "blocked", detail: "water beside the sand or gravel" });
+  assert.deepEqual(blocked({ "1,67,0": "gravel", "1,68,0": "gravel", "1,69,0": "gravel", "1,70,0": "gravel", "1,71,0": "gravel", "1,72,0": "gravel", "1,73,0": "gravel", "1,74,0": "gravel" }), {
+    kind: "blocked",
+    detail: "too much sand or gravel overhead to bring down",
+  });
+  // gravel two over with a gap is not a column that starts over the cell
+  assert.deepEqual(blocked({ "1,67,0": "air", "1,68,0": "gravel" }).kind, "blocked");
 });
 
 test("stone it has no pickaxe for ends no_tool, with the tool in words, and dirt needs none", () => {

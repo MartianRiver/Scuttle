@@ -3,6 +3,7 @@
 // place-block.ts call it again at the moment of the change. The first refusal wins, in this order: unknown,
 // physical, provenance, made radius, zones, then what only a place has to pass.
 import {
+  fallingWhy,
   isFalling,
   isLiquid,
   isMade,
@@ -45,6 +46,8 @@ export interface CheckOpts {
   strict?: boolean; // place: the made radius and the kept zones apply, as they do to a dig (what the hands set down, not the stair's fill)
   stand?: Pos; // where the feet are, when the planner knows: geometry is its job, the doors leave it out
   physical?: boolean; // false: only the block itself must be loaded (logs and leaves, which never had the rule)
+  clearFalling?: boolean; // a dig that brings a capped, dry column of sand or gravel down beside the body: needs `stand`, and the column's probe
+  settling?: boolean; // with clearFalling: clearing what already came down, so the cells the column left empty are not open space
 }
 
 const ok: Verdict = { ok: true };
@@ -81,14 +84,20 @@ export function madeNear(target: Pos, world: World, skip: (p: Pos) => boolean): 
   return false;
 }
 
-function physical(pos: Pos, nameAt: NameAt, stand?: Pos): Verdict | null {
+function physical(pos: Pos, nameAt: NameAt, stand?: Pos, clearFalling = false, settling = false): Verdict | null {
   const around = SIX.map(([dx, dy, dz]) => nameAt({ x: pos.x + dx, y: pos.y + dy, z: pos.z + dz }));
   const over = [1, 2].map((dy) => nameAt({ x: pos.x, y: pos.y + dy, z: pos.z }));
   if (around.some((n) => n === null) || over.some((n) => n === null)) return no("unknown", WORDS.unknown);
   if (stand && !standOk(pos, stand)) return no("unsafe", WORDS.stand);
   if (around.some((n) => isLiquid(n as string))) return no("unsafe", WORDS.liquid);
   // what stands over the target comes down once it is gone, and what is two over follows
-  if (over.some((n) => isFalling(n as string))) return no("unsafe", WORDS.falling);
+  if (over.some((n) => isFalling(n as string))) {
+    if (!clearFalling) return no("unsafe", WORDS.falling);
+    // the body is never under the column: it has to say where it stands, and that is beside the cell
+    if (!stand) return no("unsafe", WORDS.stand);
+    const why = fallingWhy(pos, nameAt, settling);
+    if (why) return no("unsafe", why);
+  }
   return null;
 }
 
@@ -96,7 +105,7 @@ function checkDig(op: Op, world: World, opts: CheckOpts): Verdict {
   const here = world.nameAt(op.pos);
   if (here === null) return no("unknown", WORDS.unknown);
   if (opts.physical !== false) {
-    const bad = physical(op.pos, world.nameAt, opts.stand);
+    const bad = physical(op.pos, world.nameAt, opts.stand, opts.clearFalling, opts.settling);
     if (bad) return bad;
   }
 

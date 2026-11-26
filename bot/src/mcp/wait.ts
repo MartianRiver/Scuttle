@@ -14,6 +14,8 @@ export type WakeReason =
   | "reflex_ended"
   | "pack_full"
   | "tool_worn"
+  | "torches_low"
+  | "torches_out"
   | "restarted"
   | "timeout";
 
@@ -44,6 +46,10 @@ export function wakeReason(e: BotEvent, taskId?: string): WakeReason | undefined
       return "pack_full";
     case "tool_worn":
       return "tool_worn";
+    case "torches_low":
+      return "torches_low";
+    case "torches_out":
+      return "torches_out";
   }
   if (e.event === "task_failed" && e.reason === "interrupted") return "interrupted";
   if (taskId && ENDS.includes(e.event) && e.taskId === taskId) return "task_ended";

@@ -66,6 +66,18 @@ function stashAvailable(bot: Bot): void {
   if (!isOverworld(bot)) throw new TaskError("no_stash", "the stash is not in this world");
 }
 
+// what a chest holds now, looked at and put back in the memory; it walks to it and closes it again
+export async function peekChest(bot: Bot, ctx: MineCtx, at: Vec3): Promise<Counts> {
+  stashAvailable(bot);
+  const open = await openStash(bot, ctx, at);
+  try {
+    noteLook(at, open);
+    return stashMemory.lookAt(spotKey(at)) ?? {};
+  } finally {
+    open.close();
+  }
+}
+
 // walks to the chest and opens it; the caller closes it
 async function openStash(bot: Bot, ctx: MineCtx, at: Vec3): Promise<Chest> {
   await walkWithin(bot, new goals.GoalNear(at.x, at.y, at.z, 2));

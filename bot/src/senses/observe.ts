@@ -145,6 +145,9 @@ function localView(bot: Bot, feet: Vec3): Pick<RawSense, "pos" | "biome" | "unde
   };
 }
 
+// under rock, as observe's `where` says it (more than two solid blocks over the head)
+export const isUnderground = (bot: Bot): boolean => isOverworld(bot) && coverOver(bot, bot.entity.position) !== undefined;
+
 // how far below open air the body is, when there is rock over its head (cover.ts); the cells above are read as the
 // world has them, up to the scan's top, and an unloaded cell ends the column
 function coverOver(bot: Bot, feet: Vec3): number | undefined {

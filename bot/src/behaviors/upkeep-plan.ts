@@ -70,3 +70,22 @@ export class WearWatch {
 
 // a pickaxe or sword is what the event is about; an axe or shovel wearing out is the body's own business
 export const isWatchedTool = (name: string): boolean => /_(pickaxe|sword)$/.test(name);
+
+export const TORCHES_LOW = 3; // carrying this many or fewer, underground, is news
+
+// `torches_low` at TORCHES_LOW or fewer and `torches_out` at none, while underground, each once an episode. An episode
+// ends when it carries more than it did when it was told (a few taken from the chest, a craft), or more than TORCHES_LOW.
+// `underground` is asked only when something could be due.
+export class TorchWatch {
+  private told: { level: "low" | "out"; at: number } | null = null;
+
+  check(count: number, underground: () => boolean): "torches_low" | "torches_out" | null {
+    if (this.told && count > this.told.at) this.told = null;
+    if (count > TORCHES_LOW) return null;
+    const level = count === 0 ? "out" : "low";
+    if (this.told && (this.told.level === level || this.told.level === "out")) return null;
+    if (!underground()) return null;
+    this.told = { level, at: count };
+    return level === "out" ? "torches_out" : "torches_low";
+  }
+}
